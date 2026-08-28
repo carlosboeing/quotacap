@@ -7,4 +7,10 @@ describe("manual", () => {
     expect(q.usedPct).toBe(22);
     expect(q.source).toBe("manual");
   });
+
+  it("parses the reset date from the text instead of guessing +3d", () => {
+    const now = new Date("2026-08-28T06:00:00+10:00");
+    const q = parseManualUsage("kimi", `Current week: 22% used · resets Aug 29 at 11am`, now);
+    expect(q.resetsAt).toMatch(/^2026-08-29/);
+  });
 });
