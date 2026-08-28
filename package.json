@@ -2,6 +2,10 @@
   "name": "quotacap",
   "version": "0.0.2",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosboeing/quotacap.git"
+  },
   "bin": {
     "quotacap": "dist/cli/index.js"
   },
