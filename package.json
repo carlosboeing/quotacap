@@ -5,8 +5,11 @@
   "bin": {
     "quotacap": "dist/cli/index.js"
   },
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "scripts": {
-    "build": "tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
+    "build": "tsc && vite build --config web/vite.config.ts && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },

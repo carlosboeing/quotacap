@@ -19,7 +19,7 @@ npx quotacap              # run without install
 npm install -g quotacap   # global install
 ```
 
-Requires Node 20+ (22 recommended).
+Requires Node 22.6+.
 
 ## Quick start
 
@@ -97,7 +97,7 @@ DB is `~/.quotacap/quotacap.db` (`quotas`, `snapshots`).
 
 ```bash
 npm test              # vitest run (10 files)
-npm run build         # tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js
+npm run build         # tsc && vite build --config web/vite.config.ts && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js
 npx tsc --noEmit
 ```
 

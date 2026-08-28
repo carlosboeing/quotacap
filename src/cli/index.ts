@@ -54,4 +54,7 @@ program.command("daemon").option("--foreground","keep foreground").action(async(
   process.on("SIGINT", ()=> { clearInterval(timer as any); process.exit(0); });
   process.on("SIGTERM", ()=> { clearInterval(timer as any); process.exit(0); });
 });
+program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
+  const mod=await import("../mcp/server.js"); console.log(JSON.stringify({tools: mod.tools}));
+});
 program.parseAsync();

@@ -13,6 +13,10 @@ export function buildApp(db: any): FastifyInstance {
   const app = Fastify({ logger: false });
   appStates.set(app, state);
   allStates.add(state);
+  app.addHook("onClose", async () => {
+    appStates.delete(app);
+    allStates.delete(state);
+  });
   // expose for per-app helpers
   (app as any)._quotacapState = state;
 

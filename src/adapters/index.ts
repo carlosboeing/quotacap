@@ -6,7 +6,13 @@ export const adapters: Record<string, Adapter> = {
   manual: manualAdapter as unknown as Adapter,
 };
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms))]);
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
+    Promise.resolve(p).then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
 }
 export async function pollAll(enabled: string[]){
   const rawJobs = enabled.map(id => {
