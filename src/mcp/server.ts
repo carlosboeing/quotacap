@@ -14,9 +14,28 @@ async function fetchJson(path:string){
     throw new Error(`daemon not running, run quotacap web — ${e?.message ?? String(e)}`);
   }
 }
+export function recommendationTable(rec: any): string {
+  const rows = (rec.advisories ?? []).map((a: any) => {
+    const q = (rec.alternatives ?? []).find((x: any) => x.provider === a.provider);
+    const used = Math.round(q?.usedPct ?? 0);
+    const resets = q?.resetsAt ? new Date(q.resetsAt).toLocaleString() : "—";
+    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${Math.round(a.wastePct)}% |`;
+  });
+  return [
+    "| Provider | Used | Remaining | Resets | Waste if unused |",
+    "|---|---|---|---|---|",
+    ...rows,
+  ].join("\n");
+}
+
 export async function handleTool(name:string, args:any){
   if(name==="get_quotas") return fetchJson("/api/quotas");
-  if(name==="get_recommendation") return fetchJson(`/api/recommendation?task=${args?.task??"any"}`);
+  if(name==="get_recommendation") {
+    const rec = await fetchJson(`/api/recommendation?task=${args?.task??"any"}`);
+    const table = recommendationTable(rec);
+    const json = JSON.stringify(rec, null, 2);
+    return { content: [{ type:"text", text: table }, { type:"text", text: json }] };
+  }
   if(name==="forecast") {
     if(!args?.provider) throw new Error("provider required");
     const [quotas, rec] = await Promise.all([fetchJson("/api/quotas"), fetchJson(`/api/recommendation`)]);
@@ -56,7 +75,7 @@ export async function runMcpServer(){
         const toolArgs = params?.arguments ?? {};
         try {
           const result = await handleTool(toolName, toolArgs);
-          const content = [{ type:"text", text: JSON.stringify(result, null, 2) }];
+          const content = Array.isArray(result?.content) ? result.content : [{ type:"text", text: JSON.stringify(result, null, 2) }];
           if (!isNotification) respond(id, { content });
         } catch (e:any) {
           const content = [{ type:"text", text: e?.message ?? String(e) }];
