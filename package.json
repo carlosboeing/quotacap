@@ -6,7 +6,7 @@
     "quotacap": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },

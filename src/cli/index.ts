@@ -17,7 +17,7 @@ program.command("status").option("--json","json").action(async (opts)=>{
 program.command("advise").option("--json","json").option("--task <t>","task","any").action(async (opts)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
   try {
-    const r=await fetch(`http://localhost:${(await readConfig()).port}/api/recommendation?task=${opts.task}`);
+    const r=await fetch(`http://localhost:${(await readConfig()).port}/api/recommendation?task=${opts.task}`, {signal: AbortSignal.timeout(2000)});
     const j=await r.json(); console.log(opts.json? JSON.stringify(j,null,2) : `${j.use}: ${j.reason}`);
   } catch {
     const { recommend } = await import("../advisory/engine.js");
@@ -46,7 +46,7 @@ program.command("init").action(async()=>{
   const { readConfig, writeConfig } = await import("../config.js");
   const c=await readConfig(); await writeConfig(c); console.log(JSON.stringify(c,null,2));
 });
-program.command("daemon").action(async()=>{
+program.command("daemon").option("--foreground","keep foreground").action(async()=>{
   const { startDaemon } = await import("../daemon.js");
   const { timer } = await startDaemon();
   console.log("QuotaCap daemon started");
@@ -54,4 +54,4 @@ program.command("daemon").action(async()=>{
   process.on("SIGINT", ()=> { clearInterval(timer as any); process.exit(0); });
   process.on("SIGTERM", ()=> { clearInterval(timer as any); process.exit(0); });
 });
-program.parse();
+program.parseAsync();
