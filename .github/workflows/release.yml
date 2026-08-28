@@ -1,0 +1,216 @@
+name: release
+
+# Publishes to npm when a version tag is pushed, and attaches the compiled
+# binaries to the GitHub Release.
+#
+# Authentication is trusted publishing, and nothing else. GitHub mints a
+# short-lived OIDC credential that npm verifies against a publisher configured
+# on the package. There is no npm token in this repository and none on
+# anybody's laptop, which is the point: a stored publish credential is the
+# thing worth not having. CrossRev and CopyDesk publish the same way.
+#
+# Configure the publisher once, against this file:
+#
+#   npm trust github quotacap --file release.yml \
+#     --repo carlosboeing/quotacap --allow-publish
+#
+# The filename is part of that record, case-sensitive and including the
+# extension, so renaming this file breaks publishing until the publisher is
+# revoked and recreated.
+#
+# The first publish must go out by hand (npm publish from a checkout): npm
+# needs a package to exist before a publisher can be added to it
+# (npm/cli#8544), and no publisher means the OIDC exchange fails with
+# ENEEDAUTH.
+#
+# No `environment:` on the publish job. npm matches the environment as an OIDC
+# claim, so a block here must be mirrored by --env there or the exchange fails.
+
+on:
+  push:
+    # Three components, so the floating `v0` tag never fires a publish.
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack and verify without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the release is coherent
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: The suite must pass on the exact commit being released
+        run: npm test
+
+      - name: package.json and the tag must agree
+        id: version
+        run: |
+          set -euo pipefail
+          json_version="$(jq -r .version package.json)"
+          echo "package.json $json_version"
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            echo "tag          $tag_version"
+            if [ "$tag_version" != "$json_version" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match version $json_version"
+              exit 1
+            fi
+          fi
+          echo "version=$json_version" >> "$GITHUB_OUTPUT"
+
+      - name: The tarball must carry the shipped surface and nothing else
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json > pack.json
+          node <<'NODE'
+            const [pack] = require("./pack.json");
+            const files = pack.files.map(f => f.path).sort();
+
+            const required = [
+              "LICENSE", "README.md", "package.json",
+              "dist/cli/index.js", "web/dist/index.html",
+            ];
+            const missing = required.filter(f => !files.includes(f));
+            if (missing.length) {
+              console.error("::error::missing from the tarball: " + missing.join(", "));
+              process.exit(1);
+            }
+
+            // An allowlist, not a blocklist. Every packed path must fall under
+            // package.json `files`, or be one npm always includes.
+            const allowed = require("./package.json").files;
+            const always = ["LICENSE", "README.md", "package.json"];
+            const stray = files.filter(f =>
+              !always.includes(f) &&
+              !allowed.some(a => a.endsWith("/") ? f.startsWith(a) : f === a));
+            if (stray.length) {
+              console.error("::error::not covered by package.json files: " + stray.join(", "));
+              process.exit(1);
+            }
+
+            const kb = pack.size / 1024;
+            console.log(`tarball ${kb.toFixed(1)} kB across ${files.length} files`);
+            if (kb > 500) {
+              console.error("::error::tarball exceeds the 500 kB budget");
+              process.exit(1);
+            }
+          NODE
+
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: bun-darwin-arm64
+          - os: macos-14
+            target: bun-darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - run: node scripts/build-binary.mjs ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quotacap-${{ matrix.target }}
+          path: dist-bin/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm and create the GitHub Release
+    needs: [verify, binaries]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # to create the GitHub Release
+      id-token: write   # to mint the OIDC credential for trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false   # never cache in a release build
+
+      - name: Trusted publishing needs npm 11.5.1 or later
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: quotacap-*
+          path: dist-bin
+          merge-multiple: true
+
+      - name: Publish
+        # No NODE_AUTH_TOKEN. With no secret it resolves to an empty string,
+        # and setup-node still writes an .npmrc declaring _authToken=, which
+        # reads as auth that is configured and wrong rather than absent.
+        # OIDC is the only credential, which is the point of trusted publishing.
+        run: npm publish --access public --provenance
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          gh release create "v$version" dist-bin/quotacap-* \
+            --title "v$version" \
+            --notes "See docs/ROADMAP.md for what ships in this release." \
+            --verify-tag
+
+  smoke:
+    name: Install from the registry and run it
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # A publish nobody installed is a publish nobody verified. This runs the
+      # published artifact from a clean directory rather than the checkout.
+      - name: npx the published version
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          for attempt in 1 2 3 4 5; do
+            if npx --yes "quotacap@$version" version; then break; fi
+            echo "not on the registry yet, retrying in 15s"
+            sleep 15
+          done
+          test "$(npx --yes "quotacap@$version" version)" = "$version"
+          npx --yes "quotacap@$version" --help | grep -q "Usage: quotacap"
+          echo "published artifact verified"
