@@ -8,6 +8,9 @@ interface Quota {
   resetsAt: string;
   periodStart?: string;
   plan?: string;
+  fetchedAt?: string;
+  stale?: boolean;
+  ageMs?: number;
 }
 
 interface Rec {
@@ -50,10 +53,25 @@ function App() {
   const [quotas, setQuotas] = useState<Quota[]>([]);
   const [rec, setRec] = useState<Rec | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [lastPollAt, setLastPollAt] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchQuotas().then(setQuotas).catch(() => {});
-    fetchRecommendation().then(setRec).catch(() => {});
+    fetchQuotas()
+      .then(setQuotas)
+      .catch((e) => setFetchError(String(e?.message ?? e)));
+    fetchRecommendation()
+      .then(setRec)
+      .catch(() => {});
+    fetch("/api/../health")
+      .catch(() => fetch("/health"))
+      .then((r) => r?.json?.())
+      .then((j) => j?.lastPollAt && setLastPollAt(j.lastPollAt))
+      .catch(() => {});
+    fetch("/health")
+      .then((r) => r.json())
+      .then((j) => j?.lastPollAt && setLastPollAt(j.lastPollAt))
+      .catch(() => {});
   }, []);
 
   const sorted = [...quotas].sort(
@@ -63,10 +81,23 @@ function App() {
   const advisoriesByProvider = new Map<string, NonNullable<Rec["advisories"]>[number]>();
   for (const a of rec?.advisories ?? []) advisoriesByProvider.set(a.provider, a);
 
+  const hasStale = sorted.some((q) => q.stale || (q.fetchedAt ? Date.now() - new Date(q.fetchedAt).getTime() > 60 * 60 * 1000 : false));
+  const isDegraded = !!fetchError || (quotas.length === 0 && !rec);
+
   return (
     <div style={{ fontFamily: "system-ui", padding: 16, maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 20, margin: "0 0 12px" }}>QuotaCap</h1>
       <Banner rec={rec} />
+      {isDegraded && (
+        <div data-testid="error-banner" style={{ background: "#fecaca", padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
+          no fresh data{lastPollAt ? `, last ${new Date(lastPollAt).toLocaleString()}` : ""} — check network/daemon{fetchError ? `: ${fetchError}` : ""}
+        </div>
+      )}
+      {hasStale && (
+        <div data-testid="stale-banner" style={{ background: "#ffedd5", padding: 8, borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
+          some quotas stale — <button onClick={() => fetch("/api/refresh", { method: "POST" }).then(() => location.reload())} style={{ border: "1px solid #d1d5db", background: "#fff", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}>Refresh now</button>
+        </div>
+      )}
 
       <div data-testid="strip" style={{ display: "flex", gap: 8, margin: "12px 0", overflowX: "auto", alignItems: "center" }}>
         <span style={{ color: "#2563eb", fontWeight: 700 }}>NOW</span>
@@ -100,10 +131,13 @@ function App() {
             const burn = adv?.burnRate;
             const urgency = adv?.urgency ?? "";
             const isExpanded = expanded === q.provider;
+            const isStale = q.stale ?? (q.fetchedAt ? Date.now() - new Date(q.fetchedAt).getTime() > 60 * 60 * 1000 : false);
             return (
               <React.Fragment key={q.provider}>
-                <tr style={{ background: waste > 30 ? "#fff7ed" : undefined, borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "8px 6px", fontWeight: 600 }}>{q.provider}</td>
+                <tr style={{ background: waste > 30 ? "#fff7ed" : isStale ? "#fffbeb" : undefined, borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "8px 6px", fontWeight: 600 }}>
+                    {q.provider} {isStale && <span style={{ background: "#f59e0b", color: "#fff", fontSize: 10, padding: "2px 4px", borderRadius: 4, marginLeft: 6 }}>stale</span>}
+                  </td>
                   <td style={{ padding: "8px 6px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ width: 80, height: 8, background: "#e5e7eb", borderRadius: 4, overflow: "hidden" }}>
@@ -181,7 +215,7 @@ function App() {
       </table>
 
       <footer style={{ marginTop: 16, fontSize: 12, color: "#6b7280", display: "flex", gap: 8, alignItems: "center" }}>
-        <span>last refresh {new Date().toLocaleTimeString()}</span>
+        <span>last refresh {lastPollAt ? new Date(lastPollAt).toLocaleTimeString() : new Date().toLocaleTimeString()}</span>
         <button onClick={() => location.reload()} style={{ border: "1px solid #d1d5db", background: "#fff", borderRadius: 4, padding: "4px 8px", cursor: "pointer" }}>
           Refresh
         </button>

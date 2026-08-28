@@ -14,6 +14,7 @@ export function computeAdvisory(q:Quota, burnRate:number, now=new Date()): Advis
   return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, wastePct, urgency };
 }
 export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<string,number>(), now=new Date()){
+  if(!quotas.length) return { use: "none", reason: "no quotas yet", wastePct:0, idealRate:0, alternatives: [] as Quota[], advisories: [] as Advisory[] };
   const advisories = quotas.map(q=> computeAdvisory(q, burnByProvider.get(q.provider)?? 2, now));
   const burnNow = advisories.filter(a=>a.urgency==="burn now");
   const pool = burnNow.length? burnNow : advisories;

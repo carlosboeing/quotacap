@@ -11,5 +11,6 @@ export async function pollAll(enabled: string[]){
     if (!a) return Promise.resolve({provider:id,status:"rejected" as const, reason:new Error(`unknown adapter ${id}`)});
     return a.poll().then(v=>({provider:id,status:"fulfilled" as const, value:v})).catch(e=>({provider:id,status:"rejected" as const, reason:e}));
   });
-  return Promise.all(jobs);
+  const settled = await Promise.allSettled(jobs);
+  return settled.map(s => s.status==="fulfilled" ? s.value : {provider:"unknown", status:"rejected" as const, reason: (s as any).reason});
 }

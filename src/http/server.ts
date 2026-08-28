@@ -4,39 +4,73 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+let lastPollAt: string | null = null;
+let lastRefreshAt = 0;
+let lastRefreshResult: any = null;
+
 export function buildApp(db: any): FastifyInstance {
   const app = Fastify({ logger: false });
 
-  app.get("/health", async () => ({ ok: true, uptime: process.uptime() }));
+  app.get("/health", async () => ({ ok: true, uptime: process.uptime(), lastPollAt }));
 
   app.get("/api/quotas", async () => {
     const { getAllLatest } = await import("../store/quotas.js");
-    return getAllLatest(db);
+    const quotas = getAllLatest(db);
+    const now = Date.now();
+    return quotas.map((q: any) => {
+      const fetched = q.fetchedAt ? new Date(q.fetchedAt).getTime() : 0;
+      const ageMs = fetched ? now - fetched : Infinity;
+      const stale = ageMs > 60 * 60 * 1000;
+      return { ...q, stale, ageMs };
+    });
   });
 
   app.get("/api/recommendation", async (req: any) => {
     const { getAllLatest } = await import("../store/quotas.js");
     const quotas = getAllLatest(db);
+    if (!quotas.length) {
+      return { use: "none", reason: "no quotas yet", alternatives: [], advisories: [] };
+    }
+    let recommend: any;
     try {
-      // @ts-ignore — advisory engine not yet implemented (Task 6); fallback keeps Task 5 green and tsc clean
-      const { recommend } = await import("../advisory/engine.js");
-      const task = (req.query?.task as string) ?? "any";
-      return recommend(quotas, task);
+      recommend = (await import("../advisory/engine.js")).recommend;
     } catch {
       return { use: quotas[0]?.provider ?? "none", reason: "advisory not yet implemented", alternatives: quotas };
+    }
+    try {
+      const task = (req.query?.task as string) ?? "any";
+      return recommend(quotas, task);
+    } catch (e: any) {
+      return { use: quotas[0]?.provider ?? "none", reason: `advisory error: ${e?.message ?? String(e)}`, alternatives: quotas };
     }
   });
 
   app.post("/api/refresh", async () => {
-    const { pollOnce } = await import("../daemon.js");
-    const { readConfig } = await import("../config.js");
-    const cfg = await readConfig();
-    return pollOnce(db, cfg.enabledProviders);
+    const now = Date.now();
+    if (now - lastRefreshAt < 60_000 && lastRefreshResult) {
+      return lastRefreshResult;
+    }
+    try {
+      const { pollOnce } = await import("../daemon.js");
+      const { readConfig } = await import("../config.js");
+      const cfg = await readConfig();
+      const results: any[] = await pollOnce(db, cfg.enabledProviders);
+      const fulfilled = results.filter((r: any) => r.status === "fulfilled").map((r: any) => r.value);
+      const rejected = results.filter((r: any) => r.status === "rejected").map((r: any) => ({ provider: r.provider, reason: String(r.reason?.message ?? r.reason) }));
+      lastPollAt = new Date().toISOString();
+      lastRefreshAt = now;
+      lastRefreshResult = { fulfilled, rejected, lastPollAt, results, degraded: rejected.length > 0 };
+      return lastRefreshResult;
+    } catch (e: any) {
+      return { fulfilled: [], rejected: [{ provider: "all", reason: String(e?.message ?? e) }], lastPollAt, degraded: true, error: String(e?.message ?? e) };
+    }
   });
 
   app.get("/", async (_req, reply) => {
     const candidates = [
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/index.html"),
       path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/index.html"),
+      path.join(process.cwd(), "web/dist/index.html"),
       path.join(process.cwd(), "web/index.html"),
     ];
     for (const p of candidates) {
@@ -50,3 +84,6 @@ export function buildApp(db: any): FastifyInstance {
 
   return app;
 }
+
+export function getLastPollAt() { return lastPollAt; }
+export function resetRefreshState() { lastPollAt = null; lastRefreshAt = 0; lastRefreshResult = null; }

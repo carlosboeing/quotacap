@@ -3,7 +3,7 @@ import type { Quota } from "./types.js";
 export function parseManualUsage(provider: string, text: string, now = new Date()): Quota {
   const m = text.match(/(\d+)% used/);
   const usedPct = m ? parseInt(m[1], 10) : 0;
-  const resetsAt = new Date(Date.now() + 3 * 86400000).toISOString();
+  const resetsAt = new Date(now.getTime() + 3 * 86400000).toISOString();
   return {
     provider,
     plan: "unknown",
@@ -12,7 +12,7 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
     periodStart: new Date(now.getTime() - 7 * 86400000).toISOString(),
     raw: text,
     source: "manual",
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: now.toISOString(),
   };
 }
 
