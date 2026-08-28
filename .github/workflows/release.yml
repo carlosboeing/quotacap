@@ -60,12 +60,19 @@ jobs:
       - name: The suite must pass on the exact commit being released
         run: npm test
 
-      - name: package.json and the tag must agree
+      - name: package.json, the CLI and the tag must agree
         id: version
         run: |
           set -euo pipefail
           json_version="$(jq -r .version package.json)"
           echo "package.json $json_version"
+          npm run build >/dev/null 2>&1
+          cli_version="$(node dist/cli/index.js version)"
+          echo "cli          $cli_version"
+          if [ "$json_version" != "$cli_version" ]; then
+            echo "::error::package.json and the built CLI disagree"
+            exit 1
+          fi
           if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
             tag_version="${GITHUB_REF_NAME#v}"
             echo "tag          $tag_version"
