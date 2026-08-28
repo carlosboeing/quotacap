@@ -15,11 +15,16 @@ Runs local-only by default. No prompts or file contents leave your machine.
 ## Install
 
 ```bash
-npx quotacap              # run without install
+# Binary — no Node needed (macOS + Linux, arm64/x64)
+curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.sh | sh
+
+# Or via npm (requires Node 22.13+; node:sqlite needs --experimental-sqlite before 22.13)
 npm install -g quotacap   # global install
+npx quotacap              # run without install
 ```
 
-Requires Node 22.13+ (node:sqlite requires --experimental-sqlite before 22.13).
+The binary is a self-contained Bun-compiled executable from GitHub Releases.
+The npm package runs the same CLI on Node. Both put `quotacap` on your PATH.
 
 ## Quick start
 
@@ -65,11 +70,12 @@ quotacap init
 ```json
 {
   "mcpServers": {
-    "quotacap": { "command": "npx", "args": ["quotacap", "mcp"] }
+    "quotacap": { "command": "quotacap", "args": ["mcp"] }
   }
 }
 ```
 
+Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
 Tools: `get_quotas`, `get_recommendation`, `forecast`. Wrapper over HTTP. Set `QUOTACAP_URL` to override.
 
 ## How it works
@@ -88,7 +94,7 @@ Adapters are isolated. One failure does not block others. Uses `Promise.allSettl
 `~/.quotacap/config.json`:
 
 ```json
-{ "port": 8787, "pollMinutes": 15, "enabledProviders": ["claude", "manual"] }
+{ "port": 8787, "pollMinutes": 15, "enabledProviders": ["claude"] }
 ```
 
 DB is `~/.quotacap/quotacap.db` (`quotas`, `snapshots`).
@@ -96,10 +102,15 @@ DB is `~/.quotacap/quotacap.db` (`quotas`, `snapshots`).
 ## Development
 
 ```bash
-npm test              # vitest run (10 files)
-npm run build         # tsc && vite build --config web/vite.config.ts && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js
+npm test              # vitest run (10 files) — builds first via pretest
+bun test tests/bun/   # bun-runtime tests (sqlite adapter, MCP translation)
+npm run build         # vite build → embed web assets → tsc → flatten dist → chmod bin
+npm run build:bin     # bun build --compile (current platform, or pass targets)
 npx tsc --noEmit
 ```
+
+The `store/db.ts` adapter picks `node:sqlite` on Node and `bun:sqlite` on Bun, so
+the same code runs as an npm package and as a compiled binary.
 
 See `.workbench/2-design/2026-08-28-quotacap-design.md` for spec. See `docs/ROADMAP.md` for next steps.
 

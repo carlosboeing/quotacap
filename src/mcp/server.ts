@@ -10,11 +10,8 @@ async function fetchJson(path:string){
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   } catch (e:any) {
-    // translate network/daemon-down into design's error shape
-    if (e?.message?.includes("fetch") || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("HTTP")) {
-      throw new Error(`daemon not running, run quotacap web — ${e.message}`);
-    }
-    throw e;
+    // any transport failure (node or bun wording) is a daemon-down situation
+    throw new Error(`daemon not running, run quotacap web — ${e?.message ?? String(e)}`);
   }
 }
 export async function handleTool(name:string, args:any){

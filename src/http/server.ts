@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { webHtml } from "../webHtml.js";
+import { webAssets } from "../webAssets.js";
 
 // per-app state registry for backward-compat helpers
 const appStates = new WeakMap<FastifyInstance, { lastPollAt: string | null; lastRefreshAt: number; lastRefreshResult: any }>();
@@ -92,6 +94,12 @@ export function buildApp(db: any): FastifyInstance {
         return reply.type(type).send(data);
       } catch {}
     }
+    const embedded = webAssets[assetPath];
+    if (embedded !== undefined) {
+      const ext = path.extname(assetPath);
+      const type = ext === ".js" ? "application/javascript" : ext === ".css" ? "text/css" : ext === ".map" ? "application/json" : "application/octet-stream";
+      return reply.type(type).send(embedded);
+    }
     return reply.status(404).send("not found");
   });
 
@@ -108,7 +116,7 @@ export function buildApp(db: any): FastifyInstance {
         return reply.type("text/html").send(html);
       } catch {}
     }
-    return reply.type("text/html").send(`<!doctype html><title>QuotaCap</title><div id=app>loading…</div>`);
+    return reply.type("text/html").send(webHtml ?? `<!doctype html><title>QuotaCap</title><div id=app>loading…</div>`);
   });
 
   return app;

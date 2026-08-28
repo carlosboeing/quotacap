@@ -12,5 +12,6 @@
     "skipLibCheck": true,
     "declaration": true
   },
-  "include": ["src/**/*", "tests/**/*", "web/src/**/*"]
+  "include": ["src/**/*", "tests/**/*", "web/src/**/*"],
+  "exclude": ["tests/bun"]
 }

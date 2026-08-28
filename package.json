@@ -5,13 +5,21 @@
   "bin": {
     "quotacap": "dist/cli/index.js"
   },
+  "files": [
+    "dist/",
+    "web/dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc && vite build --config web/vite.config.ts && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
+    "build": "vite build --config web/vite.config.ts && node scripts/build-embed.mjs && tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
+    "build:bin": "node scripts/build-binary.mjs",
     "pretest": "npm run build",
     "test": "vitest run",
+    "prepublishOnly": "npm run build",
     "dev": "tsx src/cli/index.ts"
   },
   "dependencies": {
