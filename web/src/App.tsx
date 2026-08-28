@@ -114,10 +114,14 @@ function App() {
           <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
             <th style={{ padding: "8px 6px" }}>Provider</th>
             <th style={{ padding: "8px 6px" }}>Quota</th>
-            <th style={{ padding: "8px 6px" }}>Rate</th>
+            <th style={{ padding: "8px 6px" }}>Remaining</th>
+            <th style={{ padding: "8px 6px" }}>Resets</th>
+            <th style={{ padding: "8px 6px" }}>Days left</th>
             <th style={{ padding: "8px 6px" }}>Ideal</th>
-            <th style={{ padding: "8px 6px" }}>Advice</th>
+            <th style={{ padding: "8px 6px" }}>Rate</th>
             <th style={{ padding: "8px 6px" }}>Status</th>
+            <th style={{ padding: "8px 6px" }}>Waste</th>
+            <th style={{ padding: "8px 6px" }}>Advice</th>
             <th style={{ padding: "8px 6px" }}></th>
           </tr>
         </thead>
@@ -152,10 +156,14 @@ function App() {
                       <span>{q.usedPct}%</span>
                     </div>
                   </td>
-                  <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
+                  <td style={{ padding: "8px 6px" }}>{100 - q.usedPct}%</td>
+                  <td style={{ padding: "8px 6px" }}>{formatReset(q.resetsAt)}</td>
+                  <td style={{ padding: "8px 6px" }}>{adv?.daysLeft != null ? adv.daysLeft.toFixed(1) : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{ideal != null ? `${ideal.toFixed(1)}%/d` : "—"}</td>
-                  <td style={{ padding: "8px 6px" }}>{urgency || "—"}</td>
+                  <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{status === "at risk" ? "⚠️ at risk" : "✅ on track"}</td>
+                  <td style={{ padding: "8px 6px" }}>{adv?.wastePct != null ? `${Math.round(adv.wastePct)}%` : "—"}</td>
+                  <td style={{ padding: "8px 6px" }}>{urgency || "—"}</td>
                   <td style={{ padding: "8px 6px" }}>
                     <button
                       aria-label={`expand ${q.provider}`}

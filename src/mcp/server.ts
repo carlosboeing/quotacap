@@ -1,3 +1,5 @@
+import { renderQuotasTable } from "../format/table.js";
+
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
   { name:"get_recommendation", description:"Which provider to use next", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
@@ -14,29 +16,16 @@ async function fetchJson(path:string){
     throw new Error(`daemon not running, run quotacap web — ${e?.message ?? String(e)}`);
   }
 }
-export function recommendationTable(rec: any): string {
-  const rows = (rec.advisories ?? []).map((a: any) => {
-    const q = (rec.alternatives ?? []).find((x: any) => x.provider === a.provider);
-    const used = Math.round(q?.usedPct ?? 0);
-    const resets = q?.resetsAt ? new Date(q.resetsAt).toLocaleString() : "—";
-    const daysLeft = a.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
-    const ideal = a.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-    const burn = a.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "collecting…";
-    const icon = a.status === "at risk" ? "⚠️" : "✅";
-    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${icon} | ${Math.round(a.wastePct)}% |`;
-  });
-  return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Status | Waste if unused |",
-    "|---|---|---|---|---|---|---|---|---|",
-    ...rows,
-  ].join("\n");
-}
-
 export async function handleTool(name:string, args:any){
-  if(name==="get_quotas") return fetchJson("/api/quotas");
+  if(name==="get_quotas") {
+    const [quotas, rec] = await Promise.all([fetchJson("/api/quotas"), fetchJson("/api/recommendation")]);
+    const table = renderQuotasTable(quotas, rec?.advisories ?? []);
+    const json = JSON.stringify(quotas, null, 2);
+    return { content: [{ type:"text", text: table }, { type:"text", text: json }] };
+  }
   if(name==="get_recommendation") {
     const rec = await fetchJson(`/api/recommendation?task=${args?.task??"any"}`);
-    const table = recommendationTable(rec);
+    const table = renderQuotasTable(rec.alternatives ?? [], rec.advisories ?? []);
     const json = JSON.stringify(rec, null, 2);
     return { content: [{ type:"text", text: table }, { type:"text", text: json }] };
   }

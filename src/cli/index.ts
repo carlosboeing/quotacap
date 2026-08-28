@@ -12,9 +12,15 @@ program.name("quotacap").version(VERSION);
 program.command("version").action(()=> console.log(VERSION));
 program.command("status").option("--json","json").action(async (opts)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
-  const { getAllLatest } = await import("../store/quotas.js");
+  const { getAllLatest, getBurnRates } = await import("../store/quotas.js");
   const quotas=getAllLatest(db);
-  if(opts.json) console.log(JSON.stringify(quotas,null,2)); else console.table(quotas);
+  if(opts.json) console.log(JSON.stringify(quotas,null,2));
+  else {
+    const { recommend } = await import("../advisory/engine.js");
+    const { renderQuotasTable } = await import("../format/table.js");
+    const rec = quotas.length ? recommend(quotas, "any", getBurnRates(db)) : null;
+    console.log(rec ? renderQuotasTable(quotas, rec.advisories) : "no quotas yet — run quotacap ingest or start the daemon");
+  }
 });
 program.command("advise").option("--json","json").option("--task <t>","task","any").action(async (opts)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
