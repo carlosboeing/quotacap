@@ -63,11 +63,6 @@ function App() {
     fetchRecommendation()
       .then(setRec)
       .catch(() => {});
-    fetch("/api/../health")
-      .catch(() => fetch("/health"))
-      .then((r) => r?.json?.())
-      .then((j) => j?.lastPollAt && setLastPollAt(j.lastPollAt))
-      .catch(() => {});
     fetch("/health")
       .then((r) => r.json())
       .then((j) => j?.lastPollAt && setLastPollAt(j.lastPollAt))
@@ -81,7 +76,7 @@ function App() {
   const advisoriesByProvider = new Map<string, NonNullable<Rec["advisories"]>[number]>();
   for (const a of rec?.advisories ?? []) advisoriesByProvider.set(a.provider, a);
 
-  const hasStale = sorted.some((q) => q.stale || (q.fetchedAt ? Date.now() - new Date(q.fetchedAt).getTime() > 60 * 60 * 1000 : false));
+  const hasStale = sorted.some((q) => q.stale ?? (q.fetchedAt ? Date.now() - new Date(q.fetchedAt).getTime() > 60 * 60 * 1000 : false));
   const isDegraded = !!fetchError || (quotas.length === 0 && !rec);
 
   return (

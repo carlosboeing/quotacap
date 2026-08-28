@@ -14,6 +14,8 @@ describe("integration", () => {
     } else {
       expect(body).toHaveProperty("fulfilled");
       expect(body).toHaveProperty("rejected");
+      expect(body.rejected.some((r:any)=>r.provider==="manual")).toBe(true);
+      expect(body.degraded).toBe(true);
     }
   }, 10000);
   it("GET /api/quotas returns real data after ingest", async () => {

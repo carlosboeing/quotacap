@@ -4,14 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-let lastPollAt: string | null = null;
-let lastRefreshAt = 0;
-let lastRefreshResult: any = null;
+// per-app state registry for backward-compat helpers
+const appStates = new WeakMap<FastifyInstance, { lastPollAt: string | null; lastRefreshAt: number; lastRefreshResult: any }>();
+const allStates = new Set<{ lastPollAt: string | null; lastRefreshAt: number; lastRefreshResult: any }>();
 
 export function buildApp(db: any): FastifyInstance {
+  const state = { lastPollAt: null as string | null, lastRefreshAt: 0, lastRefreshResult: null as any };
   const app = Fastify({ logger: false });
+  appStates.set(app, state);
+  allStates.add(state);
+  // expose for per-app helpers
+  (app as any)._quotacapState = state;
 
-  app.get("/health", async () => ({ ok: true, uptime: process.uptime(), lastPollAt }));
+  app.get("/health", async () => ({ ok: true, uptime: process.uptime(), lastPollAt: state.lastPollAt }));
 
   app.get("/api/quotas", async () => {
     const { getAllLatest } = await import("../store/quotas.js");
@@ -47,8 +52,8 @@ export function buildApp(db: any): FastifyInstance {
 
   app.post("/api/refresh", async () => {
     const now = Date.now();
-    if (now - lastRefreshAt < 60_000 && lastRefreshResult) {
-      return lastRefreshResult;
+    if (now - state.lastRefreshAt < 60_000 && state.lastRefreshResult) {
+      return state.lastRefreshResult;
     }
     try {
       const { pollOnce } = await import("../daemon.js");
@@ -57,12 +62,12 @@ export function buildApp(db: any): FastifyInstance {
       const results: any[] = await pollOnce(db, cfg.enabledProviders);
       const fulfilled = results.filter((r: any) => r.status === "fulfilled").map((r: any) => r.value);
       const rejected = results.filter((r: any) => r.status === "rejected").map((r: any) => ({ provider: r.provider, reason: String(r.reason?.message ?? r.reason) }));
-      lastPollAt = new Date().toISOString();
-      lastRefreshAt = now;
-      lastRefreshResult = { fulfilled, rejected, lastPollAt, results, degraded: rejected.length > 0 };
-      return lastRefreshResult;
+      state.lastPollAt = new Date().toISOString();
+      state.lastRefreshAt = now;
+      state.lastRefreshResult = { fulfilled, rejected, lastPollAt: state.lastPollAt, results, degraded: rejected.length > 0 };
+      return state.lastRefreshResult;
     } catch (e: any) {
-      return { fulfilled: [], rejected: [{ provider: "all", reason: String(e?.message ?? e) }], lastPollAt, degraded: true, error: String(e?.message ?? e) };
+      return { fulfilled: [], rejected: [{ provider: "all", reason: String(e?.message ?? e) }], lastPollAt: state.lastPollAt, degraded: true, error: String(e?.message ?? e) };
     }
   });
 
@@ -85,5 +90,18 @@ export function buildApp(db: any): FastifyInstance {
   return app;
 }
 
-export function getLastPollAt() { return lastPollAt; }
-export function resetRefreshState() { lastPollAt = null; lastRefreshAt = 0; lastRefreshResult = null; }
+export function getLastPollAt(app?: FastifyInstance) {
+  if (app && appStates.has(app)) return appStates.get(app)!.lastPollAt;
+  // fallback: most recent state (for tests without app arg)
+  let last: string | null = null;
+  for (const s of allStates) last = s.lastPollAt;
+  return last;
+}
+export function resetRefreshState(app?: FastifyInstance) {
+  if (app && appStates.has(app)) {
+    const s = appStates.get(app)!;
+    s.lastPollAt = null; s.lastRefreshAt = 0; s.lastRefreshResult = null;
+    return;
+  }
+  for (const s of allStates) { s.lastPollAt = null; s.lastRefreshAt = 0; s.lastRefreshResult = null; }
+}
