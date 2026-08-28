@@ -7,7 +7,7 @@ import { openDb, migrate } from "../store/db.js";
 import { getDbPath, readConfig } from "../config.js";
 function ensureDbDir(){ try{ fs.mkdirSync(path.dirname(getDbPath()), {recursive:true}); }catch{} }
 const program = new Command();
-program.name("quotacap").version("0.0.1");
+program.name("quotacap").version("0.0.2");
 program.command("status").option("--json","json").action(async (opts)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
   const { getAllLatest } = await import("../store/quotas.js");
