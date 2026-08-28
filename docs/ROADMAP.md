@@ -23,6 +23,8 @@
 * `install.sh` — downloads `quotacap-<os>-<arch>` from GitHub Releases to `~/.local/bin`
 * `.github/workflows/release.yml` — binaries + npm publish on `v*` tags
 
+* `test.yml` CI — vitest + bun-runtime tests on every PR and push to main
+
 ## Next
 
 * Sniff Codex/Gemini/Kimi/Grok/OpenCode endpoints behind `enabledProviders` flags

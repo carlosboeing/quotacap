@@ -1,0 +1,38 @@
+# The suite on a runner, for every PR and each push to main.
+#
+# The commands are the ones a contributor runs locally, unchanged: `npm test`
+# builds (vite + embed + tsc) and runs the vitest suite via pretest, so the
+# typecheck and the tarball-relevant build are covered by the same command.
+# `bun test tests/bun/` covers the bun-runtime paths (sqlite adapter, MCP
+# translation) that vitest cannot run.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Tests (build + typecheck + vitest)
+        run: npm test
+      - name: Bun-runtime tests
+        run: bun test tests/bun/
