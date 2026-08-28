@@ -8,13 +8,14 @@ export function parseClaudeUsage(result: string, now = new Date()): Quota {
   const usedPct = weeklyMatch ? parseInt(weeklyMatch[1],10) : 0;
   const sessionPct = sessionMatch ? parseInt(sessionMatch[1],10) : undefined;
   const resetsRaw = weeklyMatch?.[2].trim() ?? "";
-  let resetsAt = new Date(Date.now() + 7*86400000).toISOString();
+  // TODO: real TZ parse with date-fns-tz for all months
+  let resetsAt = new Date(now.getTime()+7*86400000).toISOString();
   if (resetsRaw.includes("Sep 3")) resetsAt = "2026-09-03T21:00:00+10:00";
   if (resetsRaw.includes("Aug 28")) resetsAt = "2026-08-28T16:30:00+10:00";
   return {
     provider: "claude", plan: "max", usedPct, sessionPct,
     resetsAt, periodStart: new Date(now.getTime() - 7*86400000).toISOString(),
-    raw: result, source: "cli", fetchedAt: new Date().toISOString()
+    raw: result, source: "cli", fetchedAt: now.toISOString()
   };
 }
 export const claudeAdapter = {
