@@ -19,11 +19,13 @@ export function recommendationTable(rec: any): string {
     const q = (rec.alternatives ?? []).find((x: any) => x.provider === a.provider);
     const used = Math.round(q?.usedPct ?? 0);
     const resets = q?.resetsAt ? new Date(q.resetsAt).toLocaleString() : "—";
-    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${Math.round(a.wastePct)}% |`;
+    const daysLeft = a.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
+    const ideal = a.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
+    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${Math.round(a.wastePct)}% |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Waste if unused |",
-    "|---|---|---|---|---|",
+    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Waste if unused |",
+    "|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
 }

@@ -14,14 +14,13 @@ describe("mcp", () => {
         { provider: "claude", usedPct: 37, resetsAt: "2026-09-03T21:00:00+10:00" },
       ],
       advisories: [
-        { provider: "kimi", wastePct: 78.0 },
-        { provider: "claude", wastePct: 52.9 },
+        { provider: "kimi", wastePct: 78.0, daysLeft: 3.0, idealRate: 28.0 },
+        { provider: "claude", wastePct: 52.9, daysLeft: 5.5, idealRate: 11.6 },
       ],
     };
     const table = recommendationTable(rec);
-    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Waste if unused \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|/);
-    expect(table).toMatch(/\| claude \| 37% \| 63% \|/);
-    expect(table).toMatch(/\| 78% \|$/m);
+    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Waste if unused \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 78% \|/);
+    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| 53% \|/);
   });
 });
