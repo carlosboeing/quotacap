@@ -46,15 +46,19 @@ program.command("init").action(async()=>{
   const { readConfig, writeConfig } = await import("../config.js");
   const c=await readConfig(); await writeConfig(c); console.log(JSON.stringify(c,null,2));
 });
-program.command("daemon").option("--foreground","keep foreground").action(async()=>{
+program.command("daemon").option("--foreground","keep foreground (default: true)").action(async(o)=>{
   const { startDaemon } = await import("../daemon.js");
   const { timer } = await startDaemon();
-  console.log("QuotaCap daemon started");
-  // keep alive until SIGINT/SIGTERM
+  console.log("QuotaCap daemon started" + (o.foreground !== false ? " (foreground)" : ""));
+  // keep alive until SIGINT/SIGTERM — timer is ref'd so event loop stays alive
   process.on("SIGINT", ()=> { clearInterval(timer as any); process.exit(0); });
   process.on("SIGTERM", ()=> { clearInterval(timer as any); process.exit(0); });
+  // explicitly keep process alive if interval was somehow unref'd elsewhere
+  if ((timer as any).ref) (timer as any).ref();
 });
 program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
-  const mod=await import("../mcp/server.js"); console.log(JSON.stringify({tools: mod.tools}));
+  const mod=await import("../mcp/server.js");
+  // if run with --help, commander handles it before action; this is the real server
+  await mod.runMcpServer();
 });
 program.parseAsync();

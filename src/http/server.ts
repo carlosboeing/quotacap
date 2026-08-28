@@ -75,6 +75,26 @@ export function buildApp(db: any): FastifyInstance {
     }
   });
 
+  // serve built vite assets at /assets/* (web/dist/assets/*)
+  app.get("/assets/*", async (req: any, reply) => {
+    const assetPath = req.params["*"] ?? "";
+    // guard path traversal
+    if (assetPath.includes("..")) return reply.status(400).send("bad path");
+    const candidates = [
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/assets", assetPath),
+      path.join(process.cwd(), "web/dist/assets", assetPath),
+    ];
+    for (const p of candidates) {
+      try {
+        const data = fs.readFileSync(p);
+        const ext = path.extname(p);
+        const type = ext === ".js" ? "application/javascript" : ext === ".css" ? "text/css" : ext === ".map" ? "application/json" : "application/octet-stream";
+        return reply.type(type).send(data);
+      } catch {}
+    }
+    return reply.status(404).send("not found");
+  });
+
   app.get("/", async (_req, reply) => {
     const candidates = [
       path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/index.html"),

@@ -19,7 +19,7 @@ npx quotacap              # run without install
 npm install -g quotacap   # global install
 ```
 
-Requires Node 22.6+.
+Requires Node 22.13+ (node:sqlite requires --experimental-sqlite before 22.13).
 
 ## Quick start
 

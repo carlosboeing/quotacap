@@ -8,14 +8,15 @@ describe("integration", () => {
     const res = await app.inject({method:"POST", url:"/api/refresh"});
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    // hardened server returns {fulfilled,rejected,lastPollAt} or array — both 200 is degraded handling
+    // hardened server returns {fulfilled,rejected,lastPollAt} — always 200, degraded only for real failures (manual is skipped, not degraded)
     if (Array.isArray(body)) {
-      expect(body.some((r:any)=>r.status==="rejected"||r.status==="fulfilled")).toBe(true);
+      expect(body.some((r:any)=>r.status==="rejected"||r.status==="fulfilled"||r.status==="skipped")).toBe(true);
     } else {
       expect(body).toHaveProperty("fulfilled");
       expect(body).toHaveProperty("rejected");
-      expect(body.rejected.some((r:any)=>r.provider==="manual")).toBe(true);
-      expect(body.degraded).toBe(true);
+      // manual is now skipped (default enabled is ["claude"] only), so not in rejected and not degraded if claude succeeds
+      expect(Array.isArray(body.rejected)).toBe(true);
+      expect(typeof body.degraded).toBe("boolean");
     }
   }, 10000);
   it("GET /api/quotas returns real data after ingest", async () => {

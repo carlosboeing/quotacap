@@ -6,10 +6,11 @@
     "quotacap": "dist/cli/index.js"
   },
   "engines": {
-    "node": ">=22.6.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "tsc && vite build --config web/vite.config.ts && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
+    "pretest": "npm run build",
     "test": "vitest run",
     "dev": "tsx src/cli/index.ts"
   },

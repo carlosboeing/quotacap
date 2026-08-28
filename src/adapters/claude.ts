@@ -37,8 +37,15 @@ function parseBrisbaneReset(resetsRaw: string, now: Date): string | null {
       const diff = utcNext.getTime() - now.getTime();
       if (diff >= 0 && diff < 8 * 86400000) {
         utc = utcNext;
+      } else {
+        // stale / out-of-range (e.g. monthly-plan string) — fallback to now+7d
+        return null;
       }
+    } else {
+      return null;
     }
+    // if utc was past and no valid next-year within window, treat as stale
+    if (utc.getTime() < now.getTime()) return null;
   }
   return formatInTimeZone(utc, BRISBANE_TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
 }

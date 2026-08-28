@@ -6,6 +6,7 @@ export async function pollOnce(db:any, enabled:string[]){
   for(const r of results){
     if((r as any).status==="fulfilled" && (r as any).value) upsertQuota(db, (r as any).value);
     else if((r as any).status==="rejected") console.warn(`[quotacap] poll ${(r as any).provider} failed: ${String((r as any).reason?.message ?? (r as any).reason)}`);
+    // skipped (e.g. manual) is not a failure — no warning, not degraded
   }
   return results;
 }
@@ -21,8 +22,8 @@ export async function startDaemon(){
   pollOnce(db, cfg.enabledProviders).catch(e=>console.warn("[quotacap] initial poll failed", e?.message ?? String(e)));
   const jitter = Math.floor(Math.random() * 5000);
   const timer = setInterval(()=> { pollOnce(db, cfg.enabledProviders).catch(e=>console.warn("[quotacap] interval poll failed", e?.message ?? String(e))); }, intervalMs + jitter);
-  // allow process to exit if only timer remains
-  if ((timer as any).unref) (timer as any).unref();
+  // keep event loop alive — this is the only long-lived process per design
+  // (previous unref() caused immediate exit after the initial poll)
   return { db, timer, stop: () => clearInterval(timer) };
 }
 

@@ -15,7 +15,7 @@ export function getDbPath(p?: string): string {
 const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
-  enabledProviders: z.array(z.string()).default(["claude", "manual"]),
+  enabledProviders: z.array(z.string()).default(["claude"]),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
