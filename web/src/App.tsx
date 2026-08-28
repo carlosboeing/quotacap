@@ -23,6 +23,8 @@ interface Rec {
     daysLeft: number;
     idealRate: number;
     burnRate: number;
+    burnMeasured: boolean;
+    status: string;
     wastePct: number;
     urgency: string;
   }>;
@@ -115,6 +117,7 @@ function App() {
             <th style={{ padding: "8px 6px" }}>Rate</th>
             <th style={{ padding: "8px 6px" }}>Ideal</th>
             <th style={{ padding: "8px 6px" }}>Advice</th>
+            <th style={{ padding: "8px 6px" }}>Status</th>
             <th style={{ padding: "8px 6px" }}></th>
           </tr>
         </thead>
@@ -124,7 +127,9 @@ function App() {
             const waste = adv?.wastePct ?? 0;
             const ideal = adv?.idealRate;
             const burn = adv?.burnRate;
+            const burnMeasured = adv?.burnMeasured;
             const urgency = adv?.urgency ?? "";
+            const status = adv?.status ?? "on track";
             const isExpanded = expanded === q.provider;
             const isStale = q.stale ?? (q.fetchedAt ? Date.now() - new Date(q.fetchedAt).getTime() > 60 * 60 * 1000 : false);
             return (
@@ -147,9 +152,10 @@ function App() {
                       <span>{q.usedPct}%</span>
                     </div>
                   </td>
-                  <td style={{ padding: "8px 6px" }}>{burn != null ? `${burn.toFixed(1)}%/d` : "— collecting…"}</td>
+                  <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{ideal != null ? `${ideal.toFixed(1)}%/d` : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{urgency || "—"}</td>
+                  <td style={{ padding: "8px 6px" }}>{status === "at risk" ? "⚠️ at risk" : "✅ on track"}</td>
                   <td style={{ padding: "8px 6px" }}>
                     <button
                       aria-label={`expand ${q.provider}`}

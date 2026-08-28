@@ -14,13 +14,13 @@ describe("mcp", () => {
         { provider: "claude", usedPct: 37, resetsAt: "2026-09-03T21:00:00+10:00" },
       ],
       advisories: [
-        { provider: "kimi", wastePct: 78.0, daysLeft: 3.0, idealRate: 28.0 },
-        { provider: "claude", wastePct: 52.9, daysLeft: 5.5, idealRate: 11.6 },
+        { provider: "kimi", wastePct: 78.0, daysLeft: 3.0, idealRate: 28.0, burnRate: 40, burnMeasured: true, status: "at risk" },
+        { provider: "claude", wastePct: 52.9, daysLeft: 5.5, idealRate: 11.6, burnRate: 2, burnMeasured: false, status: "on track" },
       ],
     };
     const table = recommendationTable(rec);
-    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Waste if unused \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 78% \|/);
-    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| 53% \|/);
+    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Status \| Waste if unused \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| ⚠️ \| 78% \|/);
+    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| collecting… \| ✅ \| 53% \|/);
   });
 });

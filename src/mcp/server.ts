@@ -21,11 +21,13 @@ export function recommendationTable(rec: any): string {
     const resets = q?.resetsAt ? new Date(q.resetsAt).toLocaleString() : "—";
     const daysLeft = a.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${Math.round(a.wastePct)}% |`;
+    const burn = a.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "collecting…";
+    const icon = a.status === "at risk" ? "⚠️" : "✅";
+    return `| ${a.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${icon} | ${Math.round(a.wastePct)}% |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Waste if unused |",
-    "|---|---|---|---|---|---|---|",
+    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Status | Waste if unused |",
+    "|---|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
 }

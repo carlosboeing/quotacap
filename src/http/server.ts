@@ -50,7 +50,9 @@ export function buildApp(db: any): FastifyInstance {
     }
     try {
       const task = (req.query?.task as string) ?? "any";
-      return recommend(quotas, task);
+      const { getBurnRates } = await import("../store/quotas.js");
+      const burnByProvider = getBurnRates(db);
+      return recommend(quotas, task, burnByProvider);
     } catch (e: any) {
       return { use: quotas[0]?.provider ?? "none", reason: `advisory error: ${e?.message ?? String(e)}`, alternatives: quotas };
     }
