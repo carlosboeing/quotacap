@@ -1,5 +1,11 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.19
+
+* Provider adapters — codex (wham/usage), kimi (coding/v1/usages), grok (cli-chat-proxy billing): reuse CLI OAuth sessions, refresh-on-expiry with rotated tokens persisted (`.qc-bak`), fail-closed degraded rows; `enabledProviders` defaults to all four
+* Adapter-hardening review fixes — expiry-unit parity with CLIs, locked atomic persists, `0600` modes preserved, matched-entry token rotation
+* Public architecture doc (`docs/architecture.md`)
+
 ## Recently shipped — MVP 0.0.1
 
 * Project bootstrap, package, tsconfig
@@ -13,7 +19,6 @@
 * MCP stdio transport — hand-rolled JSON-RPC (`initialize`, `tools/list`, `tools/call`, `ping`, daemon-down translation)
 * Integration polish — stale badge, degraded handling, `lastPollAt`, debounce 60s, `web/dist` prefer, snapshot fix
 * PR #1 review fixes — daemon keepalive, `/assets/*` serving, engines 22.13, pretest build, manual `skipped` status, stale-reset fallback
-* Provider adapters — codex (wham/usage), kimi (coding/v1/usages), grok (cli-chat-proxy billing): reuse CLI OAuth sessions, refresh-on-expiry with rotated tokens persisted (`.qc-bak`), fail-closed degraded rows; `enabledProviders` defaults to all four
 
 ## Distribution (Bun)
 
