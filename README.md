@@ -1,6 +1,6 @@
 # QuotaCap
 
-See every AI subscription quota in one place: usage, remaining, and when it resets. Use the one that would expire unused; ease off the one that would hit the cap too early.
+QuotaCap tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)

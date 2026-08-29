@@ -8,7 +8,7 @@ scope: [quotacap, architecture, system]
 
 # QuotaCap Architecture
 
-**Abstract.** QuotaCap gives visibility into AI subscription quotas: usage, remaining, and reset times across several providers. It advises which to use next so you do not finish a cycle with unused allowance or hit a cap too early. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
+**Abstract.** QuotaCap tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
 
 ## Position
 
