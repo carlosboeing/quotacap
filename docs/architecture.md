@@ -8,11 +8,11 @@ scope: [quotacap, architecture, system]
 
 # QuotaCap Architecture
 
-**Abstract.** QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude, Codex, Kimi, Grok). Each has its own quota and reset time. It gives you visibility into usage, remaining, and reset in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
+**Abstract.** QuotaCap is a local quota tracker for AI coding subscriptions. A single daemon polls supported coding agents and stores each usage snapshot in SQLite. One local HTTP API serves a CLI, an MCP server, and a web dashboard. It estimates which provider to use next from remaining usage and recent usage pace. Live adapters reuse the provider CLI login and need no separate API keys. This document describes the components, the data flow, the on-disk state, and the main commands.
 
 ## Position
 
-Claude Code, Codex, Kimi Code, and Grok are popular AI coding agents. Each has its own usage quota and reset time. Several subscriptions means unused quota on one, a cap hit too early on another, and reset dates that do not line up. QuotaCap puts usage, remaining, and reset in one view, and says which provider to use next:
+Claude Code, Codex, Kimi Code, and Grok are popular AI coding agents. Each has its own usage quota and reset time. Several subscriptions means unused quota on one, a cap hit too early on another, and reset dates that do not line up. QuotaCap puts remaining usage and reset time in one view, and estimates which provider to use next:
 
 - Local and self-contained. Everything lives in `~/.quotacap/`: config, database, pidfile, logs.
 - Zero-config credentials. Adapters reuse the OAuth sessions the agents already store on first login.

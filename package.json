@@ -1,7 +1,7 @@
 {
   "name": "quotacap",
   "version": "0.0.19",
-  "description": "QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude, Codex, Kimi, Grok). Each has its own quota and reset time. It gives you visibility into usage, remaining, and reset in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early.",
+  "description": "CLI, dashboard, and MCP server that track AI coding usage allowances and estimate which plan to use next.",
   "license": "MIT",
   "keywords": ["ai", "cli", "mcp", "quota", "dashboard", "claude-code", "codex", "kimi", "grok"],
   "type": "module",

@@ -1,6 +1,12 @@
-# Docs
+---
+title: QuotaCap documentation
+type: guide
+authors: [Carlos Boeing, "Grok 4.6 (grok)"]
+---
 
-- [Architecture](architecture.md) — components, data flow, commands, security
+# QuotaCap documentation
+
+- [Architecture](architecture.md): components, data flow, commands, security
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 

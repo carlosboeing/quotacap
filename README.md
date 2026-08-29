@@ -1,19 +1,17 @@
 # QuotaCap
 
-QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude, Codex, Kimi, Grok). Each has its own quota and reset time. It gives you visibility into usage, remaining, and reset in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early.
+QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude Code, Codex, Kimi Code, Grok). Each has its own usage window and reset time. It shows remaining usage in one table, and estimates which plan to use next from recent usage.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
 [![license](https://img.shields.io/github/license/carlosboeing/quotacap)](LICENSE)
 [![node](https://img.shields.io/node/v/quotacap)](package.json)
 
-![QuotaCap dashboard](https://raw.githubusercontent.com/carlosboeing/quotacap/main/docs/assets/dashboard.png)
-
 ## Features
 
-- **Visibility**: used %, remaining, and reset time for every signed-in subscription
-- **Maximize**: unused quota does not expire, and no cap is hit too early
-- **Advice**: which quota to use next, and which is at risk of hitting the cap
+- **Visibility**: remaining usage and reset time for every signed-in subscription
+- **Maximize**: helps you use more of each allowance without exhausting one plan before its reset
+- **Advice**: estimates which plan to use next from recent usage
 - **CLI and MCP**: `status`, `advise`, and tools that return the same data
 
 ## Providers
@@ -36,11 +34,10 @@ curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.
 
 # Or npm (Node 22.13+)
 npm install -g quotacap
-npx quotacap
 ```
 
 The binary is a self-contained executable from GitHub Releases.
-The npm package runs the same CLI on Node.
+The npm package runs the same CLI on Node. With npm only, prefix commands with `npx`, for example `npx quotacap web`.
 
 ## Quick start
 
@@ -78,7 +75,7 @@ Tools: `get_quotas`, `get_recommendation`, `forecast`.
 
 ## Privacy
 
-Bound to `127.0.0.1`. No prompts or file contents leave the machine. QuotaCap stores no API keys. Adapters read the OAuth files the CLIs already own.
+Bound to `127.0.0.1`, with usage history stored under `~/.quotacap/`. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login. Codex, Kimi, and Grok adapters may refresh expired OAuth tokens and update the CLI-owned credential file. QuotaCap stores no API keys.
 
 ## Docs
 
