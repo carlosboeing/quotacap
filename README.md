@@ -1,6 +1,6 @@
 # QuotaCap
 
-Tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next.
+A quota tracker for AI coding subscriptions. Usage, remaining, and reset times in one table, plus a recommendation for what to use next.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)

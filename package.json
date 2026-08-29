@@ -1,7 +1,7 @@
 {
   "name": "quotacap",
   "version": "0.0.19",
-  "description": "QuotaCap tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next.",
+  "description": "QuotaCap is a quota tracker for AI coding subscriptions. Usage, remaining, and reset times in one table, plus a recommendation for what to use next.",
   "license": "MIT",
   "keywords": ["ai", "cli", "mcp", "quota", "dashboard", "claude-code", "codex", "kimi", "grok"],
   "type": "module",
