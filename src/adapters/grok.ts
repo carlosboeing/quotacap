@@ -26,6 +26,7 @@ export function parseGrokUsage(body: any, now = new Date()): Quota {
 }
 
 interface GrokEntry {
+  access_token?: string;
   refresh_token?: string;
   oidc_client_id?: string;
   expires_at?: string;
@@ -35,11 +36,11 @@ function grokHome(): string {
   return process.env.GROK_HOME ?? path.join(os.homedir(), ".grok");
 }
 
-async function loadEntry(): Promise<{ file: string; entry: GrokEntry }> {
+async function loadEntry(): Promise<{ file: string; entryKey: string; entry: GrokEntry }> {
   const file = path.join(grokHome(), "auth.json");
   const auth = await readJsonFile<Record<string, GrokEntry>>(file);
-  for (const entry of Object.values(auth)) {
-    if (entry.refresh_token) return { file, entry };
+  for (const [entryKey, entry] of Object.entries(auth)) {
+    if (entry.refresh_token) return { file, entryKey, entry };
   }
   throw new Error("grok: no refresh_token in auth.json — run `grok login`");
 }
@@ -48,22 +49,38 @@ export const grokAdapter = {
   id: "grok",
   requiresAuth: "~/.grok/auth.json (grok login)",
   async poll(): Promise<Quota> {
-    const { file, entry } = await loadEntry();
-    const tok = await postForm(REFRESH_URL, {
-      grant_type: "refresh_token",
-      client_id: entry.oidc_client_id ?? "",
-      refresh_token: entry.refresh_token ?? "",
-    });
-    if (!tok.access_token) throw new Error("grok: refresh returned no access_token");
-    await persistCreds<Record<string, GrokEntry>>(file, (cur) => {
-      const next: Record<string, GrokEntry> = { ...cur };
-      for (const key of Object.keys(next)) {
-        if (next[key].refresh_token) next[key] = { ...next[key], refresh_token: tok.refresh_token ?? next[key].refresh_token, expires_at: tok.expires_at ?? next[key].expires_at };
-      }
-      return next;
-    });
+    const { file, entryKey, entry } = await loadEntry();
+    const expiryMs = entry.expires_at ? Date.parse(String(entry.expires_at)) : NaN;
+    const reuseToken = Boolean(entry.access_token) && Number.isFinite(expiryMs) && expiryMs - 60000 > Date.now();
+    let token: string;
+    if (reuseToken) {
+      token = entry.access_token as string;
+    } else {
+      const tok = await postForm(REFRESH_URL, {
+        grant_type: "refresh_token",
+        client_id: entry.oidc_client_id ?? "",
+        refresh_token: entry.refresh_token ?? "",
+      });
+      if (!tok.access_token) throw new Error("grok: refresh returned no access_token");
+      await persistCreds<Record<string, GrokEntry>>(file, (cur) => {
+        const next = { ...cur };
+        const target = next[entryKey];
+        if (target) {
+          next[entryKey] = {
+            ...target,
+            access_token: tok.access_token ?? target.access_token,
+            refresh_token: tok.refresh_token ?? target.refresh_token,
+            expires_at:
+              tok.expires_at ??
+              (tok.expires_in ? new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString() : target.expires_at),
+          };
+        }
+        return next;
+      });
+      token = String(tok.access_token);
+    }
     const body = await getJson(BILLING_URL, {
-      Authorization: `Bearer ${tok.access_token}`,
+      Authorization: `Bearer ${token}`,
       Accept: "application/json",
       "x-grok-client-version": CLIENT_VERSION,
       "x-grok-client-surface": "grok-build",

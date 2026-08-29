@@ -100,4 +100,27 @@ describe("persistCreds", () => {
     const stillBak = JSON.parse(await fs.readFile(path.join(d, "creds.json.qc-bak"), "utf8")) as Record<string, unknown>;
     expect(stillBak.access_token).toBe("old");
   });
+
+  it("keeps the original owner-only mode on rewrite", async () => {
+    const d = await dir();
+    const f = path.join(d, "creds.json");
+    await fs.writeFile(f, JSON.stringify({ access_token: "old" }), { mode: 0o600 });
+    await persistCreds(f, (cur: Record<string, unknown>) => ({ ...cur, access_token: "new" }));
+    const st = await fs.stat(f);
+    expect(st.mode & 0o777).toBe(0o600);
+  });
+
+  it("serializes two concurrent persistCreds calls and leaves no temp or lock files", async () => {
+    const d = await dir();
+    const f = path.join(d, "creds.json");
+    await fs.writeFile(f, JSON.stringify({ a: "v0" }));
+    await Promise.all([
+      persistCreds(f, (cur: Record<string, unknown>) => ({ ...cur, a: "v1" })),
+      persistCreds(f, (cur: Record<string, unknown>) => ({ ...cur, b: "v2" })),
+    ]);
+    const written = JSON.parse(await fs.readFile(f, "utf8")) as Record<string, unknown>;
+    expect(written).toEqual({ a: "v1", b: "v2" });
+    const leftovers = (await fs.readdir(d)).filter((x) => x.includes(".qc-tmp") || x.includes(".qc-lock"));
+    expect(leftovers).toEqual([]);
+  });
 });

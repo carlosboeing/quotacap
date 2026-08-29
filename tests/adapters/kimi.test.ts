@@ -35,7 +35,7 @@ async function writeCreds(home: string, overrides: Record<string, unknown> = {})
     JSON.stringify({
       access_token: "valid-tok",
       refresh_token: "prf-tok",
-      expires_at: Date.now() + 60000,
+      expires_at: Math.floor(Date.now() / 1000) + 600,
       scope: "kimi-code",
       token_type: "Bearer",
       ...overrides,
@@ -85,9 +85,9 @@ describe("kimiAdapter poll", () => {
     expect(q.usedPct).toBe(17);
   });
 
-  it("refreshes an expired token and persists the rotated pair", async () => {
+  it("refreshes an expired token and persists the rotated pair in CLI seconds", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "qc-kimi-"));
-    const credsFile = await writeCreds(home, { expires_at: Date.now() - 1000 });
+    const credsFile = await writeCreds(home, { expires_at: Math.floor(Date.now() / 1000) - 1000 });
     process.env.KIMI_CODE_HOME = home;
     const calls: string[] = [];
     globalThis.fetch = ((url: string, init: RequestInit) => {
@@ -106,9 +106,26 @@ describe("kimiAdapter poll", () => {
     const persisted = JSON.parse(await fs.readFile(credsFile, "utf8"));
     expect(persisted.access_token).toBe("fresh-tok");
     expect(persisted.refresh_token).toBe("rf2");
-    expect(persisted.expires_at).toBeGreaterThan(Date.now());
+    expect(persisted.expires_at).toBeLessThan(1e12);
+    expect(persisted.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
     const bak = JSON.parse(await fs.readFile(credsFile + ".qc-bak", "utf8"));
     expect(bak.access_token).toBe("valid-tok");
+  });
+
+  it("treats an ms-scale expires_at as fresh (legacy quotacap rows)", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "qc-kimi-"));
+    await writeCreds(home, { expires_at: Date.now() + 600000 });
+    process.env.KIMI_CODE_HOME = home;
+    let calls = 0;
+    const urls: string[] = [];
+    globalThis.fetch = ((url: string) => {
+      calls++;
+      urls.push(url);
+      return Promise.resolve(jsonResponse(200, usageFixture));
+    }) as typeof fetch;
+    await kimiAdapter.poll();
+    expect(calls).toBe(1);
+    expect(urls[0]).toContain("api.kimi.com");
   });
 
   it("throws when the credentials file is missing", async () => {

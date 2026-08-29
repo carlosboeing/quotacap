@@ -45,23 +45,54 @@ export async function getJson(
   return parseResponse(res);
 }
 
+async function acquireLock(lockPath: string, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const fh = await fs.open(lockPath, "wx");
+      await fh.close();
+      return;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      try {
+        const st = await fs.stat(lockPath);
+        if (Date.now() - st.mtimeMs > 5000) {
+          await fs.rm(lockPath, { force: true });
+          continue;
+        }
+      } catch {
+        /* lock vanished between open and stat — retry */
+      }
+      if (Date.now() > deadline) throw new Error(`persistCreds: lock busy: ${lockPath}`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+}
+
 export async function persistCreds<T>(
   file: string,
   update: (cur: T) => T,
   backupSuffix = ".qc-bak"
 ): Promise<boolean> {
-  const cur = await readJsonFile<T>(file);
-  const next = update(cur);
-  const bak = file + backupSuffix;
-  let first = false;
+  const lock = file + ".qc-lock";
+  await acquireLock(lock);
   try {
-    await fs.access(bak);
-  } catch {
-    await fs.copyFile(file, bak);
-    first = true;
+    const cur = await readJsonFile<T>(file);
+    const next = update(cur);
+    const bak = file + backupSuffix;
+    let first = false;
+    try {
+      await fs.access(bak);
+    } catch {
+      await fs.copyFile(file, bak);
+      first = true;
+    }
+    const st = await fs.stat(file);
+    const tmp = `${file}.qc-tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+    await fs.writeFile(tmp, JSON.stringify(next, null, 2), { mode: st.mode & 0o777 });
+    await fs.rename(tmp, file);
+    return first;
+  } finally {
+    await fs.rm(lock, { force: true });
   }
-  const tmp = file + ".qc-tmp";
-  await fs.writeFile(tmp, JSON.stringify(next, null, 2));
-  await fs.rename(tmp, file);
-  return first;
 }

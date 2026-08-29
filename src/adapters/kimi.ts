@@ -54,6 +54,13 @@ async function loadCreds(): Promise<{ file: string; creds: KimiCreds }> {
   throw new Error("kimi: no credentials file — run `kimi login`");
 }
 
+function isFreshExpiry(raw: unknown): boolean {
+  const v = Number(raw);
+  if (!Number.isFinite(v) || v <= 0) return false;
+  const ms = v < 1e12 ? v * 1000 : v; // CLI stores seconds; legacy rows from earlier quotas are ms
+  return ms > Date.now();
+}
+
 async function refreshAndPersist(file: string, creds: KimiCreds): Promise<string> {
   if (!creds.refresh_token) throw new Error("kimi: no refresh_token — run `kimi login`");
   const tok = await postForm(REFRESH_URL, {
@@ -66,7 +73,7 @@ async function refreshAndPersist(file: string, creds: KimiCreds): Promise<string
     ...cur,
     access_token: tok.access_token,
     refresh_token: tok.refresh_token ?? cur.refresh_token,
-    expires_at: Date.now() + (Number(tok.expires_in) || 3600) * 1000,
+    expires_at: Math.floor(Date.now() / 1000) + (Number(tok.expires_in) || 3600),
     token_type: tok.token_type ?? cur.token_type,
     scope: tok.scope ?? cur.scope,
   }));
@@ -81,7 +88,7 @@ export const kimiAdapter = {
     let token = creds.access_token ?? "";
     let justRefreshed = false;
     if (!token) throw new Error("kimi: no access_token — run `kimi login`");
-    if (!(Number(creds.expires_at) > Date.now())) {
+    if (!isFreshExpiry(creds.expires_at)) {
       token = await refreshAndPersist(file, creds);
       justRefreshed = true;
     }

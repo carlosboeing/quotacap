@@ -109,6 +109,55 @@ describe("grokAdapter poll", () => {
     expect(Object.values(bak)[0]).toMatchObject({ refresh_token: "grok-prf" });
   });
 
+  it("rotates only the matched entry and persists access_token", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "qc-grok-"));
+    const authFile = path.join(home, "auth.json");
+    await fs.mkdir(home, { recursive: true });
+    await fs.writeFile(
+      authFile,
+      JSON.stringify({
+        "https://auth.x.ai::primary": { key: "primary", auth_mode: "oauth", user_id: "u-1", refresh_token: "prf-1", expires_at: "2030-01-01T00:00:00Z", oidc_client_id: "grok-code-cli" },
+        "https://auth.x.ai::secondary": { key: "secondary", auth_mode: "oauth", user_id: "u-2", refresh_token: "prf-2", expires_at: "2030-01-01T00:00:00Z", oidc_client_id: "grok-code-cli" },
+      })
+    );
+    process.env.GROK_HOME = home;
+    globalThis.fetch = ((url: string, init: RequestInit) => {
+      if (url.includes("auth.x.ai")) {
+        const body = init.body as string;
+        return Promise.resolve(body.includes("prf-1") ? jsonResponse(200, { access_token: "fresh-xai", refresh_token: "rf2", expires_in: 3600 }) : jsonResponse(400, { error: "bad" }));
+      }
+      return Promise.resolve(jsonResponse(200, creditsFixture));
+    }) as typeof fetch;
+
+    await grokAdapter.poll();
+    const persisted = JSON.parse(await fs.readFile(authFile, "utf8")) as Record<string, Record<string, string>>;
+    expect(persisted["https://auth.x.ai::primary"].refresh_token).toBe("rf2");
+    expect(persisted["https://auth.x.ai::primary"].access_token).toBe("fresh-xai");
+    expect(persisted["https://auth.x.ai::secondary"].refresh_token).toBe("prf-2");
+    expect(persisted["https://auth.x.ai::secondary"].access_token).toBeUndefined();
+  });
+
+  it("reuses a fresh stored access_token instead of refreshing", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "qc-grok-"));
+    const authFile = await writeAuth(home);
+    const entry = (JSON.parse(await fs.readFile(authFile, "utf8")) as Record<string, Record<string, string>>)["https://auth.x.ai::11111111-2222-3333-4444-555555555555"];
+    entry.access_token = "stored-valid";
+    entry.expires_at = new Date(Date.now() + 3600000).toISOString();
+    await fs.writeFile(authFile, JSON.stringify({ "https://auth.x.ai::11111111-2222-3333-4444-555555555555": entry }));
+    process.env.GROK_HOME = home;
+    const calls: string[] = [];
+    let billingHeader = "";
+    globalThis.fetch = ((url: string, init: RequestInit) => {
+      calls.push(url);
+      billingHeader = (init.headers as Record<string, string>).Authorization ?? "";
+      return Promise.resolve(url.includes("billing") ? jsonResponse(200, creditsFixture) : jsonResponse(200, { access_token: "should-not-happen" }));
+    }) as typeof fetch;
+
+    await grokAdapter.poll();
+    expect(calls.filter((u) => u.includes("auth.x.ai"))).toEqual([]);
+    expect(billingHeader).toBe("Bearer stored-valid");
+  });
+
   it("throws when refresh fails with 400", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "qc-grok-"));
     await writeAuth(home);
