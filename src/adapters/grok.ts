@@ -26,7 +26,7 @@ export function parseGrokUsage(body: any, now = new Date()): Quota {
 }
 
 interface GrokEntry {
-  access_token?: string;
+  key?: string;
   refresh_token?: string;
   oidc_client_id?: string;
   expires_at?: string;
@@ -51,10 +51,10 @@ export const grokAdapter = {
   async poll(): Promise<Quota> {
     const { file, entryKey, entry } = await loadEntry();
     const expiryMs = entry.expires_at ? Date.parse(String(entry.expires_at)) : NaN;
-    const reuseToken = Boolean(entry.access_token) && Number.isFinite(expiryMs) && expiryMs - 60000 > Date.now();
+    const reuseToken = Boolean(entry.key) && Number.isFinite(expiryMs) && expiryMs - 60000 > Date.now();
     let token: string;
     if (reuseToken) {
-      token = entry.access_token as string;
+      token = entry.key as string;
     } else {
       const tok = await postForm(REFRESH_URL, {
         grant_type: "refresh_token",
@@ -68,7 +68,7 @@ export const grokAdapter = {
         if (target) {
           next[entryKey] = {
             ...target,
-            access_token: tok.access_token ?? target.access_token,
+            key: tok.access_token ?? target.key,
             refresh_token: tok.refresh_token ?? target.refresh_token,
             expires_at:
               tok.expires_at ??
