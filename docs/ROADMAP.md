@@ -13,6 +13,7 @@
 * MCP stdio transport — hand-rolled JSON-RPC (`initialize`, `tools/list`, `tools/call`, `ping`, daemon-down translation)
 * Integration polish — stale badge, degraded handling, `lastPollAt`, debounce 60s, `web/dist` prefer, snapshot fix
 * PR #1 review fixes — daemon keepalive, `/assets/*` serving, engines 22.13, pretest build, manual `skipped` status, stale-reset fallback
+* Provider adapters — codex (wham/usage), kimi (coding/v1/usages), grok (cli-chat-proxy billing): reuse CLI OAuth sessions, refresh-on-expiry with rotated tokens persisted (`.qc-bak`), fail-closed degraded rows; `enabledProviders` defaults to all four
 
 ## Distribution (Bun)
 
@@ -27,7 +28,7 @@
 
 ## Next
 
-* Sniff Codex/Gemini/Kimi/Grok/OpenCode endpoints behind `enabledProviders` flags
+* Antigravity (agy) quota — direct cloudcode-pa OAuth now 401s (June 2026 Gemini CLI OAuth shutdown); needs the agy CLI local language-server path
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation
 
