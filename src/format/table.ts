@@ -29,13 +29,13 @@ const burn = (() => {
           })()
         : null;
       if (!rate) return "—";
-      // Pace glyphs are single-width text-presentation (no VS16), so they
-      // cannot shift pipes in renderers that miscount emoji width.
+      // Verdict against the ideal rate: outside the +-20% band the cell says
+      // (fast)/(slow); inside it a single-width check mark.
       const value = a?.burnMeasured ? a.burnRate : q.periodStart ? (q.usedPct ?? 0) / Math.max(0.1, (Date.now() - new Date(q.periodStart).getTime()) / 86400000) : null;
       const ideal = a?.idealRate;
       if (ideal != null && value != null) {
-        if (value > ideal) return `${rate} ⚠`;
-        if (value < ideal * 0.8) return `${rate} ↓`;
+        if (value > ideal * 1.2) return `${rate} (fast)`;
+        if (value < ideal * 0.8) return `${rate} (slow)`;
         return `${rate} ✔`;
       }
       return rate;

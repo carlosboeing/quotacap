@@ -13,7 +13,7 @@ describe("format table", () => {
     ];
     const table = renderQuotasTable(quotas, advisories);
     expect(table).toMatch(/\| Provider \| Used \| Left \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Waste if unused \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day ⚠ \| 78% \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \(fast\) \| 78% \|/);
     expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| 53% \|/);
   });
 
@@ -40,7 +40,7 @@ describe("format table", () => {
       { provider: "kimi", wastePct: 78.0, daysLeft: 2.9, idealRate: 29.0, burnRate: 2, burnMeasured: false, status: "on track" },
     ];
     const table = renderQuotasTable(quotas, advisories);
-    expect(table).toMatch(/4.0%\/day avg ↓/);
+    expect(table).toMatch(/4.0%\/day avg \(slow\)/);
   });
 
   it("prefers the measured burn over the period average", () => {
@@ -52,11 +52,11 @@ describe("format table", () => {
       { provider: "claude", wastePct: 0, daysLeft: 5.4, idealRate: 10.0, burnRate: 25.3, burnMeasured: true, status: "at risk" },
     ];
     const table = renderQuotasTable(quotas, advisories);
-    expect(table).toMatch(/\| 25.3%\/day ⚠ \|/);
+    expect(table).toMatch(/\| 25.3%\/day \(fast\) \|/);
     expect(table).not.toMatch(/avg/);
   });
 
-  it("marks on-pace burn with a check and slow burn with a down arrow", () => {
+  it("marks on-pace burn with a check, slow and fast with words", () => {
     const now = Date.now();
     const quotas = [
       { provider: "claude", usedPct: 45, resetsAt: "2026-09-03T21:00:00+10:00", periodStart: new Date(now - 2 * 86400000).toISOString() },
@@ -65,7 +65,8 @@ describe("format table", () => {
       { provider: "claude", wastePct: 0, daysLeft: 5.4, idealRate: 10.0, burnRate, burnMeasured: true, status: "on track" },
     ]);
     expect(mk(9.5)).toMatch(/9.5%\/day ✔/);
-    expect(mk(3.0)).toMatch(/3.0%\/day ↓/);
+    expect(mk(3.0)).toMatch(/3.0%\/day \(slow\)/);
+    expect(mk(13.0)).toMatch(/13.0%\/day \(fast\)/);
   });
 
   it("keeps every internal pipe aligned — no two-cell glyphs outside the last column", () => {
