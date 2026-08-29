@@ -20,9 +20,10 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
     const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
-    // Colorful emoji (VS16) paint two cells wide while markdown counts one;
-    // keeping Status last means the +1 shift only nudges the right border.
-    const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
+// Astral-plane emoji (U+1F000+): naive wcwidth counts them as 2 cells and
+// they paint 2, so count equals paint in every renderer — colored AND
+// aligned, unlike BMP emoji (✅/⚠️) whose +1 gap shifts the pipes.
+const icon = a?.status === "at risk" ? "🔴" : a != null ? "🟢" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
     return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} | ${icon} |`;
   });

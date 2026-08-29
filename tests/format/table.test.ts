@@ -13,8 +13,8 @@ describe("format table", () => {
     ];
     const table = renderQuotasTable(quotas, advisories);
     expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Waste if unused \| Status \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| 78% \| ⚠️ \|/);
-    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| 53% \| ✅ \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| 78% \| 🔴 \|/);
+    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| 53% \| 🟢 \|/);
   });
 
   it("renders quota-only rows with placeholders when no advisories exist", () => {
@@ -29,5 +29,35 @@ describe("format table", () => {
     const table = renderQuotasTable(quotas, []);
     expect(table).toMatch(/Sept?[^|]*2026/);
     expect(table).not.toMatch(/9\/1\/2026/);
+  });
+
+  it("keeps every pipe aligned under both naive and emoji-aware width models", () => {
+    const quotas = [
+      { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00" },
+      { provider: "claude", usedPct: 37, resetsAt: "2026-09-03T21:00:00+10:00" },
+    ];
+    const advisories = [
+      { provider: "kimi", wastePct: 78.0, daysLeft: 3.0, idealRate: 28.0, burnRate: 40, burnMeasured: true, status: "at risk" },
+      { provider: "claude", wastePct: 52.9, daysLeft: 5.5, idealRate: 11.6, burnRate: 2, burnMeasured: false, status: "on track" },
+    ];
+    const table = renderQuotasTable(quotas, advisories);
+    const lines = table.split("\n");
+
+    // Paint is terminal reality; the naive width model is the strictest
+    // count. Any cell where paint > naive-count shifts that row's pipes.
+    const paintWidth = (ch: string) => {
+      const c = ch.codePointAt(0)!;
+      return c >= 0x10000 || (c >= 0x2600 && c <= 0x27BF) ? 2 : 1;
+    };
+    const naiveWidth = (ch: string) => (ch.codePointAt(0)! >= 0x10000 ? 2 : 1);
+
+    for (const line of lines) {
+      const cells = line.split("|").slice(1, -1);
+      for (const cell of cells) {
+        const painted = [...cell].reduce((w, ch) => w + paintWidth(ch), 0);
+        const counted = [...cell].reduce((w, ch) => w + naiveWidth(ch), 0);
+        expect(painted).toBe(counted);
+      }
+    }
   });
 });
