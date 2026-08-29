@@ -1,7 +1,7 @@
 {
   "name": "quotacap",
   "version": "0.0.19",
-  "description": "See every AI subscription quota in one place. Use the one that would expire unused.",
+  "description": "See every AI subscription quota in one place: usage, remaining, and when it resets. Use the one that would expire unused; ease off the one that would hit the cap too early.",
   "license": "MIT",
   "keywords": ["ai", "cli", "mcp", "quota", "dashboard", "claude-code", "codex", "kimi", "grok"],
   "type": "module",

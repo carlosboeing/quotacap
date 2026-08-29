@@ -1,6 +1,6 @@
 # QuotaCap
 
-See every AI subscription quota in one place. Use the one that would expire unused.
+See every AI subscription quota in one place: usage, remaining, and when it resets. Use the one that would expire unused; ease off the one that would hit the cap too early.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -11,9 +11,10 @@ See every AI subscription quota in one place. Use the one that would expire unus
 
 ## What you get
 
-- **Usage** — percent used for each signed-in subscription
-- **Reset** — when the current window ends
-- **Use next** — which quota would expire unused if you keep current habits
+- **One view** — every subscription, even when reset dates differ
+- **Usage** — percent used and what is left
+- **Leftover or too early** — whether you will finish unused or hit the cap mid-cycle
+- **Use next** — which one to burn, which one to ease off
 
 ## Providers
 
