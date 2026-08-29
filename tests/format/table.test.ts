@@ -13,8 +13,8 @@ describe("format table", () => {
     ];
     const table = renderQuotasTable(quotas, advisories);
     expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Status \| Waste if unused \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| ⚠️ \| 78% \|/);
-    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| collecting… \| ✅ \| 53% \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| ⚠ \| 78% \|/);
+    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| ✔ \| 53% \|/);
   });
 
   it("renders quota-only rows with placeholders when no advisories exist", () => {

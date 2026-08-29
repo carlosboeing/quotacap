@@ -19,8 +19,10 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const resets = q.resetsAt ? formatResetDate(q.resetsAt) : "—";
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-    const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : a != null ? "collecting…" : "—";
-    const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
+    const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
+    // Text-presentation glyphs (no emoji variation selector): single cell
+    // wide, so markdown column alignment survives terminal renderers.
+    const icon = a?.status === "at risk" ? "⚠" : a != null ? "✔" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
     return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${icon} | ${waste} |`;
   });
