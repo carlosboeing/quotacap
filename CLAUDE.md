@@ -4,11 +4,11 @@ This is the public QuotaCap repository (`carlosboeing/quotacap`). Private workin
 
 ## What this repo is
 
-QuotaCap is a local, cross-harness AI quota dashboard + harness-callable advice tool. It helps users maximize weekly/monthly caps across Claude, Codex/ChatGPT, Antigravity/Gemini, Kimi, Grok, OpenCode.
+QuotaCap is a local dashboard, CLI, and MCP server for AI subscription quotas. It helps users use weekly and monthly caps across Claude, Codex, Kimi, and Grok.
 
 * Binary / npm: `quotacap` (`npx quotacap`), display name QuotaCap
-* Stack (planned): TypeScript/Node, SQLite, Vite+React dashboard, daemon on :8787, adapters per provider, MCP server wrapping same HTTP handler
-* Distribution: npm (`quotacap`), brew tap, `go install` considered; no hosted service
+* Stack: TypeScript/Node, SQLite, Vite+React dashboard, daemon on :8787, adapters per provider, MCP server wrapping same HTTP handler
+* Distribution: npm (`quotacap`), GitHub Releases binaries (macOS and Linux); brew tap and `go install` considered; no hosted service
 
 ## Layout (public)
 
@@ -16,9 +16,11 @@ QuotaCap is a local, cross-harness AI quota dashboard + harness-callable advice 
 .
 ├── README.md
 ├── LICENSE
-├── docs/          — public docs (installation, usage, architecture) — TBD
-├── src/           — daemon, adapters, http, cli, mcp — TBD
-├── tests/         — TBD
+├── install.sh
+├── docs/          — architecture, changelog, roadmap
+├── src/           — daemon, adapters, http, cli, mcp
+├── web/           — Vite+React dashboard
+├── tests/
 └── .workbench/    — PRIVATE sidecar (carlosboeing/quotacap-workbench), gitignored
 ```
 
@@ -39,9 +41,11 @@ Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discove
 
 ## Current state
 
-* Design shipped: `.workbench/2-design/2026-08-28-quotacap-design.md` (D dashboard: summary + strip + table, daemon+HTTP+MCP+CLI, phase 1 claude + manual)
-* Spike verified: `claude -p "/usage" --output-format json` parses Spike sample; others stubbed
-* Repos: `carlosboeing/quotacap` (public) and `carlosboeing/quotacap-workbench` (private) created 2026-08-28, cloned locally at `~/Projects/carlos/quotacap` with nested `.workbench/`
+* Four live adapters: claude, codex, kimi, grok, plus manual ingest
+* npm `quotacap` and GitHub Releases binaries (macOS and Linux)
+* Dashboard, CLI, and MCP share one local HTTP handler on 127.0.0.1:8787
+* Next work: Antigravity adapter, Windows binary, forecast validation (`docs/ROADMAP.md`)
+* Private workbench at `.workbench/` (gitignored)
 
 ## Brand
 

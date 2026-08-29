@@ -1,69 +1,65 @@
 # QuotaCap
 
-**Cross-harness AI quota dashboard + harness-callable advice.**
+See every AI subscription quota in one place. Use the one that would expire unused.
 
-One place to see how much of each AI subscription you've used. Shows when it resets and what to burn next. Goal is 100% use at reset.
+[![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
+[![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
+[![license](https://img.shields.io/github/license/carlosboeing/quotacap)](LICENSE)
+[![node](https://img.shields.io/node/v/quotacap)](package.json)
 
-Polls pluggable adapters (Claude, Codex, Gemini, Kimi, Grok, OpenCode). Stores history in SQLite. Serves:
+![QuotaCap dashboard](https://raw.githubusercontent.com/carlosboeing/quotacap/main/docs/assets/dashboard.png)
 
-* **Web dashboard** at `http://localhost:8787` — banner + 7-day strip + table with burn vs ideal. Includes stale badges and degraded banner.
-* **CLI** `quotacap` / `npx quotacap` — `status`, `advise --json`, `ingest`, `web`, `init`, `daemon`
-* **MCP server** — `get_quotas`, `get_recommendation`, `forecast` for any harness
+## What you get
 
-Runs local-only by default. No prompts or file contents leave your machine.
+- **Usage** — percent used for each signed-in subscription
+- **Reset** — when the current window ends
+- **Use next** — which quota would expire unused if you keep current habits
+
+## Providers
+
+| Provider | Updates |
+|---|---|
+| Claude Code | Live — reuses your Claude Code login |
+| Codex | Live — reuses your Codex login |
+| Kimi Code | Live — reuses your Kimi Code login |
+| Grok | Live — reuses your Grok login |
+| Antigravity / Gemini | Paste with `quotacap ingest` |
+
+Sign in to the provider CLI as usual. QuotaCap reuses that session. No API keys.
 
 ## Install
 
 ```bash
-# Binary — no Node needed (macOS + Linux, arm64/x64)
+# Binary — macOS and Linux, arm64 and x64. No Node.
 curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.sh | sh
 
-# Or via npm (requires Node 22.13+; node:sqlite needs --experimental-sqlite before 22.13)
-npm install -g quotacap   # global install
-npx quotacap              # run without install
+# Or npm (Node 22.13+)
+npm install -g quotacap
+npx quotacap
 ```
 
-The binary is a self-contained Bun-compiled executable from GitHub Releases.
-The npm package runs the same CLI on Node. Both put `quotacap` on your PATH.
+The binary is a self-contained executable from GitHub Releases.
+The npm package runs the same CLI on Node.
 
 ## Quick start
 
 ```bash
-quotacap init
-quotacap ingest --provider kimi --text "Current week: 22% used · resets Aug 29 at 11am"
-quotacap status --json
-quotacap web                          # http://localhost:8787
-quotacap advise --json                # tries HTTP, falls back to local DB
-quotacap advise --json --task heavy
+# Terminal 1 — leave this running
+quotacap init                 # writes ~/.quotacap/config.json
+quotacap web                  # dashboard at http://localhost:8787
+
+# Terminal 2 — after the dashboard table fills
+quotacap status
+quotacap advise
 ```
 
-## HTTP API
+Leave `web` running. It stays in the foreground and starts the daemon.
+
+For a provider without a live adapter:
 
 ```bash
-curl http://localhost:8787/health
-curl http://localhost:8787/api/quotas
-curl "http://localhost:8787/api/recommendation?task=any"
-curl -X POST http://localhost:8787/api/refresh
+quotacap ingest --provider agy --text "65% used · resets Sep 1"
 ```
-
-* `GET /health` → `{ok, uptime, lastPollAt}`
-* `GET /api/quotas` → `Quota[]` with `stale`, `ageMs`
-* `GET /api/recommendation?task=any` → `{use, reason, advisories}`
-* `POST /api/refresh` → `{fulfilled, rejected, lastPollAt, degraded}` — debounced 60s, always 200
-* `GET /` → `web/dist/index.html` if built, else `web/index.html`
-
-## CLI
-
-```
-quotacap status [--json]
-quotacap advise [--json] [--task any|heavy|light]
-quotacap ingest --provider <id> --text "..."
-quotacap web [--port 8787]
-quotacap daemon [--foreground]
-quotacap init
-```
-
-`advise` fetches `http://localhost:$port/api/recommendation` with 2s timeout. Falls back to local `recommend()` when daemon is down.
 
 ## MCP
 
@@ -76,44 +72,34 @@ quotacap init
 ```
 
 Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
-Tools: `get_quotas`, `get_recommendation`, `forecast`. Wrapper over HTTP. Set `QUOTACAP_URL` to override.
 
-## How it works
+Tools: `get_quotas`, `get_recommendation`, `forecast`.
 
-```
-Adapters (claude-cli ✓, manual ✓, others → manual-paste)
-  → daemon (poll 15m + jitter, SQLite ~/.quotacap/quotacap.db)
-  → HTTP :8787
-  → dashboard + CLI + MCP (same handler)
-```
+## Local only
 
-Adapters are isolated. One failure does not block others. Uses `Promise.allSettled` and per-adapter catch. `POST /api/refresh` always 200.
+Bound to `127.0.0.1`. No prompts or file contents leave the machine. QuotaCap stores no API keys. Adapters read the OAuth files the CLIs already own.
 
-## Config
+## Docs
 
-`~/.quotacap/config.json`:
-
-```json
-{ "port": 8787, "pollMinutes": 15, "enabledProviders": ["claude"] }
-```
-
-DB is `~/.quotacap/quotacap.db` (`quotas`, `snapshots`).
-
-## Development
-
-```bash
-npm test              # vitest run (10 files) — builds first via pretest
-bun test tests/bun/   # bun-runtime tests (sqlite adapter, MCP translation)
-npm run build         # vite build → embed web assets → tsc → flatten dist → chmod bin
-npm run build:bin     # bun build --compile (current platform, or pass targets)
-npx tsc --noEmit
-```
-
-The `store/db.ts` adapter picks `node:sqlite` on Node and `bun:sqlite` on Bun, so
-the same code runs as an npm package and as a compiled binary.
-
-See `.workbench/2-design/2026-08-28-quotacap-design.md` for spec. See `docs/ROADMAP.md` for next steps.
+- [Architecture](docs/architecture.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+<details>
+<summary>Development</summary>
+
+```bash
+npm test              # vitest (builds first via pretest)
+bun test tests/bun/   # bun-runtime tests (sqlite adapter, MCP translation)
+npm run build
+npm run build:bin
+```
+
+The store uses `node:sqlite` on Node and `bun:sqlite` on Bun.
+The same code is an npm package and a compiled binary.
+
+</details>

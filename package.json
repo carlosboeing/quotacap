@@ -1,10 +1,16 @@
 {
   "name": "quotacap",
   "version": "0.0.19",
+  "description": "Local dashboard and CLI for AI subscription quotas. See usage, resets, and what to use next.",
+  "license": "MIT",
+  "keywords": ["ai", "cli", "mcp", "quota", "dashboard", "claude-code", "codex", "kimi", "grok"],
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/carlosboeing/quotacap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carlosboeing/quotacap/issues"
   },
   "bin": {
     "quotacap": "dist/cli/index.js"
