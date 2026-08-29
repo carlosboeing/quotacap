@@ -1,6 +1,6 @@
 # QuotaCap
 
-QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude Code, Codex, Kimi Code, Grok). Each has its own usage window and reset time. It shows remaining usage in one table, and estimates which plan to use next from recent usage.
+QuotaCap helps you get more from the AI coding subscriptions you already pay for: Claude Code, Codex, Kimi Code, and Grok. It tracks one current usage window and reset time for each plan, then estimates which plan to use next from recent usage.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -9,10 +9,10 @@ QuotaCap helps you maximize the AI coding subscriptions you already pay for (Cla
 
 ## Features
 
-- **Visibility**: remaining usage and reset time for every signed-in subscription
-- **Maximize**: helps you use more of each allowance without exhausting one plan before its reset
-- **Advice**: estimates which plan to use next from recent usage
-- **CLI and MCP**: `status`, `advise`, and tools that return the same data
+- **Visibility**: remaining usage and reset time for one current window per connected plan
+- **Pacing**: recent usage compared with the allowance that remains before reset
+- **Advice**: an estimate of which plan to use next so you can use more of each allowance without exhausting one early
+- **Dashboard, CLI, and MCP**: the same data and advice on every surface
 
 ## Providers
 
@@ -32,12 +32,12 @@ Live adapters reuse the matching CLI login.
 # Binary: macOS and Linux, arm64 and x64. No Node.
 curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.sh | sh
 
-# Or npm (Node 22.13+)
+# Or install with npm (Node 22.13+)
 npm install -g quotacap
 ```
 
 The binary is a self-contained executable from GitHub Releases.
-The npm package runs the same CLI on Node. With npm only, prefix commands with `npx`, for example `npx quotacap web`.
+The npm package runs the same CLI on Node. To run without a global install, replace `quotacap` with `npx quotacap` in any command, for example `npx quotacap web`.
 
 ## Quick start
 

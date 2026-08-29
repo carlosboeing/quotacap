@@ -1,9 +1,9 @@
 {
   "name": "quotacap",
   "version": "0.0.19",
-  "description": "CLI, dashboard, and MCP server that track AI coding usage allowances and estimate which plan to use next.",
+  "description": "Local quota tracker for AI coding plans with a dashboard, CLI, MCP server, and next-plan recommendations.",
   "license": "MIT",
-  "keywords": ["ai", "cli", "mcp", "quota", "dashboard", "claude-code", "codex", "kimi", "grok"],
+  "keywords": ["ai-coding", "cli", "mcp", "quota-tracker", "usage-limits", "usage-tracker", "claude-code", "codex", "kimi-code", "grok"],
   "type": "module",
   "repository": {
     "type": "git",
