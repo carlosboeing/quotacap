@@ -4,7 +4,7 @@ This is the public QuotaCap repository (`carlosboeing/quotacap`). Private workin
 
 ## What this repo is
 
-QuotaCap is a local quota tracker for AI coding subscriptions. It records one current usage window per provider and estimates which plan to use next from remaining usage and recent pace. The dashboard, CLI, and MCP server expose the same data.
+QuotaCap is a local quota tracker for AI coding subscriptions. It records one current usage window per provider and estimates which plan to use next from remaining usage and recent pace when available. The dashboard, CLI, and MCP server expose the same data.
 
 * Binary / npm: `quotacap` (`npx quotacap`), display name QuotaCap
 * Stack: TypeScript/Node, SQLite, Vite+React dashboard, daemon on :8787, adapters per provider, MCP server wrapping same HTTP handler

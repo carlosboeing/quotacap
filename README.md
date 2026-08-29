@@ -1,6 +1,6 @@
 # QuotaCap
 
-QuotaCap helps you get more from the AI coding subscriptions you already pay for: Claude Code, Codex, Kimi Code, and Grok. It tracks one current usage window and reset time for each plan, then estimates which plan to use next from recent usage.
+QuotaCap helps you get more from the AI coding subscriptions you already pay for: Claude Code, Codex, Kimi Code, and Grok. It tracks one current usage window and reset time for each plan, then estimates which plan to use next from remaining usage and recent pace when available.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -10,7 +10,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 ## Features
 
 - **Visibility**: remaining usage and reset time for one current window per connected plan
-- **Pacing**: recent usage compared with the allowance that remains before reset
+- **Pacing**: recent usage when history is available, or an estimated pace while QuotaCap collects it
 - **Advice**: an estimate of which plan to use next so you can use more of each allowance without exhausting one early
 - **Dashboard, CLI, and MCP**: the same data and advice on every surface
 

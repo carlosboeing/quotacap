@@ -8,11 +8,11 @@ scope: [quotacap, architecture, system]
 
 # QuotaCap architecture
 
-**Abstract.** QuotaCap is a local tracker that records one current usage window for each supported AI coding plan and estimates which plan to use next from remaining usage and recent pace. A single daemon polls providers, stores snapshots in SQLite, and serves the same data through a local HTTP API, CLI, MCP server, and web dashboard. This document explains the system components, data flow, stored state, security model, and commands for contributors.
+**Abstract.** QuotaCap is a local tracker that records one current usage window for each supported AI coding plan and estimates which plan to use next from remaining usage and recent pace when available. A single daemon polls providers, stores snapshots in SQLite, and serves the same data through a local HTTP API, CLI, MCP server, and web dashboard. This document explains the system components, data flow, stored state, security model, and commands for contributors.
 
 ## Position
 
-Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage limits with different reset times. QuotaCap currently normalizes one usage window per provider. Across several subscriptions, this can reveal unused allowance on one plan and an early-limit risk on another. QuotaCap estimates which provider to use next from recent usage pace:
+Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage limits with different reset times. QuotaCap currently normalizes one usage window per provider. Across several subscriptions, this can reveal unused allowance on one plan and an early-limit risk on another. QuotaCap estimates which provider to use next from remaining usage and recent pace when available:
 
 - Local and self-contained. Everything lives in `~/.quotacap/`: config, database, pidfile, logs.
 - Existing CLI sessions. Live adapters reuse the OAuth sessions the agents already store and need no separate API keys.
@@ -26,7 +26,7 @@ Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage lim
 | Adapter core | Shared HTTP and token plumbing. JSON fetch with an 8s timeout, OAuth refresh using the stored refresh token, in-place save of the new token pair with one backup copy. | `src/adapters/core.ts` |
 | Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, and the 24-hour rolling usage pace. | `src/store/db.ts`, `src/store/quotas.ts` |
 | Daemon | The poll loop. `pollOnce` every 15 minutes plus jitter, `Promise.allSettled` isolation, single-instance pidfile guard, keeps running until SIGINT or SIGTERM. | `src/daemon.ts` |
-| Advisory engine | Target daily usage, recent pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
+| Advisory engine | Target daily usage, recent or estimated pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
 | HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `POST /api/refresh`, `/`, `/assets/*` (embedded dashboard). Bound to `127.0.0.1:8787`. | `src/http/server.ts` |
 | CLI | Commander-based surface. Commands: `status`, `advise`, `ingest`, `web`, `daemon`, `init`, `mcp`, `version`. | `src/cli/index.ts` |
 | MCP server | stdio JSON-RPC server. Methods: `initialize`, `tools/list`, `tools/call` (`get_quotas`, `get_recommendation`, `forecast`), `ping`. Calls the same HTTP handler and translates a down daemon into a readable error. | `src/mcp/server.ts` |
@@ -85,7 +85,7 @@ snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
 2. `pollAll(enabledProviders)` runs each adapter with an 8s timeout, isolated by `Promise.allSettled`. A provider that times out or returns 401 becomes a degraded row.
 3. The adapter reads its CLI's credential file. An expired access token is refreshed via OAuth and the new pair is saved in place. A provider that was never signed in reports degraded instead of failing the poll.
 4. Snapshots normalize to `Quota` and upsert into `quotas` and `snapshots`.
-5. The advisory engine computes target daily usage (remaining % ÷ days left), recent pace, early-limit risk, projected unused allowance at reset, and one next-provider estimate.
+5. The advisory engine computes target daily usage (remaining % ÷ days left), recent or estimated pace, early-limit risk, projected unused allowance at reset, and one next-provider estimate.
 6. CLI `advise`, MCP, and the dashboard all read the same `/api/recommendation`.
 
 ## Main commands
