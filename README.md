@@ -1,6 +1,6 @@
 # QuotaCap
 
-You pay for several AI coding subscriptions (Claude, Codex, Kimi, Grok), each with its own quota and reset time. QuotaCap shows usage, remaining, and reset for all of them in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early.
+QuotaCap helps you maximize the AI coding subscriptions you already pay for (Claude, Codex, Kimi, Grok). Each has its own quota and reset time. It gives you visibility into usage, remaining, and reset in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -11,7 +11,8 @@ You pay for several AI coding subscriptions (Claude, Codex, Kimi, Grok), each wi
 
 ## Features
 
-- **Quotas**: used %, remaining, and reset time for every signed-in subscription
+- **Visibility**: used %, remaining, and reset time for every signed-in subscription
+- **Maximize**: unused quota does not expire, and no cap is hit too early
 - **Advice**: which quota to use next, and which is at risk of hitting the cap
 - **CLI and MCP**: `status`, `advise`, and tools that return the same data
 
