@@ -16,7 +16,7 @@ describe("cli", () => {
     try {
       await exec("node", ["dist/cli/index.js","ingest","--provider","kimi","--text","Weekly limit 16% used resets in 3d"], { env });
       const { stdout } = await exec("node", ["dist/cli/index.js","status"], { env });
-      expect(stdout).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \|/);
+      expect(stdout).toMatch(/\| Provider \| Used \| Left \| Resets \| Days left \|/);
       expect(stdout).toMatch(/\| kimi \| 16% \| 84% \|/);
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
