@@ -1,14 +1,14 @@
 ---
 title: QuotaCap Architecture
 type: architecture
-authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode)]
+authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)"]
 last_reviewed: 2026-08-29
 scope: [quotacap, architecture, system]
 ---
 
 # QuotaCap Architecture
 
-**Abstract.** QuotaCap is a local cross-harness AI quota dashboard and advice tool. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. It answers one question: which provider should you use next to end the cycle near 100% instead of wasted? Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
+**Abstract.** QuotaCap gives visibility into AI subscription quotas and advises which provider to use next so a cycle ends near 100% instead of unused. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
 
 ## Position
 

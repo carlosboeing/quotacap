@@ -4,7 +4,7 @@ This is the public QuotaCap repository (`carlosboeing/quotacap`). Private workin
 
 ## What this repo is
 
-QuotaCap is a local dashboard, CLI, and MCP server for AI subscription quotas. It helps users use weekly and monthly caps across Claude, Codex, Kimi, and Grok.
+QuotaCap gives visibility into AI subscription quotas and advises which one to use next so unused allowance does not expire. Dashboard, CLI, and MCP are local surfaces for that, across Claude, Codex, Kimi, and Grok.
 
 * Binary / npm: `quotacap` (`npx quotacap`), display name QuotaCap
 * Stack: TypeScript/Node, SQLite, Vite+React dashboard, daemon on :8787, adapters per provider, MCP server wrapping same HTTP handler
