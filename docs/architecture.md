@@ -8,7 +8,7 @@ scope: [quotacap, architecture, system]
 
 # QuotaCap Architecture
 
-**Abstract.** QuotaCap is a quota tracker for AI coding subscriptions. Usage, remaining, and reset times in one table, plus a recommendation for what to use next. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
+**Abstract.** You pay for several AI coding subscriptions (Claude, Codex, Kimi, Grok), each with its own quota and reset time. QuotaCap shows usage, remaining, and reset for all of them in one table, and recommends which one to use next so unused quota does not expire and you do not hit a cap too early. A single daemon polls every supported coding agent and stores each usage snapshot in SQLite (an embedded database). One local HTTP API serves a CLI, an MCP server, and a web dashboard. Setup is zero, and no API keys are ever needed. This document describes the components, the data flow, the on-disk state, and the main commands.
 
 ## Position
 
