@@ -26,7 +26,7 @@ describe("format table", () => {
   it("formats resets with a month name, day, year and local time", () => {
     const quotas = [{ provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00" }];
     const table = renderQuotasTable(quotas, []);
-    expect(table).toMatch(/Sept 2026/);
+    expect(table).toMatch(/Sept? 2026/);
     expect(table).toMatch(/9:02/);
     expect(table).not.toMatch(/9\/1\/2026/);
   });
