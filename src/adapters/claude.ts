@@ -10,11 +10,13 @@ export function parseClaudeUsage(result: string, now = new Date()): Quota {
   const usedPct = weeklyMatch ? parseInt(weeklyMatch[1],10) : 0;
   const sessionPct = sessionMatch ? parseInt(sessionMatch[1],10) : undefined;
   let resetsAt = parseResetText(result, now);
+  const parsedReset = !!resetsAt;
   if (!resetsAt) resetsAt = new Date(now.getTime()+7*86400000).toISOString();
+  const resets = new Date(resetsAt).getTime();
+  const periodStart = (parsedReset ? new Date(resets - 7*86400000) : new Date(now.getTime() - 7*86400000)).toISOString();
   return {
     provider: "claude", plan: "max", usedPct, sessionPct,
-    resetsAt, periodStart: new Date(now.getTime() - 7*86400000).toISOString(),
-    raw: result, source: "cli", fetchedAt: now.toISOString()
+    resetsAt, periodStart, raw: result, source: "cli", fetchedAt: now.toISOString()
   };
 }
 export const claudeAdapter = {

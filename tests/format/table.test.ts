@@ -31,6 +31,31 @@ describe("format table", () => {
     expect(table).not.toMatch(/9\/1\/2026/);
   });
 
+  it("shows the labeled period average when burn is unmeasured", () => {
+    const now = Date.now();
+    const quotas = [
+      { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00", periodStart: new Date(now - 4 * 86400000).toISOString() },
+    ];
+    const advisories = [
+      { provider: "kimi", wastePct: 78.0, daysLeft: 2.9, idealRate: 29.0, burnRate: 2, burnMeasured: false, status: "on track" },
+    ];
+    const table = renderQuotasTable(quotas, advisories);
+    expect(table).toMatch(/4.0%\/day avg/);
+  });
+
+  it("prefers the measured burn over the period average", () => {
+    const now = Date.now();
+    const quotas = [
+      { provider: "claude", usedPct: 45, resetsAt: "2026-09-03T21:00:00+10:00", periodStart: new Date(now - 2 * 86400000).toISOString() },
+    ];
+    const advisories = [
+      { provider: "claude", wastePct: 0, daysLeft: 5.4, idealRate: 10.0, burnRate: 25.3, burnMeasured: true, status: "at risk" },
+    ];
+    const table = renderQuotasTable(quotas, advisories);
+    expect(table).toMatch(/\| 25.3%\/day \|/);
+    expect(table).not.toMatch(/avg/);
+  });
+
   it("keeps every internal pipe aligned — no wide glyphs outside the Status column", () => {
     const quotas = [
       { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00" },

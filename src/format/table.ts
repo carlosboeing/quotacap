@@ -19,7 +19,14 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const resets = q.resetsAt ? formatResetDate(q.resetsAt) : "—";
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
+const burn = (() => {
+      if (a?.burnMeasured) return `${a.burnRate.toFixed(1)}%/day`;
+      if (q.periodStart) {
+        const elapsed = (Date.now() - new Date(q.periodStart).getTime()) / 86400000;
+        if (elapsed > 0.1) return `${((q.usedPct ?? 0) / elapsed).toFixed(1)}%/day avg`;
+      }
+      return "—";
+    })();
     // Renderers that count emoji as one cell but paint two (Kimi, Claude
     // Code) shift the pipes after a wide glyph by +1; the status glyphs
     // live in the last column so the shift touches only the right border.

@@ -14,6 +14,7 @@ describe("parseClaudeUsage", () => {
     expect(q.sessionPct).toBe(46);
     expect(q.provider).toBe("claude");
     expect(q.resetsAt).toMatch(/2026-09-03/);
+    expect(q.periodStart).toMatch(/^2026-08-27/);
   });
 
   it("fallback resetsAt/periodStart/fetchedAt are deterministic from now", () => {
