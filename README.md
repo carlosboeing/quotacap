@@ -1,6 +1,6 @@
 # QuotaCap
 
-QuotaCap tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next.
+Tracks AI subscription quotas. It shows usage, remaining, and reset times, and advises which one to use next.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -9,29 +9,28 @@ QuotaCap tracks AI subscription quotas. It shows usage, remaining, and reset tim
 
 ![QuotaCap dashboard](https://raw.githubusercontent.com/carlosboeing/quotacap/main/docs/assets/dashboard.png)
 
-## What you get
+## Features
 
-- **One view** — every subscription, even when reset dates differ
-- **Usage** — percent used and what is left
-- **Leftover or too early** — whether you will finish unused or hit the cap mid-cycle
-- **Use next** — which one to burn, which one to ease off
+- **Quotas**: used %, remaining, and reset time for every signed-in subscription
+- **Advice**: which quota to use next, and which is at risk of hitting the cap
+- **CLI and MCP**: `status`, `advise`, and tools that return the same data
 
 ## Providers
 
-| Provider | Updates |
+| Provider | Source |
 |---|---|
-| Claude Code | Live — reuses your Claude Code login |
-| Codex | Live — reuses your Codex login |
-| Kimi Code | Live — reuses your Kimi Code login |
-| Grok | Live — reuses your Grok login |
-| Antigravity / Gemini | Paste with `quotacap ingest` |
+| Claude Code | Live |
+| Codex | Live |
+| Kimi Code | Live |
+| Grok | Live |
+| Antigravity / Gemini | Manual (`quotacap ingest`) |
 
-Sign in to the provider CLI as usual. QuotaCap reuses that session. No API keys.
+Live adapters reuse the matching CLI login.
 
 ## Install
 
 ```bash
-# Binary — macOS and Linux, arm64 and x64. No Node.
+# Binary: macOS and Linux, arm64 and x64. No Node.
 curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.sh | sh
 
 # Or npm (Node 22.13+)
@@ -45,16 +44,16 @@ The npm package runs the same CLI on Node.
 ## Quick start
 
 ```bash
-# Terminal 1 — leave this running
+# Terminal 1: leave this running
 quotacap init                 # writes ~/.quotacap/config.json
 quotacap web                  # dashboard at http://localhost:8787
 
-# Terminal 2 — after the dashboard table fills
+# Terminal 2: after the dashboard table fills
 quotacap status
 quotacap advise
 ```
 
-Leave `web` running. It stays in the foreground and starts the daemon.
+`web` stays in the foreground and starts the daemon.
 
 For a provider without a live adapter:
 
@@ -76,7 +75,7 @@ Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
 
 Tools: `get_quotas`, `get_recommendation`, `forecast`.
 
-## Local only
+## Privacy
 
 Bound to `127.0.0.1`. No prompts or file contents leave the machine. QuotaCap stores no API keys. Adapters read the OAuth files the CLIs already own.
 
@@ -88,7 +87,7 @@ Bound to `127.0.0.1`. No prompts or file contents leave the machine. QuotaCap st
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 <details>
 <summary>Development</summary>
