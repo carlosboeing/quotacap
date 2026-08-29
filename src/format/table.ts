@@ -21,14 +21,14 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
 const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
     // Renderers that count emoji as one cell but paint two (Kimi, Claude
-    // Code) shift every pipe after a wide glyph by +1; the header carries
-    // the same wide glyph (🚦) so header and body shift together.
+    // Code) shift the pipes after a wide glyph by +1; the status glyphs
+    // live in the last column so the shift touches only the right border.
     const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
     return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} | ${icon} |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | 🚦 |",
+    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | Status |",
     "|---|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
