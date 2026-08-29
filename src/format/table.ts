@@ -20,23 +20,36 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
 const burn = (() => {
-      if (a?.burnMeasured) return `${a.burnRate.toFixed(1)}%/day`;
-      if (q.periodStart) {
-        const elapsed = (Date.now() - new Date(q.periodStart).getTime()) / 86400000;
-        if (elapsed > 0.1) return `${((q.usedPct ?? 0) / elapsed).toFixed(1)}%/day avg`;
+      const rate =
+        a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day`
+        : q.periodStart ? (() => {
+            const elapsed = (Date.now() - new Date(q.periodStart).getTime()) / 86400000;
+            if (elapsed > 0.1) return `${((q.usedPct ?? 0) / elapsed).toFixed(1)}%/day avg`;
+            return null;
+          })()
+        : null;
+      if (!rate) return "—";
+      // Pace glyphs are single-width text-presentation (no VS16), so they
+      // cannot shift pipes in renderers that miscount emoji width.
+      const value = a?.burnMeasured ? a.burnRate : q.periodStart ? (q.usedPct ?? 0) / Math.max(0.1, (Date.now() - new Date(q.periodStart).getTime()) / 86400000) : null;
+      const ideal = a?.idealRate;
+      if (ideal != null && value != null) {
+        if (value > ideal) return `${rate} ⚠`;
+        if (value < ideal * 0.8) return `${rate} ↓`;
+        return `${rate} ✔`;
       }
-      return "—";
+      return rate;
     })();
     // Renderers that count emoji as one cell but paint two (Kimi, Claude
     // Code) shift the pipes after a wide glyph by +1; the status glyphs
     // live in the last column so the shift touches only the right border.
     const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
-    return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} | ${icon} |`;
+    return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | Status |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| Provider | Used | Left | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused |",
+    "|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
 }

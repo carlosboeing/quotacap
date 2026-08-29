@@ -13,7 +13,7 @@ describe("mcp get_quotas", () => {
     process.env.QUOTACAP_URL = addr;
     try {
       const res: any = await handleTool("get_quotas", {});
-      expect(res.content[0].text).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \|/);
+      expect(res.content[0].text).toMatch(/\| Provider \| Used \| Left \| Resets \| Days left \|/);
       expect(res.content[0].text).toMatch(/\| claude \| 40% \| 60% \|/);
     } finally {
       delete process.env.QUOTACAP_URL;

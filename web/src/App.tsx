@@ -124,7 +124,7 @@ function App() {
           <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
             <th style={{ padding: "8px 6px" }}>Provider</th>
             <th style={{ padding: "8px 6px" }}>Quota</th>
-            <th style={{ padding: "8px 6px" }}>Remaining</th>
+            <th style={{ padding: "8px 6px" }}>Left</th>
             <th style={{ padding: "8px 6px" }}>Resets</th>
             <th style={{ padding: "8px 6px" }}>Days left</th>
             <th style={{ padding: "8px 6px" }}>Ideal</th>
