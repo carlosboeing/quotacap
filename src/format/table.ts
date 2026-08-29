@@ -19,16 +19,16 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const resets = q.resetsAt ? formatResetDate(q.resetsAt) : "—";
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-    const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
-// Astral-plane emoji (U+1F000+): naive wcwidth counts them as 2 cells and
-// they paint 2, so count equals paint in every renderer — colored AND
-// aligned, unlike BMP emoji (✅/⚠️) whose +1 gap shifts the pipes.
-const icon = a?.status === "at risk" ? "🔴" : a != null ? "🟢" : "—";
+const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
+    // Renderers that count emoji as one cell but paint two (Kimi, Claude
+    // Code) shift every pipe after a wide glyph by +1; the header carries
+    // the same wide glyph (🚦) so header and body shift together.
+    const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
     return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} | ${icon} |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | Status |",
+    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | 🚦 |",
     "|---|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");
