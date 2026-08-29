@@ -45,6 +45,11 @@ program.command("ingest").requiredOption("--provider <p>").requiredOption("--tex
 });
 program.command("web").option("--port <n>").action(async (o)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
+  const { isDaemonRunning, startDaemon } = await import("../daemon.js");
+  if (!isDaemonRunning()) {
+    const started = await startDaemon();
+    if (!started.alreadyRunning) console.log("daemon started (auto)");
+  }
   const app=buildApp(db);
   const port=o.port?parseInt(o.port): (await readConfig()).port;
   await app.listen({port, host:"127.0.0.1"});
@@ -56,13 +61,17 @@ program.command("init").action(async()=>{
 });
 program.command("daemon").option("--foreground","keep foreground (default: true)").action(async(o)=>{
   const { startDaemon } = await import("../daemon.js");
-  const { timer } = await startDaemon();
+  const started = await startDaemon();
+  if (started.alreadyRunning) {
+    console.log(`daemon already running (pid ${started.alreadyRunning})`);
+    return;
+  }
   console.log("QuotaCap daemon started" + (o.foreground !== false ? " (foreground)" : ""));
   // keep alive until SIGINT/SIGTERM — timer is ref'd so event loop stays alive
-  process.on("SIGINT", ()=> { clearInterval(timer as any); process.exit(0); });
-  process.on("SIGTERM", ()=> { clearInterval(timer as any); process.exit(0); });
+  process.on("SIGINT", ()=> { started.stop(); process.exit(0); });
+  process.on("SIGTERM", ()=> { started.stop(); process.exit(0); });
   // explicitly keep process alive if interval was somehow unref'd elsewhere
-  if ((timer as any).ref) (timer as any).ref();
+  if ((started.timer as any).ref) (started.timer as any).ref();
 });
 program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
   const mod=await import("../mcp/server.js");

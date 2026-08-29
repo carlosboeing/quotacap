@@ -2,11 +2,21 @@
 // Quotas carry used/resets; advisories add days-left, burn and waste analysis.
 // Without advisories the analysis columns render as placeholders.
 
+export function formatResetDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function renderQuotasTable(quotas: any[], advisories: any[] = []): string {
   const rows = quotas.map((q) => {
     const a = advisories.find((x) => x.provider === q.provider);
     const used = Math.round(q.usedPct ?? 0);
-    const resets = q.resetsAt ? new Date(q.resetsAt).toLocaleString() : "—";
+    const resets = q.resetsAt ? formatResetDate(q.resetsAt) : "—";
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
     const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : a != null ? "collecting…" : "—";

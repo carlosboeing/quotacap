@@ -39,6 +39,16 @@ function formatReset(resetsAt: string): string {
   return `${days}d`;
 }
 
+function formatResetDate(resetsAt: string): string {
+  return new Date(resetsAt).toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function Banner({ rec }: { rec: Rec | null }) {
   if (!rec) return <div data-testid="banner">loading…</div>;
   if (rec.use && rec.reason) {
@@ -157,7 +167,7 @@ function App() {
                     </div>
                   </td>
                   <td style={{ padding: "8px 6px" }}>{100 - q.usedPct}%</td>
-                  <td style={{ padding: "8px 6px" }}>{formatReset(q.resetsAt)}</td>
+                  <td style={{ padding: "8px 6px" }}>{formatResetDate(q.resetsAt)}</td>
                   <td style={{ padding: "8px 6px" }}>{adv?.daysLeft != null ? adv.daysLeft.toFixed(1) : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{ideal != null ? `${ideal.toFixed(1)}%/d` : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
@@ -204,7 +214,7 @@ function App() {
                           />
                         </div>
                         <div style={{ fontSize: 12, color: "#6b7280" }}>
-                          → {Math.round(waste)}% waste if idle · resets {new Date(q.resetsAt).toLocaleString()} · ideal {ideal?.toFixed(1) ?? "—"}%/d
+                          → {Math.round(waste)}% waste if idle · resets {formatResetDate(q.resetsAt)} · ideal {ideal?.toFixed(1) ?? "—"}%/d
                         </div>
                       </div>
                     </td>

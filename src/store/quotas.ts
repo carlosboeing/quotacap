@@ -26,23 +26,27 @@ export function getAllLatest(db:any){
 // alias for plan's getQuotas naming
 export const getQuotas = getAllLatest;
 export function getSnapshots(db:any){ return db.prepare(`SELECT * FROM snapshots ORDER BY day DESC`).all(); }
-export function getBurnRates(db:any): Map<string, number> {
-  const rows = db.prepare(`SELECT day, provider, used_pct FROM snapshots`).all() as {day:string; provider:string; used_pct:number}[];
-  const byProvider = new Map<string, {day:string; usedPct:number}[]>();
+export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
+  // Burn is the used-pct delta over a real rolling window of poll history
+  // (up to 24h), so calendar-day boundaries and poll timing cannot skew it.
+  const rows = db.prepare(`SELECT provider, used_pct, fetched_at FROM quotas`).all() as {provider:string; used_pct:number; fetched_at:string}[];
+  const byProvider = new Map<string, {usedPct:number; t:number}[]>();
   for (const r of rows) {
+    const t = new Date(r.fetched_at).getTime();
+    if (Number.isNaN(t)) continue;
     const pts = byProvider.get(r.provider) ?? [];
-    pts.push({ day: r.day, usedPct: r.used_pct });
+    pts.push({ usedPct: r.used_pct, t });
     byProvider.set(r.provider, pts);
   }
   const out = new Map<string, number>();
   for (const [provider, pts] of byProvider) {
-    if (pts.length < 2) continue;
-    const sorted = [...pts].sort((a, b) => a.day.localeCompare(b.day));
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    const days = (new Date(last.day).getTime() - new Date(first.day).getTime()) / 86400000;
-    if (days < 1) continue;
-    const burn = (last.usedPct - first.usedPct) / days;
+    const sorted = pts.sort((a, b) => a.t - b.t);
+    const latest = sorted[sorted.length - 1];
+    const cutoff = latest.t - 86400000;
+    const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
+    const days = (latest.t - windowStart.t) / 86400000;
+    if (sorted.length < 2 || days < 1 / 24) continue;
+    const burn = (latest.usedPct - windowStart.usedPct) / days;
     if (burn >= 0) out.set(provider, burn);
   }
   return out;

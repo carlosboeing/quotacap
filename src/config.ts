@@ -5,11 +5,11 @@ import { z } from "zod";
 
 export function getConfigPath(p?: string): string {
   if (p) return p;
-  return path.join(os.homedir(), ".quotacap", "config.json");
+  return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "config.json");
 }
 export function getDbPath(p?: string): string {
   if (p) return p;
-  return path.join(os.homedir(), ".quotacap", "quotacap.db");
+  return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "quotacap.db");
 }
 
 const ConfigSchema = z.object({
