@@ -20,14 +20,14 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
     const burn = a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day` : "—";
-    // Text-presentation glyphs (no emoji variation selector): single cell
-    // wide, so markdown column alignment survives terminal renderers.
-    const icon = a?.status === "at risk" ? "⚠" : a != null ? "✔" : "—";
+    // Colorful emoji (VS16) paint two cells wide while markdown counts one;
+    // keeping Status last means the +1 shift only nudges the right border.
+    const icon = a?.status === "at risk" ? "⚠️" : a != null ? "✅" : "—";
     const waste = a?.wastePct != null ? `${Math.round(a.wastePct)}%` : "—";
-    return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${icon} | ${waste} |`;
+    return `| ${q.provider} | ${used}% | ${100 - used}% | ${resets} | ${daysLeft} | ${ideal} | ${burn} | ${waste} | ${icon} |`;
   });
   return [
-    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Status | Waste if unused |",
+    "| Provider | Used | Remaining | Resets | Days left | Ideal daily burn | Burn rate | Waste if unused | Status |",
     "|---|---|---|---|---|---|---|---|---|",
     ...rows,
   ].join("\n");

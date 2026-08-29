@@ -12,9 +12,9 @@ describe("format table", () => {
       { provider: "claude", wastePct: 52.9, daysLeft: 5.5, idealRate: 11.6, burnRate: 2, burnMeasured: false, status: "on track" },
     ];
     const table = renderQuotasTable(quotas, advisories);
-    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Status \| Waste if unused \|/);
-    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| ⚠ \| 78% \|/);
-    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| ✔ \| 53% \|/);
+    expect(table).toMatch(/\| Provider \| Used \| Remaining \| Resets \| Days left \| Ideal daily burn \| Burn rate \| Waste if unused \| Status \|/);
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 3.0 \| 28%\/day \| 40.0%\/day \| 78% \| ⚠️ \|/);
+    expect(table).toMatch(/\| claude \| 37% \| 63% \|.*\| 5.5 \| 12%\/day \| — \| 53% \| ✅ \|/);
   });
 
   it("renders quota-only rows with placeholders when no advisories exist", () => {
