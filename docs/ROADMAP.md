@@ -1,5 +1,10 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.20
+
+* npm `package.json` description, MIT license, and keywords (registry listing no longer the old README extract)
+* Public README rewrite: maximize as aim, advice as estimate, live vs paste providers
+
 ## Recently shipped — 0.0.19
 
 * Provider adapters — codex (wham/usage), kimi (coding/v1/usages), grok (cli-chat-proxy billing): reuse CLI OAuth sessions, refresh-on-expiry with rotated tokens persisted (`.qc-bak`), fail-closed degraded rows; `enabledProviders` defaults to all four

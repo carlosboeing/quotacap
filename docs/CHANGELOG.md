@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.20
+
+- npm metadata: `description`, `license: MIT`, `keywords`, `bugs` (replaces the old README-extract listing)
+- Public README: visitor intro, Features, live vs paste providers, estimate not a leftover-quota guarantee
+
 ## 0.0.19
 
 - Provider adapters: codex (wham/usage), kimi (coding/v1/usages), grok (cli-chat-proxy billing) — reuses each CLI's OAuth session, zero API keys; `enabledProviders` defaults to claude, codex, kimi, grok
