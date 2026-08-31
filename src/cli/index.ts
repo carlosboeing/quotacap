@@ -29,10 +29,10 @@ program.command("advise").option("--json","json").option("--task <t>","task","an
     const j=await r.json(); console.log(opts.json? JSON.stringify(j,null,2) : `${j.use}: ${j.reason}`);
   } catch {
     const { recommend } = await import("../advisory/engine.js");
-    const { getAllLatest } = await import("../store/quotas.js");
+    const { getAllLatest, getBurnRates } = await import("../store/quotas.js");
     const quotas=getAllLatest(db);
     if(!quotas.length){ console.log(opts.json? JSON.stringify({use:"none",reason:"no quotas yet"},null,2) : "none: no quotas yet"); return; }
-    const rec=recommend(quotas, opts.task);
+    const rec=recommend(quotas, opts.task, getBurnRates(db));
     console.log(opts.json? JSON.stringify(rec,null,2) : `${rec.use}: ${rec.reason}`);
   }
 });
