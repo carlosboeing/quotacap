@@ -10,6 +10,15 @@ describe("store", () => {
     expect(got?.usedPct).toBe(25);
   });
 
+  it("upserts an array of quotas", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const q1 = { provider:"agy", plan:"unknown", usedPct:50, resetsAt:"2026-09-01T13:42:08Z", periodStart:"2026-08-25T00:00:00Z", raw:"x", source:"cli" as const, fetchedAt:new Date().toISOString() };
+    const q2 = { provider:"agy:3p", plan:"unknown", usedPct:60, resetsAt:"2026-09-07T07:04:27Z", periodStart:"2026-08-31T00:00:00Z", raw:"y", source:"cli" as const, fetchedAt:new Date().toISOString() };
+    upsertQuota(db, [q1, q2]);
+    expect(getLatestByProvider(db, "agy")?.usedPct).toBe(50);
+    expect(getLatestByProvider(db, "agy:3p")?.usedPct).toBe(60);
+  });
+
   it("measures burn from poll history over a real 24h window", () => {
     const db = openDb(":memory:"); migrate(db);
     const now = Date.now();

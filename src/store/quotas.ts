@@ -11,6 +11,10 @@ function mapRow(row:any){
 }
 
 export function upsertQuota(db:any, q:any){
+  if (Array.isArray(q)) {
+    for (const item of q) upsertQuota(db, item);
+    return;
+  }
   db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, raw, source, fetched_at) VALUES(?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.raw, q.source, q.fetchedAt);
   const day = new Date().toISOString().slice(0,10);
   db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
