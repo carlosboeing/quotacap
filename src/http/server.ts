@@ -81,24 +81,34 @@ export function buildApp(db: any): FastifyInstance {
 
   // serve built vite assets at /assets/* (web/dist/assets/*)
   app.get("/assets/*", async (req: any, reply) => {
-    const assetPath = req.params["*"] ?? "";
-    // guard path traversal
-    if (assetPath.includes("..")) return reply.status(400).send("bad path");
-    const candidates = [
-      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/assets", assetPath),
-      path.join(process.cwd(), "web/dist/assets", assetPath),
-    ];
-    for (const p of candidates) {
-      try {
-        const data = fs.readFileSync(p);
-        const ext = path.extname(p);
-        const type = ext === ".js" ? "application/javascript" : ext === ".css" ? "text/css" : ext === ".map" ? "application/json" : "application/octet-stream";
-        return reply.type(type).send(data);
-      } catch {}
+    const raw = String(req.params["*"] ?? "");
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(raw);
+    } catch {
+      return reply.status(400).send("bad path");
     }
-    const embedded = webAssets[assetPath];
+    if (!decoded || decoded.includes("..") || path.isAbsolute(decoded)) {
+      return reply.status(400).send("bad path");
+    }
+    const roots = [
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/assets"),
+      path.resolve(process.cwd(), "web/dist/assets"),
+    ];
+    for (const root of roots) {
+      const candidate = path.resolve(root, decoded);
+      if (candidate === root || candidate.startsWith(root + path.sep)) {
+        try {
+          const data = fs.readFileSync(candidate);
+          const ext = path.extname(candidate);
+          const type = ext === ".js" ? "application/javascript" : ext === ".css" ? "text/css" : ext === ".map" ? "application/json" : "application/octet-stream";
+          return reply.type(type).send(data);
+        } catch {}
+      }
+    }
+    const embedded = webAssets[decoded];
     if (embedded !== undefined) {
-      const ext = path.extname(assetPath);
+      const ext = path.extname(decoded);
       const type = ext === ".js" ? "application/javascript" : ext === ".css" ? "text/css" : ext === ".map" ? "application/json" : "application/octet-stream";
       return reply.type(type).send(embedded);
     }
