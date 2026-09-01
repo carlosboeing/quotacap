@@ -1,9 +1,9 @@
 import os from "node:os";
 import { parseResetText } from "./parse.js";
 import { runPty, stripAnsi } from "./pty.js";
-import type { Quota } from "./types.js";
+import type { ParsedQuota } from "./types.js";
 
-export function parseKimiTui(text: string, now = new Date()): Quota {
+export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   const cleaned = stripAnsi(text);
   const weeklyRe = /Weekly limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
   const fiveRe = /5h limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
@@ -44,13 +44,13 @@ export function parseKimiTui(text: string, now = new Date()): Quota {
     source: "tui",
     fetchedAt: now.toISOString(),
     raw: cleaned.slice(0, 4096),
-  } as unknown as Quota;
+  };
 }
 
 export const kimiAdapter = {
   id: "kimi",
   requiresAuth: "kimi login (CLI owns credentials)",
-  async poll(): Promise<Quota> {
+  async poll(): Promise<ParsedQuota> {
     // Use homedir as neutral cwd so quota modal does not depend on project path
     // and workspace-trust prompts are minimized. Fail closed if trust prompt appears.
     const transcript = await runPty({

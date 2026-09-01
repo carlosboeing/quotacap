@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { Adapter, Quota } from "./types.js";
+import type { Adapter, ParsedQuota } from "./types.js";
 const exec = promisify(execFile);
 
 interface AgyBucket {
@@ -26,7 +26,7 @@ function parseGroup(
   provider: string,
   rawJsonString: string,
   now: Date
-): Quota | null {
+): ParsedQuota | null {
   if (!Array.isArray(g.buckets)) return null;
   const weekly = g.buckets.find((b) => b.window === "weekly");
   if (!weekly) return null;
@@ -53,16 +53,16 @@ function parseGroup(
     source: "cli",
     fetchedAt: now.toISOString(),
     raw: rawJsonString,
-  } as unknown as Quota;
+  };
 }
 
-export function parseAgyUsage(parsedJson: any, now = new Date()): Quota[] {
+export function parseAgyUsage(parsedJson: any, now = new Date()): ParsedQuota[] {
   if (parsedJson?.status !== "SUCCESS") throw new Error("agy: status is not SUCCESS");
   const groups: AgyGroup[] = parsedJson?.command?.data?.groups;
   if (!Array.isArray(groups)) throw new Error("agy: no usage groups");
 
   const raw = JSON.stringify(parsedJson);
-  const rows: Quota[] = [];
+  const rows: ParsedQuota[] = [];
 
   const geminiGroup = groups.find(
     (g) => /gemini/i.test(g.name ?? "") || g.buckets?.some((b) => b.id?.startsWith("gemini"))
@@ -97,7 +97,7 @@ export function parseAgyUsage(parsedJson: any, now = new Date()): Quota[] {
 export const agyAdapter: Adapter = {
   id: "agy",
   requiresAuth: "agy login (CLI owns credentials)",
-  async poll(): Promise<Quota[]> {
+  async poll(): Promise<ParsedQuota[]> {
     const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json"], { timeout: 20000 });
     return parseAgyUsage(JSON.parse(stdout));
   },

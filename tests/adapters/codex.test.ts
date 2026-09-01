@@ -220,38 +220,23 @@ setInterval(()=>{},1000);
     expect(alive).toBe(false);
   });
 
-  it("trust prompt auto-answered via trustPrompt option", async () => {
+  it("aborts when trust prompt detected (abortOn fail-closed)", async () => {
     const script = `
 process.stdout.write('Do you trust the files in this folder? (y/n)\\n');
-let buf='';
-process.stdin.on('data', d=>{
-  buf+=d.toString();
-  // after trust answer \\r, proceed to status handling
-  if(buf.includes('\\r') && !buf.includes('/status')){
-    setTimeout(()=>{ process.stdout.write('codex ready\\n'); }, 30);
-  }
-  if(buf.includes('/status')){
-    setTimeout(()=>{
-      process.stdout.write('5h limit: 9% left (resets 14:12)\\n');
-      process.stdout.write('Weekly limit: 73% left (resets 16:36 on 7 Sep)\\n');
-    },30);
-  }
-});
 setInterval(()=>{},1000);
 `;
     const fake = await writeFake(script);
-    const transcript = await runPty({
-      file: process.execPath,
-      args: [fake],
-      settleDelayMs: 200,
-      input: "/status\r",
-      completionRegex: /Weekly limit/,
-      trustPrompt: { pattern: /Do you trust/i, response: "\r" },
-      timeoutMs: 2000,
-    });
-    expect(stripAnsi(transcript)).toMatch(/Weekly limit/);
-    const q = parseCodexTui(transcript, new Date("2026-09-01T10:00:00"));
-    expect(q.usedPct).toBe(27);
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [fake],
+        settleDelayMs: 200,
+        input: "/status\r",
+        completionRegex: /Weekly limit/,
+        abortOn: /Do you trust|Trust.*folder/i,
+        timeoutMs: 2000,
+      }),
+    ).rejects.toThrow(/untrusted workspace/i);
   });
 });
 

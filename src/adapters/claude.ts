@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseResetText } from "./parse.js";
-import type { Quota } from "./types.js";
+import type { ParsedQuota } from "./types.js";
 const exec = promisify(execFile);
 
-export function parseClaudeUsage(result: string, now = new Date()): Quota {
+export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota {
   const sessionMatch = result.match(/Current session:\s+(\d+)% used[^·]*·\s*resets\s+([^\n(]+?)\s*\(/);
   const weeklyMatch = result.match(/Current week \(all models\):\s+(\d+)% used[^·]*·\s*resets\s+([^\n(]+?)\s*\(/);
   const usedPct = weeklyMatch ? parseInt(weeklyMatch[1],10) : 0;
@@ -17,20 +17,20 @@ export function parseClaudeUsage(result: string, now = new Date()): Quota {
   return {
     provider: "claude", plan: "max", usedPct, sessionPct,
     resetsAt, periodStart, source: "cli", fetchedAt: now.toISOString(), raw: result,
-  } as unknown as Quota;
+  };
 }
 export interface ClaudeAdapter {
   id: string;
   requiresAuth: string;
   execPath: string;
-  poll(execPath?: string): Promise<Quota>;
+  poll(execPath?: string): Promise<ParsedQuota>;
 }
 
 export const claudeAdapter: ClaudeAdapter = {
   id: "claude",
   requiresAuth: "keychain:Claude Code-credentials",
   execPath: "claude",
-  async poll(execPath?: string): Promise<Quota> {
+  async poll(execPath?: string): Promise<ParsedQuota> {
     const bin = execPath ?? claudeAdapter.execPath ?? "claude";
     const { stdout } = await exec(bin, ["-p","/usage","--output-format","json"], { timeout: 8000 });
     const parsed = JSON.parse(stdout);
