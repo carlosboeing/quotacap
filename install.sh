@@ -38,8 +38,28 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA_CMD="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  SHA_CMD="shasum"
+elif command -v openssl >/dev/null 2>&1; then
+  SHA_CMD="openssl"
+else
+  echo "error  sha256sum, shasum, or openssl is required for checksum verification" >&2
+  exit 1
+fi
+
 NAME="quotacap-${OS}-${ARCH}"
-URL="https://github.com/carlosboeing/quotacap/releases/${VERSION}/download/${NAME}"
+if [[ -n "${QUOTACAP_BASE_URL:-}" ]]; then
+  BASE_URL="$QUOTACAP_BASE_URL"
+elif [[ "$VERSION" == "latest" ]]; then
+  BASE_URL="https://github.com/carlosboeing/quotacap/releases/latest/download"
+else
+  [[ "$VERSION" != v* ]] && VERSION="v$VERSION"
+  BASE_URL="https://github.com/carlosboeing/quotacap/releases/download/${VERSION}"
+fi
+URL="${BASE_URL}/${NAME}"
+SUMS_URL="${BASE_URL}/SHA256SUMS"
 TARGET="$BIN_DIR/quotacap"
 
 if [[ -e "$TARGET" && "$ASSUME_YES" != "1" ]]; then
@@ -48,13 +68,41 @@ if [[ -e "$TARGET" && "$ASSUME_YES" != "1" ]]; then
 fi
 
 mkdir -p "$BIN_DIR"
-TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+TMP_BIN="$TMP_DIR/$NAME"
+TMP_SUMS="$TMP_DIR/SHA256SUMS"
 
 echo "downloading $URL"
-curl -fsSL "$URL" -o "$TMP"
-chmod +x "$TMP"
-mv "$TMP" "$TARGET"
+curl -fsSL "$URL" -o "$TMP_BIN"
+
+echo "downloading $SUMS_URL"
+curl -fsSL "$SUMS_URL" -o "$TMP_SUMS"
+
+EXPECTED_SHA="$(tr -d '\r' < "$TMP_SUMS" | awk -v name="$NAME" '$2 == name || $2 == "*"name { print $1; exit }' | tr '[:upper:]' '[:lower:]')"
+if [[ -z "$EXPECTED_SHA" ]]; then
+  echo "error  $NAME not found in SHA256SUMS" >&2
+  exit 1
+fi
+
+case "$SHA_CMD" in
+  sha256sum) ACTUAL_SHA="$(sha256sum "$TMP_BIN" | awk '{print $1}')" ;;
+  shasum)    ACTUAL_SHA="$(shasum -a 256 "$TMP_BIN" | awk '{print $1}')" ;;
+  openssl)   ACTUAL_SHA="$(openssl dgst -sha256 "$TMP_BIN" | awk '{print $NF}')" ;;
+esac
+ACTUAL_SHA="$(echo "$ACTUAL_SHA" | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
+  echo "error  checksum mismatch for $NAME" >&2
+  echo "  expected: $EXPECTED_SHA" >&2
+  echo "  actual:   $ACTUAL_SHA" >&2
+  exit 1
+fi
+
+echo "verified checksum: $ACTUAL_SHA"
+chmod +x "$TMP_BIN"
+mv "$TMP_BIN" "$TARGET"
 
 if [[ ! -x "$TARGET" ]]; then
   echo "error  $TARGET was installed but is not executable." >&2

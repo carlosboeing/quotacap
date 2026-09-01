@@ -55,7 +55,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: The suite must pass on the exact commit being released
         run: npm test
@@ -143,7 +143,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - run: node scripts/build-binary.mjs ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
@@ -169,7 +169,7 @@ jobs:
           package-manager-cache: false   # never cache in a release build
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Trusted publishing needs npm 11.5.1 or later
         run: |
@@ -181,6 +181,13 @@ jobs:
           pattern: quotacap-*
           path: dist-bin
           merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist-bin
+          sha256sum quotacap-* > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Publish
         # No NODE_AUTH_TOKEN. With no secret it resolves to an empty string,
@@ -195,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.verify.outputs.version }}"
-          gh release create "v$version" dist-bin/quotacap-* \
+          gh release create "v$version" dist-bin/quotacap-* dist-bin/SHA256SUMS \
             --title "v$version" \
             --notes "See docs/ROADMAP.md for what ships in this release." \
             --verify-tag
