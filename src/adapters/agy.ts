@@ -43,9 +43,11 @@ export function parseAgyUsage(parsedJson: any, now = new Date()): Quota {
   if (weekly.length === 0) throw new Error("agy: no weekly bucket");
   const geminiWeekly = weekly.find((w) => w.group === "Gemini Models");
   const chosen = geminiWeekly ?? weekly.reduce((best, w) => (w.usedPct > best.usedPct ? w : best));
-  const resetsAt = chosen.bucket.reset_time;
-  if (!resetsAt || Number.isNaN(new Date(resetsAt).getTime())) throw new Error("agy: bad weekly reset_time");
-  const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
+  const rawReset = chosen.bucket.reset_time;
+  const resetDate = rawReset ? new Date(rawReset) : null;
+  if (!resetDate || Number.isNaN(resetDate.getTime())) throw new Error("agy: bad weekly reset_time");
+  const resetsAt = resetDate.toISOString();
+  const periodStart = new Date(resetDate.getTime() - 7 * 86400000).toISOString();
   const gemini5h = groups
     .filter((g: AgyGroup) => g.name === "Gemini Models")
     .flatMap((g: AgyGroup) => g.buckets ?? [])
@@ -68,7 +70,7 @@ export const agyAdapter = {
   id: "agy",
   requiresAuth: "agy login (CLI owns credentials)",
   async poll(): Promise<Quota> {
-    const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json"], { timeout: 8000 });
+    const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json"], { timeout: 20000 });
     return parseAgyUsage(JSON.parse(stdout));
   },
 };
