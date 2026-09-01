@@ -66,6 +66,7 @@ export function parseGrokTui(text: string, now = new Date()): Quota {
   }
   const mReset = cleaned.match(/Resets:\s*([A-Za-z]+\s+\d+,\s+\d+:\d+)/i);
   let resetsAt: string | null = null;
+  let estimated = false;
   if (mReset) {
     const resetsRaw = mReset[1].trim();
     resetsAt = parseGrokReset(resetsRaw, now);
@@ -74,6 +75,7 @@ export function parseGrokTui(text: string, now = new Date()): Quota {
     throw new Error("grok: bad resets timestamp");
   } else {
     resetsAt = new Date(now.getTime() + 7 * 86400000).toISOString();
+    estimated = true;
   }
   const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
   const quota: Quota = {
@@ -85,6 +87,7 @@ export function parseGrokTui(text: string, now = new Date()): Quota {
     source: "tui",
     fetchedAt: now.toISOString(),
     creditsUsd,
+    resetsAtEstimated: estimated || undefined,
   };
   (quota as any).raw = cleaned.slice(0, 4096);
   return quota as unknown as Quota;

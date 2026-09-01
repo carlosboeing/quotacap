@@ -12,6 +12,7 @@ interface Quota {
   stale?: boolean;
   ageMs?: number;
   creditsUsd?: number;
+  resetsAtEstimated?: boolean;
 }
 
 interface Rec {
@@ -170,7 +171,7 @@ function App() {
                     </div>
                   </td>
                   <td style={{ padding: "8px 6px" }}>{100 - q.usedPct}%</td>
-                  <td style={{ padding: "8px 6px" }}>{formatResetDate(q.resetsAt)}</td>
+                  <td style={{ padding: "8px 6px" }}>{formatResetDate(q.resetsAt)}{q.resetsAtEstimated && <span style={{ color: "#9ca3af", fontSize: 10, marginLeft: 4 }}>(est.)</span>}</td>
                   <td style={{ padding: "8px 6px" }}>{adv?.daysLeft != null ? adv.daysLeft.toFixed(1) : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{ideal != null ? `${ideal.toFixed(1)}%/d` : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
@@ -217,7 +218,7 @@ function App() {
                           />
                         </div>
                         <div style={{ fontSize: 12, color: "#6b7280" }}>
-                          → {Math.round(waste)}% waste if idle · resets {formatResetDate(q.resetsAt)} · ideal {ideal?.toFixed(1) ?? "—"}%/d{q.creditsUsd != null ? ` · credits $${q.creditsUsd.toFixed(2)}` : ""}
+                          → {Math.round(waste)}% waste if idle · resets {formatResetDate(q.resetsAt)}{q.resetsAtEstimated ? " (est.)" : ""} · ideal {ideal?.toFixed(1) ?? "—"}%/d{q.creditsUsd != null ? ` · credits $${q.creditsUsd.toFixed(2)}` : ""}
                         </div>
                       </div>
                     </td>

@@ -7,13 +7,16 @@ function mapRow(row:any){
     periodStart: row.period_start ?? row.periodStart,
     fetchedAt: row.fetched_at ?? row.fetchedAt,
     creditsUsd: row.credits_usd ?? row.creditsUsd,
+    resetsAtEstimated: !!(row.resets_at_estimated ?? row.resetsAtEstimated),
   };
   delete out.used_pct;
   delete out.resets_at;
   delete out.period_start;
   delete out.fetched_at;
   delete out.credits_usd;
+  delete out.resets_at_estimated;
   delete out.raw;
+  if (!out.resetsAtEstimated) delete out.resetsAtEstimated;
   return out;
 }
 
@@ -23,7 +26,8 @@ export function upsertQuota(db:any, q:any){
     return;
   }
   const credits = q.creditsUsd ?? q.credits_usd ?? null;
-  db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd) VALUES(?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits);
+  const estimated = q.resetsAtEstimated ? 1 : null;
+  db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated) VALUES(?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated);
   const day = new Date().toISOString().slice(0,10);
   db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
 }
