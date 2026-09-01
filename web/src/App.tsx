@@ -18,12 +18,14 @@ interface Rec {
   reason: string;
   wastePct?: number;
   idealRate?: number;
+  recommendationBasis?: string;
   advisories?: Array<{
     provider: string;
     daysLeft: number;
     idealRate: number;
     burnRate: number | null;
     burnMeasured: boolean;
+    paceSource?: string;
     status: string;
     wastePct: number | null;
     urgency: string;
@@ -171,7 +173,7 @@ function App() {
                   <td style={{ padding: "8px 6px" }}>{adv?.daysLeft != null ? adv.daysLeft.toFixed(1) : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{ideal != null ? `${ideal.toFixed(1)}%/d` : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{burn != null ? (burnMeasured ? `${burn.toFixed(1)}%/d` : "collecting…") : "—"}</td>
-                  <td style={{ padding: "8px 6px" }}>{status === "at risk" ? "⚠️ at risk" : "✅ on track"}</td>
+                  <td style={{ padding: "8px 6px" }}>{status === "at risk" ? "⚠️ at risk" : status === "unknown" ? "—" : "✅ on track"}</td>
                   <td style={{ padding: "8px 6px" }}>{adv?.wastePct != null ? `${Math.round(adv.wastePct)}%` : "—"}</td>
                   <td style={{ padding: "8px 6px" }}>{urgency || "—"}</td>
                   <td style={{ padding: "8px 6px" }}>

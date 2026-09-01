@@ -19,9 +19,13 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
     const resets = q.resetsAt ? formatResetDate(q.resetsAt) : "—";
     const daysLeft = a?.daysLeft != null ? a.daysLeft.toFixed(1) : "—";
     const ideal = a?.idealRate != null ? `${Math.round(a.idealRate)}%/day` : "—";
-const burn = (() => {
-      const rate =
-        a?.burnMeasured ? `${a.burnRate.toFixed(1)}%/day`
+    const burn = (() => {
+      if (!a || a.burnRate == null || a.paceSource === "unknown" || a.status === "unknown") {
+        return "—";
+      }
+      const isRecent = a.paceSource === "recent" || (a.paceSource == null && a.burnMeasured);
+      const rate = isRecent
+        ? `${a.burnRate.toFixed(1)}%/day`
         : q.periodStart ? (() => {
             const elapsed = (Date.now() - new Date(q.periodStart).getTime()) / 86400000;
             if (elapsed > 0.1) return `${((q.usedPct ?? 0) / elapsed).toFixed(1)}%/day avg`;
@@ -31,7 +35,7 @@ const burn = (() => {
       if (!rate) return "—";
       // Verdict against the ideal rate: outside the +-20% band the cell says
       // (fast)/(slow); inside it a single-width check mark.
-      const value = a?.burnMeasured ? a.burnRate : q.periodStart ? (q.usedPct ?? 0) / Math.max(0.1, (Date.now() - new Date(q.periodStart).getTime()) / 86400000) : null;
+      const value = isRecent ? a.burnRate : q.periodStart ? (q.usedPct ?? 0) / Math.max(0.1, (Date.now() - new Date(q.periodStart).getTime()) / 86400000) : null;
       const ideal = a?.idealRate;
       if (ideal != null && value != null) {
         if (value > ideal * 1.2) return `${rate} (fast)`;

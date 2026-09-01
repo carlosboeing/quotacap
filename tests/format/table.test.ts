@@ -102,4 +102,18 @@ describe("format table", () => {
       }
     }
   });
+
+  it("does not independently recompute pace for an advisory whose pace is unknown", () => {
+    const now = Date.now();
+    // Quota has periodStart older than 0.1d, but advisory is unknown
+    const quotas = [
+      { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00", periodStart: new Date(now - 4 * 86400000).toISOString() },
+    ];
+    const advisories = [
+      { provider: "kimi", wastePct: null, daysLeft: 2.9, idealRate: 29.0, burnRate: null, burnMeasured: false, paceSource: "unknown", status: "unknown" },
+    ];
+    const table = renderQuotasTable(quotas, advisories as any);
+    // Burn rate and waste must display "—", not a recomputed period average
+    expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 2\.9 \| 29%\/day \| — \| — \|/);
+  });
 });

@@ -1,5 +1,5 @@
 import type { Quota } from "../adapters/types.js";
-import type { Advisory, Urgency, BurnStatus } from "./types.js";
+import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -19,11 +19,25 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   return Math.max(0, q.usedPct / elapsedDays);
 }
 
-export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), burnMeasured=false): Advisory {
+export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), paceSourceOrMeasured:PaceSource|boolean="unknown"): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.usedPct;
   const idealRate = remaining / daysLeft;
+
+  let paceSource: PaceSource;
+  let burnMeasured: boolean;
+  if (burnRate === null) {
+    paceSource = "unknown";
+    burnMeasured = false;
+  } else if (typeof paceSourceOrMeasured === "string") {
+    paceSource = paceSourceOrMeasured;
+    burnMeasured = paceSource === "recent";
+  } else {
+    burnMeasured = paceSourceOrMeasured;
+    paceSource = burnMeasured ? "recent" : "window-average";
+  }
+
   if (burnRate === null) {
     return {
       provider: q.provider,
@@ -32,6 +46,7 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
       idealRate,
       burnRate: null,
       burnMeasured: false,
+      paceSource: "unknown",
       daysToExhaust: null,
       status: "unknown",
       wastePct: null,
@@ -47,26 +62,84 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
   else if(wastePct>20 && daysLeft<7) urgency="use soon";
   else if(burnRate > idealRate*1.4) urgency="slow down";
   else if(wastePct>10) urgency="save";
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, burnMeasured, daysToExhaust, status, wastePct, urgency };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
 }
 
 export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<string,number>(), now=new Date()){
-  if(!quotas.length) return { use: "none", reason: "no quotas yet", wastePct:0, idealRate:0, alternatives: [] as Quota[], advisories: [] as Advisory[] };
-  // Recent pace when history supports it, otherwise the average since the
-  // window opened. Both are observations. Never substitute a constant: a made
-  // up rate makes an unused quota look inexhaustible, which is how a row came
-  // to read "on track" beside "87% waste".
+  if(!quotas.length) {
+    return {
+      use: "none",
+      reason: "no quotas yet",
+      wastePct: 0,
+      idealRate: 0,
+      recommendationBasis: "none" as RecommendationBasis,
+      alternatives: [] as Quota[],
+      advisories: [] as Advisory[],
+    };
+  }
+
+  // Build advisories for every quota with honest pace sources.
   const advisories = quotas.map(q => {
     const recent = burnByProvider.get(q.provider);
-    const pace = recent ?? averagePace(q, now);
-    return computeAdvisory(q, pace, now, recent !== undefined);
+    if (recent !== undefined) {
+      return computeAdvisory(q, recent, now, "recent");
+    }
+    const avg = averagePace(q, now);
+    if (avg !== null) {
+      return computeAdvisory(q, avg, now, "window-average");
+    }
+    return computeAdvisory(q, null, now, "unknown");
   });
-  const measurable = advisories.filter((a): a is Advisory & { wastePct: number; burnRate: number } => a.wastePct !== null && a.burnRate !== null);
-  if (!measurable.length) {
-    return { use: "none", reason: "measuring pace", wastePct: 0, idealRate: 0, alternatives: quotas, advisories };
+
+  // 1. Prefer measured providers with positive avoidable waste (actionable "Use more" candidates).
+  const positiveWaste = advisories.filter(
+    (a): a is Advisory & { wastePct: number; burnRate: number } =>
+      a.paceSource !== "unknown" && a.wastePct !== null && a.wastePct > 0
+  );
+
+  if (positiveWaste.length > 0) {
+    const burnNow = positiveWaste.filter(a => a.urgency === "burn now");
+    const pool = burnNow.length ? burnNow : positiveWaste;
+    const use = pool.sort((a, b) => b.wastePct - a.wastePct)[0];
+    return {
+      use: use.provider,
+      reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
+      wastePct: use.wastePct,
+      idealRate: use.idealRate,
+      recommendationBasis: "measured-waste" as RecommendationBasis,
+      alternatives: quotas,
+      advisories,
+    };
   }
-  const burnNow = measurable.filter(a=>a.urgency==="burn now");
-  const pool = burnNow.length? burnNow : measurable;
-  const use = pool.sort((a,b)=> b.wastePct - a.wastePct)[0];
-  return { use: use.provider, reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`, wastePct:use.wastePct, idealRate:use.idealRate, alternatives: quotas, advisories };
+
+  // 2. Low-confidence fallback: rank unknown providers by remaining headroom (remaining / daysLeft).
+  const unknownProviders = advisories.filter(
+    a => a.paceSource === "unknown" && a.remaining > 0
+  );
+
+  if (unknownProviders.length > 0) {
+    const use = unknownProviders.sort(
+      (a, b) => (b.remaining / b.daysLeft) - (a.remaining / a.daysLeft)
+    )[0];
+    return {
+      use: use.provider,
+      reason: `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
+      wastePct: 0,
+      idealRate: use.idealRate,
+      recommendationBasis: "unknown-headroom" as RecommendationBasis,
+      alternatives: quotas,
+      advisories,
+    };
+  }
+
+  // 3. No meaningful candidate (e.g. all measured quotas are at risk or exhausted).
+  return {
+    use: "none",
+    reason: "all quotas at risk or exhausted",
+    wastePct: 0,
+    idealRate: 0,
+    recommendationBasis: "none" as RecommendationBasis,
+    alternatives: quotas,
+    advisories,
+  };
 }
