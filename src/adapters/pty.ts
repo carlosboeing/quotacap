@@ -84,7 +84,172 @@ function getPty(): any {
   );
 }
 
-export async function runPty(opts: PtyRunOptions): Promise<string> {
+function isBunRuntime(): boolean {
+  return typeof (globalThis as any).Bun !== "undefined" && typeof (globalThis as any).Bun.spawn === "function";
+}
+
+async function runPtyBun(opts: PtyRunOptions): Promise<string> {
+  const maxBytes = opts.maxBytes ?? 256 * 1024;
+  const cols = opts.cols ?? 140;
+  const rows = opts.rows ?? 50;
+  const readyTimeoutMs = opts.readyTimeoutMs ?? 6000;
+  if (opts.timeoutMs <= 0) throw new Error("pty: timeoutMs must be > 0");
+
+  const BunGlobal: any = (globalThis as any).Bun;
+  let transcript = "";
+  let exited = false;
+  let exitCode: number | undefined;
+
+  const proc: any = BunGlobal.spawn([opts.file, ...(opts.args ?? [])], {
+    cwd: opts.cwd ?? process.cwd(),
+    env: {
+      ...(process.env as Record<string, string>),
+      ...(opts.env ?? {}),
+      TERM: "xterm-256color",
+    },
+    stdin: "pipe",
+    pty: { cols, rows },
+  });
+
+  // Capture stdout (pty merges stdout+stderr)
+  const decoder = new TextDecoder();
+  const reader = proc.stdout.getReader();
+  let reading = true;
+  const readLoop = (async () => {
+    try {
+      while (reading) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) transcript += decoder.decode(value);
+      }
+    } catch {}
+  })();
+
+  // Poll for exit
+  const exitPoll = (async () => {
+    try {
+      const code = await proc.exited;
+      exited = true;
+      exitCode = code;
+    } catch {}
+  })();
+
+  const checkCap = () => {
+    if (Buffer.byteLength(transcript, "utf8") > maxBytes) {
+      throw new Error(`pty transcript exceeds ${maxBytes} bytes`);
+    }
+  };
+  const checkAbort = (clean: string) => {
+    if (opts.abortOn && regexTest(opts.abortOn, clean)) {
+      throw new Error(
+        `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+      );
+    }
+  };
+  const kill = async () => {
+    if (exited) return;
+    try { proc.kill(); } catch {}
+    for (let i = 0; i < 6; i++) {
+      await delay(100);
+      if (exited) return;
+    }
+    try { proc.kill(9); } catch {}
+    for (let i = 0; i < 5; i++) {
+      await delay(100);
+      if (exited) return;
+    }
+  };
+
+  try {
+    if (opts.readyRegex) {
+      const deadline = Date.now() + readyTimeoutMs;
+      let matched = false;
+      while (Date.now() < deadline) {
+        checkCap();
+        if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
+        const clean = stripAnsi(transcript);
+        checkAbort(clean);
+        if (regexTest(opts.readyRegex, clean)) {
+          matched = true;
+          break;
+        }
+        await delay(40);
+      }
+      if (!matched) {
+        await kill();
+        throw new Error(`pty ready timeout after ${readyTimeoutMs}ms`);
+      }
+      await delay(200);
+      checkCap();
+      if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+      checkAbort(stripAnsi(transcript));
+    } else if (opts.settleDelayMs) {
+      await delay(opts.settleDelayMs);
+      checkCap();
+      if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
+      checkAbort(stripAnsi(transcript));
+    }
+
+    if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+    // Write input
+    try {
+      proc.stdin.write(opts.input);
+      // flush
+      if (typeof proc.stdin.flush === "function") proc.stdin.flush();
+    } catch (e) {
+      throw new Error(`pty write failed: ${(e as Error).message}`);
+    }
+
+    if (opts.completionRegex) {
+      const deadline = Date.now() + opts.timeoutMs;
+      let done = false;
+      while (Date.now() < deadline) {
+        checkCap();
+        const clean = stripAnsi(transcript);
+        checkAbort(clean);
+        if (regexTest(opts.completionRegex, clean)) {
+          done = true;
+          break;
+        }
+        if (exited) {
+          if (!regexTest(opts.completionRegex, clean)) {
+            throw new Error(`pty exited before completion (code ${exitCode})`);
+          }
+          done = true;
+          break;
+        }
+        await delay(40);
+      }
+      if (!done) {
+        await kill();
+        throw new Error(`pty completion timeout after ${opts.timeoutMs}ms`);
+      }
+    } else {
+      const deadline = Date.now() + opts.timeoutMs;
+      while (Date.now() < deadline) {
+        checkCap();
+        checkAbort(stripAnsi(transcript));
+        if (exited) break;
+        await delay(40);
+      }
+    }
+
+    await kill();
+    reading = false;
+    try { reader.cancel(); } catch {}
+    await Promise.race([readLoop, delay(200)]);
+    checkCap();
+    checkAbort(stripAnsi(transcript));
+    return transcript;
+  } catch (e) {
+    reading = false;
+    try { reader.cancel(); } catch {}
+    await kill();
+    throw e;
+  }
+}
+
+async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   const maxBytes = opts.maxBytes ?? 256 * 1024;
   const cols = opts.cols ?? 140;
   const rows = opts.rows ?? 50;
@@ -244,4 +409,11 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
   } finally {
     cleanup();
   }
+}
+
+export async function runPty(opts: PtyRunOptions): Promise<string> {
+  if (isBunRuntime()) {
+    return runPtyBun(opts);
+  }
+  return runPtyNode(opts);
 }

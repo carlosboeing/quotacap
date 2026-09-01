@@ -140,6 +140,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -150,21 +152,37 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh dist-bin/
-          # Binary must exist
           BIN="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//)"
           test -f "$BIN"
           "$BIN" --help | grep -q "Usage: quotacap"
-          # Tarball with sidecar must exist
           TAR="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//).tar.gz"
           test -f "$TAR"
           tar -tzf "$TAR" | grep -q "^quotacap$"
           tar -tzf "$TAR" | grep -q "pty/node-pty/prebuilds"
           tar -tzf "$TAR" | grep -q "pty/node-pty/lib/index.js"
           echo "tarball contents verified for ${{ matrix.target }}"
-          # Sidecar loads in Node (same arch as runner)
-          node -e "require('./dist-bin/pty/node-pty'); console.log('pty sidecar loads')"
+          node -e "require('./dist-bin/pty/node-pty'); console.log('pty sidecar loads in Node')"
           test -x dist-bin/pty/node-pty/prebuilds/*/*spawn-helper 2>/dev/null || test -x dist-bin/pty/node-pty/prebuilds/*/*/*.node
           echo "pty sidecar verified for ${{ matrix.target }}"
+      - name: Smoke PTY via compiled runtime (fake TUI)
+        run: |
+          set -euo pipefail
+          # Exercises runPty through the same Bun runtime that the compiled binary uses.
+          # Uses an absolute Node 22 command that prints ready and stays alive.
+          bun -e "
+            import { runPty } from './dist/adapters/pty.js';
+            const t = await runPty({
+              file: process.execPath,
+              args: ['-e', \"process.stdout.write('Welcome to Kimi Code\\\\n'); let b=''; process.stdin.on('data',d=>{b+=d.toString(); if(b.includes('/usage')){setTimeout(()=>{process.stdout.write('Weekly limit  7% used   resets in 6d 19h 57m\\\\n'); process.stdout.write('5h limit      33% used  resets in 57m\\\\n');},30);}}); setInterval(()=>{},1000);\"],
+              readyRegex: /Welcome to Kimi Code/,
+              readyTimeoutMs: 3000,
+              input: '/usage\r',
+              completionRegex: /Weekly limit[\\s\\S]*5h limit/,
+              timeoutMs: 3000,
+            });
+            if (!/Weekly limit/.test(t)) throw new Error('pty smoke failed');
+            console.log('pty smoke via Bun ok for ${{ matrix.target }}');
+          "
       - uses: actions/upload-artifact@v4
         with:
           name: quotacap-${{ matrix.target }}
