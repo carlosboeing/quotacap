@@ -22,13 +22,21 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
     );
   });
 }
+const ADAPTER_TIMEOUTS: Record<string, number> = {
+  claude: 8000,
+  codex: 12000,
+  kimi: 8000,
+  grok: 14000,
+  agy: 20000,
+};
+
 export async function pollAll(enabled: string[]){
   const rawJobs = enabled.map(id => {
     const a = adapters[id];
     if (!a) return Promise.reject(new Error(`unknown adapter ${id}`));
     // manual adapter has no poll capability — skip without degraded
     if (id === "manual") return Promise.reject(new Error("manual skipped — use ingest"));
-    const timeout = id === "agy" ? 20000 : 8000;
+    const timeout = ADAPTER_TIMEOUTS[id] ?? 8000;
     return withTimeout(a.poll(), timeout);
   });
   const settled = await Promise.allSettled(rawJobs);

@@ -1,10 +1,10 @@
 # QuotaCap Roadmap
 
-## Recently shipped — 0.0.22 — 2026-09-02
+## Recently shipped — Unreleased — 2026-09-02
 
-* Security hardening — `Host` and `Origin` loopback allowlists and `X-QuotaCap-Token` on `POST /api/refresh` (`timingSafeEqual`, `~/.quotacap/token` `0600`) (#13), rooted `GET /assets/*` against absolute splats `GET /assets//etc/passwd` → `400` (#7), `0700`/`0600` on `~/.quotacap` and `quotacap.db` with `raw` column dropped and migrated, `credits_usd` + `resets_at_estimated` added (#11), exclusive `O_EXCL` pidfile with stale-steal and pinned `claude` path (#8), 24 h rolling burn and estimated resets (#6), `SHA256SUMS` + `npm ci` in release (#10)
-* Credential-free adapters — PTY runner `src/adapters/pty.ts` (`node-pty`, settle/readiness, completion regex, 256 KiB cap) and Kimi (`kimi` → `/usage`, 8 s) (#11), Codex (`codex --no-alt-screen` → `/status`, 12 s) and Grok (`grok` → `/usage`, 14 s, `creditsUsd`) via TUI scraping, `source: "tui"`, TUI-fragile fail-closed, 2–10 s poll latency (#12, #13), `agy` dual-group `agy` (Gemini) + `agy:3p` (3p) via `agy -p /usage` exec 20 s (#9), retire OAuth HTTP path — no reads of `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.grok/auth.json`, no `refresh_token`/`grant_type`/`.qc-bak`/hardcoded client ids (#14)
-* Docs truth pass — `docs/architecture.md`, `README.md`, `SECURITY.md` aligned with hardened code (#W3)
+* Security hardening — `Host` and `Origin` loopback allowlists and `X-QuotaCap-Token` on `POST /api/refresh` (`timingSafeEqual`, `~/.quotacap/token` `0600`) (#13), rooted `GET /assets/*` against absolute splats `GET /assets//etc/passwd` → `400` (#7), `0700`/`0600` on `~/.quotacap` and `quotacap.db` with `raw` column dropped and migrated, `credits_usd` + `resets_at_estimated` added (#12), exclusive `O_EXCL` pidfile with stale-steal and pinned `claude` path (#8), 24 h rolling burn (#6) and estimated resets (#12), `SHA256SUMS` + `npm ci` in release (#10)
+* Credential-free adapters — PTY runner `src/adapters/pty.ts` (`node-pty`, settle/readiness, completion regex, 256 KiB cap) and Kimi (`kimi` → `/usage`, 8 s) (#11), Codex (`codex --no-alt-screen` → `/status`, 12 s) and Grok (`grok` → `/usage`, 14 s, `creditsUsd`) via TUI scraping, `source: "tui"`, TUI-fragile fail-closed, 2–10 s poll latency (#12), `agy` dual-group `agy` (Gemini) + `agy:3p` (3p) via `agy -p /usage` exec 20 s (#9), retire OAuth HTTP path — no reads of `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.grok/auth.json`, no `refresh_token`/`grant_type`/`.qc-bak`/hardcoded client ids (#14)
+* Docs truth pass — `docs/architecture.md`, `README.md`, `SECURITY.md` aligned with hardened code (#15)
 
 ## Recently shipped — 0.0.21
 
@@ -50,6 +50,7 @@
 
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
+* Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
 
 ## Future
 
@@ -62,3 +63,4 @@
 * `tsconfig` split (node vs web) — deferred, DOM lib bleed low risk
 * `package-lock.json` un-ignore — deferred
 * Dashboard Playwright visual regression — deferred
+

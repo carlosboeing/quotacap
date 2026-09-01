@@ -20,7 +20,7 @@ QuotaCap is a local quota tracker. It records one usage window per provider and 
 
 - No tokens owned. It never reads `~/.codex/auth.json` (`CODEX_HOME`), `~/.kimi-code/credentials/kimi-code.json` or `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json` (`GROK_HOME`), or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`.
 - No `.qc-bak`, `.qc-lock`, or token writes. The old `persistCreds` helper no longer exists.
-- No `raw` provider payload at rest or on the wire. The `raw` column was dropped and migrated in `src/store/db.ts:37-48`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). `ParsedQuota.raw` is an in-memory debug slice (4096 chars) that is never written to disk.
+- No `raw` provider payload at rest or on the wire. The `raw` column was dropped and migrated in `src/store/db.ts:37-48`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). `ParsedQuota.raw` is an in-memory debug slice that is never written to disk — PTY adapters cap at 4096 chars, `claude` keeps the full result text.
 - No LAN surface. It binds `host: "127.0.0.1"` (`src/cli/index.ts:56`), not `0.0.0.0`.
 - No prompt or repo content is sent anywhere by QuotaCap. The spawned CLIs may contact their vendors as they normally do.
 
