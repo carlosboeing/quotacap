@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { parseAgyUsage, agyAdapter, agy3pAdapter } from "../../src/adapters/agy.js";
+import { parseAgyUsage, agyAdapter } from "../../src/adapters/agy.js";
 import { recommend } from "../../src/advisory/engine.js";
 import type { Quota } from "../../src/adapters/types.js";
 
@@ -225,12 +225,6 @@ describe("adapter registration", () => {
     expect(agyAdapter.requiresAuth).toMatch(/agy login/i);
     expect(agyAdapter.requiresAuth).not.toMatch(/oauth|keychain|\.gemini/i);
   });
-
-  it("registers agy:3p requiring CLI login, not a token file path", () => {
-    expect(agy3pAdapter.id).toBe("agy:3p");
-    expect(agy3pAdapter.requiresAuth).toMatch(/agy login/i);
-    expect(agy3pAdapter.requiresAuth).not.toMatch(/oauth|keychain|\.gemini/i);
-  });
 });
 
 describe("advisory handling for agy:3p", () => {
@@ -367,9 +361,5 @@ describe("agyAdapter live poll", () => {
       expect(threeP.sessionPct).toBeGreaterThanOrEqual(0);
       expect(threeP.sessionPct).toBeLessThanOrEqual(100);
     }
-
-    const single3p = await agy3pAdapter.poll();
-    expect(single3p.provider).toBe("agy:3p");
-    expect(single3p.usedPct).toBe(threeP.usedPct);
   }, 30000);
 });

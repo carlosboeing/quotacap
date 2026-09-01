@@ -125,3 +125,34 @@ describe("daemon single-instance", () => {
     }
   });
 });
+
+describe("pollOnce", () => {
+  it("flattens array-valued adapter poll results into the store", async () => {
+    const { adapters } = await import("../src/adapters/index.js");
+    const { pollOnce } = await import("../src/daemon.js");
+    const { openDb, migrate } = await import("../src/store/db.js");
+    const { getLatestByProvider } = await import("../src/store/quotas.js");
+    const db = openDb(":memory:");
+    migrate(db);
+
+    adapters["test-dual"] = {
+      id: "test-dual",
+      requiresAuth: "none",
+      async poll() {
+        return [
+          { provider: "test-dual:1", plan: "p1", usedPct: 10, resetsAt: new Date().toISOString(), periodStart: new Date().toISOString(), raw: "{}", source: "cli", fetchedAt: new Date().toISOString() },
+          { provider: "test-dual:2", plan: "p2", usedPct: 20, resetsAt: new Date().toISOString(), periodStart: new Date().toISOString(), raw: "{}", source: "cli", fetchedAt: new Date().toISOString() },
+        ];
+      },
+    };
+
+    try {
+      const results = await pollOnce(db, ["test-dual"]);
+      expect(results[0].status).toBe("fulfilled");
+      expect(getLatestByProvider(db, "test-dual:1")?.usedPct).toBe(10);
+      expect(getLatestByProvider(db, "test-dual:2")?.usedPct).toBe(20);
+    } finally {
+      delete adapters["test-dual"];
+    }
+  });
+});

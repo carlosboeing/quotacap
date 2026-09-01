@@ -94,28 +94,11 @@ export function parseAgyUsage(parsedJson: any, now = new Date()): Quota[] {
   return rows;
 }
 
-export interface AgyAdapter {
-  id: "agy";
-  requiresAuth: string;
-  poll(): Promise<Quota[]>;
-}
-
-export const agyAdapter: AgyAdapter & Adapter = {
+export const agyAdapter: Adapter = {
   id: "agy",
   requiresAuth: "agy login (CLI owns credentials)",
-  async poll(): Promise<any> {
+  async poll(): Promise<Quota[]> {
     const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json"], { timeout: 20000 });
     return parseAgyUsage(JSON.parse(stdout));
-  },
-};
-
-export const agy3pAdapter: Adapter = {
-  id: "agy:3p",
-  requiresAuth: "agy login (CLI owns credentials)",
-  async poll(): Promise<Quota> {
-    const rows = await agyAdapter.poll();
-    const threeP = rows.find((r) => r.provider === "agy:3p");
-    if (!threeP) throw new Error("agy: no 3p quota in usage output");
-    return threeP;
   },
 };
