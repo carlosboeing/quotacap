@@ -1,8 +1,8 @@
 ---
 title: QuotaCap architecture
 type: architecture
-authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)"]
-last_reviewed: 2026-08-29
+authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)", "Gemini 3.7 Flash (agy)"]
+last_reviewed: 2026-09-01
 scope: [quotacap, architecture, system]
 ---
 
@@ -12,7 +12,7 @@ scope: [quotacap, architecture, system]
 
 ## Position
 
-Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage limits with different reset times. QuotaCap currently normalizes one usage window per provider. Across several subscriptions, this can reveal unused allowance on one plan and an early-limit risk on another. QuotaCap estimates which provider to use next from remaining usage and recent pace when available:
+Claude Code, Codex, Kimi Code, Grok, and Antigravity can expose multiple concurrent usage limits with different reset times. QuotaCap currently normalizes one usage window per provider. Across several subscriptions, this can reveal unused allowance on one plan and an early-limit risk on another. QuotaCap estimates which provider to use next from remaining usage and recent pace when available:
 
 - Local and self-contained. Everything lives in `~/.quotacap/`: config, database, pidfile, logs.
 - Existing CLI sessions. Live adapters reuse the OAuth sessions the agents already store and need no separate API keys.
@@ -22,7 +22,7 @@ Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage lim
 
 | Component | Responsibility | Key files |
 |---|---|---|
-| Adapters | Poll one agent CLI for its current usage snapshot (% used, reset time, plan). Fail closed: a failing provider becomes a degraded row, never a broken poll. | `src/adapters/claude.ts`, `codex.ts`, `kimi.ts`, `grok.ts`, `manual.ts`, `types.ts` |
+| Adapters | Poll one agent CLI for its current usage snapshot (% used, reset time, plan). Fail closed: a failing provider becomes a degraded row, never a broken poll. | `src/adapters/claude.ts`, `codex.ts`, `kimi.ts`, `grok.ts`, `agy.ts`, `manual.ts`, `types.ts` |
 | Adapter core | Shared HTTP and token plumbing. JSON fetch with an 8s timeout, OAuth refresh using the stored refresh token, in-place save of the new token pair with one backup copy. | `src/adapters/core.ts` |
 | Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, and the 24-hour rolling usage pace. | `src/store/db.ts`, `src/store/quotas.ts` |
 | Daemon | The poll loop. `pollOnce` every 15 minutes plus jitter, `Promise.allSettled` isolation, single-instance pidfile guard, keeps running until SIGINT or SIGTERM. | `src/daemon.ts` |
@@ -32,7 +32,7 @@ Claude Code, Codex, Kimi Code, and Grok can expose multiple concurrent usage lim
 | MCP server | stdio JSON-RPC server. Methods: `initialize`, `tools/list`, `tools/call` (`get_quotas`, `get_recommendation`, `forecast`), `ping`. Calls the same HTTP handler and translates a down daemon into a readable error. | `src/mcp/server.ts` |
 | Web dashboard | Vite and React. Summary banner, 7-day strip, quota table, collapsible rows. Built at publish time and embedded into the package. | `web/` |
 | Format layer | Shared table renderer for CLI and MCP. Reset dates as month name plus local time, burn glyphs, alignment. | `src/format/table.ts`, `src/format/parse.ts` |
-| Config | Zod-validated `~/.quotacap/config.json`. Defaults: `port: 8787`, `pollMinutes: 15`, `enabledProviders: ["claude","codex","kimi","grok"]`. No secrets; credentials stay with each CLI. | `src/config.ts` |
+| Config | Zod-validated `~/.quotacap/config.json`. Defaults: `port: 8787`, `pollMinutes: 15`, `enabledProviders: ["claude","codex","kimi","grok","agy"]`. No secrets; credentials stay with each CLI. | `src/config.ts` |
 
 ## System diagram
 
@@ -42,12 +42,14 @@ flowchart LR
   CX["Codex"]
   KM["Kimi Code"]
   GK["Grok"]
+  AG["Antigravity / Agy"]
   MN["manual-paste / any provider"]
 
   CP -->|headless claude -p /usage| AD["Adapters"]
   CX -->|wham/usage| AD
   KM -->|coding/v1/usages| AD
   GK -->|cli-chat-proxy billing| AD
+  AG -->|headless agy -p /usage| AD
   MN -->|ingest text| AD
 
   AD -->|normalized quota rows| ST["SQLite ~/.quotacap/quotacap.db"]

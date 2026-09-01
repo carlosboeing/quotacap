@@ -3,6 +3,7 @@ import { manualAdapter } from "./manual.js";
 import { codexAdapter } from "./codex.js";
 import { kimiAdapter } from "./kimi.js";
 import { grokAdapter } from "./grok.js";
+import { agyAdapter } from "./agy.js";
 import type { Adapter } from "./types.js";
 export const adapters: Record<string, Adapter> = {
   claude: claudeAdapter as Adapter,
@@ -10,6 +11,7 @@ export const adapters: Record<string, Adapter> = {
   codex: codexAdapter,
   kimi: kimiAdapter,
   grok: grokAdapter,
+  agy: agyAdapter,
 };
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {

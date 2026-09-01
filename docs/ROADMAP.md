@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.21
+
+* Provider adapter — Antigravity (`agy`): headless `agy -p /usage --output-format json`, maps Gemini weekly bucket and 5h session window, fail-closed degraded rows; `enabledProviders` defaults to all five
+
 ## Recently shipped — 0.0.20
 
 * npm `package.json` description, MIT license, and keywords (registry listing no longer the old README extract)
@@ -38,7 +42,6 @@
 
 ## Next
 
-* Antigravity (agy) quota — direct cloudcode-pa OAuth now 401s (June 2026 Gemini CLI OAuth shutdown); needs the agy CLI local language-server path
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation
 

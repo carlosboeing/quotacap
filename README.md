@@ -1,6 +1,6 @@
 # QuotaCap
 
-QuotaCap helps you get more from the AI coding subscriptions you already pay for: Claude Code, Codex, Kimi Code, and Grok. It tracks one current usage window and reset time for each plan, then estimates which plan to use next from remaining usage and recent pace when available.
+QuotaCap helps you get more from the AI coding subscriptions you already pay for: Claude Code, Codex, Kimi Code, Grok, and Antigravity. It tracks one current usage window and reset time for each plan, then estimates which plan to use next from remaining usage and recent pace when available.
 
 [![npm](https://img.shields.io/npm/v/quotacap)](https://www.npmjs.com/package/quotacap)
 [![CI](https://github.com/carlosboeing/quotacap/actions/workflows/test.yml/badge.svg)](https://github.com/carlosboeing/quotacap/actions)
@@ -22,7 +22,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 | Codex | Live |
 | Kimi Code | Live |
 | Grok | Live |
-| Antigravity / Gemini | Manual (`quotacap ingest`) |
+| Antigravity | Live |
 
 Live adapters reuse the matching CLI login.
 
@@ -75,7 +75,7 @@ Tools: `get_quotas`, `get_recommendation`, `forecast`.
 
 ## Privacy
 
-Bound to `127.0.0.1`, with usage history stored under `~/.quotacap/`. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login. Codex, Kimi, and Grok adapters may refresh expired OAuth tokens and update the CLI-owned credential file. QuotaCap stores no API keys.
+Bound to `127.0.0.1`, with usage history stored under `~/.quotacap/`. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login (Claude Code, Antigravity). Codex, Kimi, and Grok adapters may refresh expired OAuth tokens and update the CLI-owned credential file. QuotaCap stores no API keys.
 
 ## Docs
 
