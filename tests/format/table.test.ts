@@ -37,7 +37,7 @@ describe("format table", () => {
       { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00", periodStart: new Date(now - 4 * 86400000).toISOString() },
     ];
     const advisories = [
-      { provider: "kimi", wastePct: 78.0, daysLeft: 2.9, idealRate: 29.0, burnRate: 2, burnMeasured: false, status: "on track" },
+      { provider: "kimi", wastePct: 78.0, daysLeft: 2.9, idealRate: 29.0, burnRate: 4.0, burnMeasured: false, paceSource: "window-average", status: "on track" },
     ];
     const table = renderQuotasTable(quotas, advisories);
     expect(table).toMatch(/4.0%\/day avg \(slow\)/);
@@ -115,5 +115,20 @@ describe("format table", () => {
     const table = renderQuotasTable(quotas, advisories as any);
     // Burn rate and waste must display "—", not a recomputed period average
     expect(table).toMatch(/\| kimi \| 16% \| 84% \|.*\| 2\.9 \| 29%\/day \| — \| — \|/);
+  });
+
+  it("uses the advisory burn rate and does not independently recompute from Date.now()", () => {
+    const now = Date.now();
+    // periodStart is 4 days ago with usedPct: 16 (would compute 4.0%/day if recomputed from periodStart)
+    // but the advisory was passed with burnRate: 7.2 and paceSource: "window-average"
+    const quotas = [
+      { provider: "kimi", usedPct: 16, resetsAt: "2026-09-01T09:02:00+10:00", periodStart: new Date(now - 4 * 86400000).toISOString() },
+    ];
+    const advisories = [
+      { provider: "kimi", wastePct: 60.0, daysLeft: 2.9, idealRate: 29.0, burnRate: 7.2, burnMeasured: false, paceSource: "window-average", status: "on track" },
+    ];
+    const table = renderQuotasTable(quotas, advisories as any);
+    expect(table).toMatch(/7\.2%\/day avg \(slow\)/);
+    expect(table).not.toMatch(/4\.0%/);
   });
 });

@@ -33,6 +33,7 @@ describe("cli", () => {
       const j = JSON.parse(stdout);
       expect(j.use).toBe("kimi");
       expect(j.recommendationBasis).toBe("unknown-headroom");
+      expect(j.wastePct).toBeNull();
       expect(j.reason).toMatch(/Measuring pace; 99% remains with \d\.\dd until reset/);
       expect(j.advisories[0].status).toBe("unknown");
       expect(j.advisories[0].burnRate).toBeNull();

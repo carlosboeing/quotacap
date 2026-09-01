@@ -1,7 +1,7 @@
 export type Urgency = "burn now"|"use soon"|"slow down"|"save"|"on track";
 export type BurnStatus = "at risk"|"on track"|"unknown";
 export type PaceSource = "recent"|"window-average"|"unknown";
-export type RecommendationBasis = "measured-waste"|"unknown-headroom"|"none";
+export type RecommendationBasis = "known-waste"|"unknown-headroom"|"none";
 
 export interface Advisory {
   provider:string;
@@ -15,4 +15,14 @@ export interface Advisory {
   status:BurnStatus;
   wastePct:number | null;
   urgency:Urgency;
+}
+
+export interface Recommendation {
+  use: string;
+  reason: string;
+  wastePct: number | null;
+  idealRate: number;
+  recommendationBasis: RecommendationBasis;
+  alternatives: any[];
+  advisories: Advisory[];
 }

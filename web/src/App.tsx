@@ -16,7 +16,7 @@ interface Quota {
 interface Rec {
   use: string;
   reason: string;
-  wastePct?: number;
+  wastePct?: number | null;
   idealRate?: number;
   recommendationBasis?: string;
   advisories?: Array<{

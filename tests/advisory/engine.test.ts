@@ -91,6 +91,7 @@ describe("advisory", () => {
     expect(adv.status).toBe("unknown");
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
+    expect(rec.wastePct).toBeNull();
     expect(rec.reason).toMatch(/Measuring pace; 99% remains with 7\.0d until reset/);
   });
 
@@ -110,7 +111,7 @@ describe("advisory", () => {
     } as any;
     const rec = recommend([freshKimi, measuredClaude], "any", new Map(), now);
     expect(rec.use).toBe("claude");
-    expect(rec.recommendationBasis).toBe("measured-waste");
+    expect(rec.recommendationBasis).toBe("known-waste");
     expect(rec.reason).toMatch(/77% waste in 4\.0d/);
     expect(rec.advisories.find(a => a.provider === "kimi")?.paceSource).toBe("unknown");
     expect(rec.advisories.find(a => a.provider === "claude")?.paceSource).toBe("window-average");
@@ -134,6 +135,7 @@ describe("advisory", () => {
     const rec = recommend([atRiskClaude, freshKimi], "any", new Map([["claude", 25]]), now);
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
+    expect(rec.wastePct).toBeNull();
     expect(rec.reason).toMatch(/Measuring pace; 98% remains with 2\.0d until reset/);
     const claudeAdv = rec.advisories.find(a => a.provider === "claude");
     expect(claudeAdv?.status).toBe("at risk");
@@ -160,6 +162,7 @@ describe("advisory", () => {
     const rec = recommend([freshClaude, freshKimi], "any", new Map(), now);
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
+    expect(rec.wastePct).toBeNull();
     expect(rec.reason).toMatch(/Measuring pace; 90% remains with 3\.0d until reset/);
   });
 
@@ -178,9 +181,50 @@ describe("advisory", () => {
     const q = { provider:"codex", usedPct:3, periodStart:"2026-08-30T06:00:00+10:00", resetsAt:"2026-09-05T06:00:00+10:00" } as any;
     const rec = recommend([q], "any", new Map(), now);
     expect(rec.use).toBe("codex");
-    expect(rec.recommendationBasis).toBe("measured-waste");
+    expect(rec.recommendationBasis).toBe("known-waste");
     expect(rec.advisories[0].burnRate).toBeCloseTo(3, 5);
     expect(Math.round(rec.advisories[0].wastePct!)).toBe(82);
+  });
+
+  it("distinguishes recent and window-average pace sources under known-waste", () => {
+    const now = new Date("2026-08-31T06:00:00+10:00");
+    const recentProvider = {
+      provider: "claude",
+      usedPct: 10,
+      periodStart: "2026-08-28T06:00:00+10:00",
+      resetsAt: "2026-09-04T06:00:00+10:00",
+    } as any;
+    const windowAvgProvider = {
+      provider: "kimi",
+      usedPct: 10,
+      periodStart: "2026-08-28T06:00:00+10:00",
+      resetsAt: "2026-09-04T06:00:00+10:00",
+    } as any;
+    const recRecent = recommend([recentProvider], "any", new Map([["claude", 5]]), now);
+    expect(recRecent.recommendationBasis).toBe("known-waste");
+    expect(recRecent.advisories[0].paceSource).toBe("recent");
+
+    const recAvg = recommend([windowAvgProvider], "any", new Map(), now);
+    expect(recAvg.recommendationBasis).toBe("known-waste");
+    expect(recAvg.advisories[0].paceSource).toBe("window-average");
+  });
+
+  it("returns no priority when all measured providers are on pace and healthy", () => {
+    const now = new Date("2026-08-31T06:00:00+10:00");
+    // 50% used with 5 days left -> ideal rate = 10%/day
+    // measured burnRate = 10%/day -> exactly on ideal pace, wastePct = 0, status = "on track"
+    const onTrackClaude = {
+      provider: "claude",
+      usedPct: 50,
+      periodStart: "2026-08-26T06:00:00+10:00",
+      resetsAt: "2026-09-05T06:00:00+10:00",
+    } as any;
+    const rec = recommend([onTrackClaude], "any", new Map([["claude", 10]]), now);
+    expect(rec.use).toBe("none");
+    expect(rec.recommendationBasis).toBe("none");
+    expect(rec.reason).toBe("No subscription needs priority");
+    expect(rec.advisories[0].status).toBe("on track");
+    expect(rec.advisories[0].wastePct).toBe(0);
   });
 
   it("returns no recommendation when all quotas are at risk and no unknown headroom exists", () => {

@@ -106,7 +106,7 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
       reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
       wastePct: use.wastePct,
       idealRate: use.idealRate,
-      recommendationBasis: "measured-waste" as RecommendationBasis,
+      recommendationBasis: "known-waste" as RecommendationBasis,
       alternatives: quotas,
       advisories,
     };
@@ -124,7 +124,7 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
     return {
       use: use.provider,
       reason: `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
-      wastePct: 0,
+      wastePct: null,
       idealRate: use.idealRate,
       recommendationBasis: "unknown-headroom" as RecommendationBasis,
       alternatives: quotas,
@@ -132,7 +132,24 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
     };
   }
 
-  // 3. No meaningful candidate (e.g. all measured quotas are at risk or exhausted).
+  // 3. Check if all measured providers are healthy and on pace (status "on track").
+  const onTrack = advisories.filter(
+    a => a.paceSource !== "unknown" && a.status === "on track" && a.remaining > 0
+  );
+
+  if (onTrack.length > 0) {
+    return {
+      use: "none",
+      reason: "No subscription needs priority",
+      wastePct: 0,
+      idealRate: 0,
+      recommendationBasis: "none" as RecommendationBasis,
+      alternatives: quotas,
+      advisories,
+    };
+  }
+
+  // 4. No meaningful candidate (e.g. all quotas at risk or exhausted).
   return {
     use: "none",
     reason: "all quotas at risk or exhausted",

@@ -23,19 +23,17 @@ export function renderQuotasTable(quotas: any[], advisories: any[] = []): string
       if (!a || a.burnRate == null || a.paceSource === "unknown" || a.status === "unknown") {
         return "—";
       }
+      const isWindowAvg = a.paceSource === "window-average";
       const isRecent = a.paceSource === "recent" || (a.paceSource == null && a.burnMeasured);
-      const rate = isRecent
-        ? `${a.burnRate.toFixed(1)}%/day`
-        : q.periodStart ? (() => {
-            const elapsed = (Date.now() - new Date(q.periodStart).getTime()) / 86400000;
-            if (elapsed > 0.1) return `${((q.usedPct ?? 0) / elapsed).toFixed(1)}%/day avg`;
-            return null;
-          })()
-        : null;
-      if (!rate) return "—";
+      if (!isWindowAvg && !isRecent) {
+        return "—";
+      }
+      const rate = isWindowAvg
+        ? `${a.burnRate.toFixed(1)}%/day avg`
+        : `${a.burnRate.toFixed(1)}%/day`;
       // Verdict against the ideal rate: outside the +-20% band the cell says
       // (fast)/(slow); inside it a single-width check mark.
-      const value = isRecent ? a.burnRate : q.periodStart ? (q.usedPct ?? 0) / Math.max(0.1, (Date.now() - new Date(q.periodStart).getTime()) / 86400000) : null;
+      const value = a.burnRate;
       const ideal = a?.idealRate;
       if (ideal != null && value != null) {
         if (value > ideal * 1.2) return `${rate} (fast)`;
