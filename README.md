@@ -73,9 +73,36 @@ Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
 
 Tools: `get_quotas`, `get_recommendation`, `forecast`.
 
+## HTTP API
+
+The local web server listens on `127.0.0.1:8787` (configured via `QUOTACAP_URL` or `~/.quotacap/config.json`). All endpoints enforce loopback `Host` (`127.0.0.1`, `localhost`, `[::1]`) and reject foreign `Origin` headers (403) to prevent DNS rebinding and cross-origin requests.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | None | Health check and uptime |
+| `GET` | `/api/quotas` | None | Current quotas for all providers |
+| `GET` | `/api/recommendation` | None | Current advisory on which provider to use next |
+| `GET` | `/api/token` | Same-origin | Shared secret token for the dashboard |
+| `POST` | `/api/refresh` | `X-QuotaCap-Token` | Trigger an immediate adapter poll (debounced to 60s) |
+
+### Curl examples
+
+Read current quotas:
+
+```bash
+curl http://localhost:8787/api/quotas
+```
+
+Trigger an immediate refresh (requires the shared secret in `~/.quotacap/token` with mode `0600`):
+
+```bash
+curl -X POST http://localhost:8787/api/refresh \
+  -H "X-QuotaCap-Token: $(cat ~/.quotacap/token)"
+```
+
 ## Privacy
 
-Bound to `127.0.0.1`, with usage history stored under `~/.quotacap/`. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login (Claude Code, Antigravity). Codex, Kimi, and Grok adapters may refresh expired OAuth tokens and update the CLI-owned credential file. QuotaCap stores no API keys.
+Bound to `127.0.0.1`, with usage history and authentication token stored under `~/.quotacap/` (directory mode `0700`, files mode `0600`). HTTP endpoints enforce loopback `Host` and `Origin` allowlists to prevent DNS rebinding and cross-origin access. Mutating routes (`POST /api/refresh`) require the `X-QuotaCap-Token` header. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login (Claude Code, Antigravity). Codex, Kimi, and Grok adapters run credential-free PTY sessions. QuotaCap stores no API keys.
 
 ## Docs
 

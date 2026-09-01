@@ -45,12 +45,13 @@ program.command("ingest").requiredOption("--provider <p>").requiredOption("--tex
 });
 program.command("web").option("--port <n>").action(async (o)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
-  const { isDaemonRunning, startDaemon } = await import("../daemon.js");
+  const { isDaemonRunning, startDaemon, ensureDaemonToken } = await import("../daemon.js");
   if (!isDaemonRunning()) {
     const started = await startDaemon();
     if (!started.alreadyRunning) console.log("daemon started (auto)");
   }
-  const app=buildApp(db);
+  const token = ensureDaemonToken();
+  const app=buildApp(db, { token });
   const port=o.port?parseInt(o.port): (await readConfig()).port;
   await app.listen({port, host:"127.0.0.1"});
   console.log(`QuotaCap at http://localhost:${port}`);

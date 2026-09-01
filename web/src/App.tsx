@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { fetchQuotas, fetchRecommendation } from "./api.js";
+import { fetchQuotas, fetchRecommendation, refreshQuotas } from "./api.js";
 
 interface Quota {
   provider: string;
@@ -106,7 +106,7 @@ function App() {
       )}
       {hasStale && (
         <div data-testid="stale-banner" style={{ background: "#ffedd5", padding: 8, borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
-          some quotas stale — <button onClick={() => fetch("/api/refresh", { method: "POST" }).then(() => location.reload())} style={{ border: "1px solid #d1d5db", background: "#fff", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}>Refresh now</button>
+          some quotas stale — <button onClick={() => refreshQuotas().then(() => location.reload())} style={{ border: "1px solid #d1d5db", background: "#fff", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}>Refresh now</button>
         </div>
       )}
 
