@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.21
+
+- Provider adapter: Antigravity (`agy`) — headless `agy -p /usage --output-format json`, extracts Gemini weekly bucket and 5h session window, fail-closed error handling; `enabledProviders` defaults to claude, codex, kimi, grok, agy
+
 ## 0.0.20
 
 - npm metadata: `description`, `license: MIT`, `keywords`, `bugs` (replaces the old README-extract listing)
