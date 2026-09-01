@@ -1,91 +1,111 @@
 import os from "node:os";
-import path from "node:path";
-import { readJsonFile, getJson, postForm, persistCreds } from "./core.js";
+import { runPty, stripAnsi } from "./pty.js";
 import type { Quota } from "./types.js";
 
-const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
-const REFRESH_URL = "https://auth.x.ai/oauth2/token";
-const CLIENT_VERSION = "1.0.0";
+const FULL_MONTHS: Record<string, number> = {
+  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+};
+const ABBR_MONTHS: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
 
-export function parseGrokUsage(body: any, now = new Date()): Quota {
-  const cfg = body?.config;
-  if (!cfg) throw new Error("grok: no config in billing response");
-  const pct = cfg.creditUsagePercent;
-  if (typeof pct !== "number") throw new Error("grok: creditUsagePercent missing");
-  const period = cfg.currentPeriod ?? {};
-  return {
-    provider: "grok",
-    plan: body?.subscriptionTier ?? "unknown",
-    usedPct: pct,
-    resetsAt: period.end ?? new Date(now.getTime() + 7 * 86400000).toISOString(),
-    periodStart: period.start ?? new Date(now.getTime() - 7 * 86400000).toISOString(),
-    source: "api",
-    fetchedAt: now.toISOString(),
-    raw: JSON.stringify(body),
-  } as unknown as Quota;
-}
-
-interface GrokEntry {
-  key?: string;
-  refresh_token?: string;
-  oidc_client_id?: string;
-  expires_at?: string;
-}
-
-function grokHome(): string {
-  return process.env.GROK_HOME ?? path.join(os.homedir(), ".grok");
-}
-
-async function loadEntry(): Promise<{ file: string; entryKey: string; entry: GrokEntry }> {
-  const file = path.join(grokHome(), "auth.json");
-  const auth = await readJsonFile<Record<string, GrokEntry>>(file);
-  for (const [entryKey, entry] of Object.entries(auth)) {
-    if (entry.refresh_token) return { file, entryKey, entry };
+function parseGrokReset(raw: string, now: Date): string | null {
+  const m = raw.trim().match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const monStr = m[1].toLowerCase();
+  const day = parseInt(m[2], 10);
+  const hours = parseInt(m[3], 10);
+  const mins = parseInt(m[4], 10);
+  let month = FULL_MONTHS[monStr];
+  if (month === undefined) month = ABBR_MONTHS[monStr.slice(0, 3)];
+  if (month === undefined || !Number.isFinite(day) || !Number.isFinite(hours) || !Number.isFinite(mins)) return null;
+  if (day < 1 || day > 31 || hours < 0 || hours > 23 || mins < 0 || mins > 59) return null;
+  let year = now.getFullYear();
+  let dt = new Date(year, month, day, hours, mins, 0, 0);
+  if (Number.isNaN(dt.getTime())) return null;
+  if (dt.getTime() < now.getTime()) {
+    dt = new Date(year + 1, month, day, hours, mins, 0, 0);
+    if (Number.isNaN(dt.getTime())) return null;
   }
-  throw new Error("grok: no refresh_token in auth.json — run `grok login`");
+  return dt.toISOString();
+}
+
+export function parseGrokTui(text: string, now = new Date()): Quota {
+  const cleaned = stripAnsi(text);
+  const planMatch = cleaned.match(/Weekly lim[i!l]t\s*\(([^)]+)\)/i);
+  let plan = "unknown";
+  if (planMatch) {
+    plan = planMatch[1].trim();
+  } else {
+    const tier = cleaned.match(/\b(SuperGrok|Grok\s+Pro|Grok\s+Enterprise|Grok\s+Basic)\b/i);
+    if (tier) plan = tier[1].trim();
+  }
+  const pctRe = /Weekly lim[i!l]t[^\n%]*?(\d+)%/i;
+  const mPct = cleaned.match(pctRe);
+  let usedPct: number | null = null;
+  if (mPct) {
+    const v = parseInt(mPct[1], 10);
+    if (Number.isFinite(v) && v >= 0 && v <= 100) usedPct = v;
+  }
+  if (usedPct === null) {
+    const barRe = /[█░▓▓]+\s*(\d+)%/;
+    const b = cleaned.match(barRe);
+    if (b) {
+      const v = parseInt(b[1], 10);
+      if (Number.isFinite(v) && v >= 0 && v <= 100) usedPct = v;
+    }
+  }
+  if (usedPct === null) throw new Error("grok: weekly percent not found in TUI output");
+  let creditsUsd: number | undefined;
+  const mCred = cleaned.match(/Credits:\s*\$([0-9]+(?:\.[0-9]+)?)/i);
+  if (mCred) {
+    const v = parseFloat(mCred[1]);
+    if (Number.isFinite(v) && v >= 0) creditsUsd = v;
+  }
+  const mReset = cleaned.match(/Resets:\s*([A-Za-z]+\s+\d+,\s+\d+:\d+)/i);
+  let resetsAt: string | null = null;
+  if (mReset) {
+    const resetsRaw = mReset[1].trim();
+    resetsAt = parseGrokReset(resetsRaw, now);
+    if (!resetsAt) throw new Error(`grok: bad resets timestamp "${resetsRaw}"`);
+  } else if (cleaned.match(/Resets:/i)) {
+    throw new Error("grok: bad resets timestamp");
+  } else {
+    resetsAt = new Date(now.getTime() + 7 * 86400000).toISOString();
+  }
+  const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
+  const quota: Quota = {
+    provider: "grok",
+    plan,
+    usedPct,
+    resetsAt,
+    periodStart,
+    source: "tui",
+    fetchedAt: now.toISOString(),
+    creditsUsd,
+  };
+  (quota as any).raw = cleaned.slice(0, 4096);
+  return quota as unknown as Quota;
 }
 
 export const grokAdapter = {
   id: "grok",
-  requiresAuth: "~/.grok/auth.json (grok login)",
+  requiresAuth: "grok login (CLI owns credentials)",
   async poll(): Promise<Quota> {
-    const { file, entryKey, entry } = await loadEntry();
-    const expiryMs = entry.expires_at ? Date.parse(String(entry.expires_at)) : NaN;
-    const reuseToken = Boolean(entry.key) && Number.isFinite(expiryMs) && expiryMs - 60000 > Date.now();
-    let token: string;
-    if (reuseToken) {
-      token = entry.key as string;
-    } else {
-      const tok = await postForm(REFRESH_URL, {
-        grant_type: "refresh_token",
-        client_id: entry.oidc_client_id ?? "",
-        refresh_token: entry.refresh_token ?? "",
-      });
-      if (!tok.access_token) throw new Error("grok: refresh returned no access_token");
-      await persistCreds<Record<string, GrokEntry>>(file, (cur) => {
-        const next = { ...cur };
-        const target = next[entryKey];
-        if (target) {
-          next[entryKey] = {
-            ...target,
-            key: tok.access_token ?? target.key,
-            refresh_token: tok.refresh_token ?? target.refresh_token,
-            expires_at:
-              tok.expires_at ??
-              (tok.expires_in ? new Date(Date.now() + Number(tok.expires_in) * 1000).toISOString() : target.expires_at),
-          };
-        }
-        return next;
-      });
-      token = String(tok.access_token);
-    }
-    const body = await getJson(BILLING_URL, {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      "x-grok-client-version": CLIENT_VERSION,
-      "x-grok-client-surface": "grok-build",
-      "X-XAI-Token-Auth": "xai-grok-cli",
+    const transcript = await runPty({
+      file: "grok",
+      args: [],
+      cwd: os.homedir(),
+      cols: 140,
+      rows: 50,
+      settleDelayMs: 5000,
+      input: "/usage\r",
+      completionRegex: /Weekly lim|Credits:/i,
+      timeoutMs: 14000,
+      maxBytes: 256 * 1024,
     });
-    return parseGrokUsage(body);
+    return parseGrokTui(transcript);
   },
 };

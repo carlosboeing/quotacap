@@ -11,6 +11,7 @@ interface Quota {
   fetchedAt?: string;
   stale?: boolean;
   ageMs?: number;
+  creditsUsd?: number;
 }
 
 interface Rec {
@@ -152,7 +153,7 @@ function App() {
               <React.Fragment key={q.provider}>
                 <tr style={{ background: waste > 30 ? "#fff7ed" : isStale ? "#fffbeb" : undefined, borderBottom: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "8px 6px", fontWeight: 600 }}>
-                    {q.provider} {isStale && <span style={{ background: "#f59e0b", color: "#fff", fontSize: 10, padding: "2px 4px", borderRadius: 4, marginLeft: 6 }}>stale</span>}
+                    {q.provider} {q.creditsUsd != null && <span style={{ background: "#e0f2fe", color: "#0c4a6e", fontSize: 10, padding: "2px 4px", borderRadius: 4, marginLeft: 6 }}>${q.creditsUsd.toFixed(2)}</span>} {isStale && <span style={{ background: "#f59e0b", color: "#fff", fontSize: 10, padding: "2px 4px", borderRadius: 4, marginLeft: 6 }}>stale</span>}
                   </td>
                   <td style={{ padding: "8px 6px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -216,7 +217,7 @@ function App() {
                           />
                         </div>
                         <div style={{ fontSize: 12, color: "#6b7280" }}>
-                          → {Math.round(waste)}% waste if idle · resets {formatResetDate(q.resetsAt)} · ideal {ideal?.toFixed(1) ?? "—"}%/d
+                          → {Math.round(waste)}% waste if idle · resets {formatResetDate(q.resetsAt)} · ideal {ideal?.toFixed(1) ?? "—"}%/d{q.creditsUsd != null ? ` · credits $${q.creditsUsd.toFixed(2)}` : ""}
                         </div>
                       </div>
                     </td>
