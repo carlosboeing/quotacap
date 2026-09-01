@@ -4,8 +4,41 @@ import { upsertQuota } from "./store/quotas.js";
 import { getDbPath, readConfig } from "./config.js";
 import { openDb, migrate } from "./store/db.js";
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+export function tokenFile(): string {
+  return path.join(path.dirname(getDbPath()), "token");
+}
+
+export function ensureDaemonToken(file = tokenFile()): string {
+  const dir = path.dirname(file);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(dir, 0o700); } catch {}
+  } catch {}
+  try {
+    if (fs.existsSync(file)) {
+      const existing = fs.readFileSync(file, "utf8").trim();
+      if (existing.length > 0) return existing;
+    }
+  } catch {}
+  const token = crypto.randomBytes(32).toString("hex");
+  fs.writeFileSync(file, `${token}\n`, { mode: 0o600, encoding: "utf8" });
+  try { fs.chmodSync(file, 0o600); } catch {}
+  return token;
+}
+
+export function readDaemonToken(file = tokenFile()): string | undefined {
+  try {
+    if (fs.existsSync(file)) {
+      const existing = fs.readFileSync(file, "utf8").trim();
+      if (existing.length > 0) return existing;
+    }
+  } catch {}
+  return undefined;
+}
 
 function pidFile(): string {
   return path.join(path.dirname(getDbPath()), "daemon.pid");
@@ -113,6 +146,7 @@ export interface StartDaemonOptions {
   exit?: (code: number) => void;
   resolveClaude?: () => string | undefined;
   pidFile?: string;
+  tokenFile?: string;
 }
 
 export async function startDaemon(opts?: StartDaemonOptions) {
@@ -124,6 +158,8 @@ export async function startDaemon(opts?: StartDaemonOptions) {
     try { existing = fs.readFileSync(file, "utf8").trim(); } catch {}
     return { alreadyRunning: existing || "running", db: null as any, timer: null as any, stop: () => {} };
   }
+
+  ensureDaemonToken(opts?.tokenFile ?? tokenFile());
 
   const resolver = opts?.resolveClaude ?? resolveClaudeExecPath;
   const claudePath = resolver();

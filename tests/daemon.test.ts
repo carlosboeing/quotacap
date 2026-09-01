@@ -29,9 +29,15 @@ describe("daemon single-instance", () => {
   it("writes a pidfile and cleans up on stop", async () => {
     isolatedHome();
     const pidFile = path.join(home, ".quotacap", "daemon.pid");
+    const tokenFile = path.join(home, ".quotacap", "token");
     const first = await startDaemon();
     expect(fs.existsSync(pidFile)).toBe(true);
     expect(parseInt(fs.readFileSync(pidFile, "utf8"), 10)).toBe(process.pid);
+    expect(fs.existsSync(tokenFile)).toBe(true);
+    const token = fs.readFileSync(tokenFile, "utf8").trim();
+    expect(token.length).toBeGreaterThan(0);
+    const st = fs.statSync(tokenFile);
+    expect(st.mode & 0o777).toBe(0o600);
     first.stop();
     expect(fs.existsSync(pidFile)).toBe(false);
   });

@@ -5,7 +5,8 @@ describe("integration", () => {
   it("refresh isolates failures", async () => {
     const db=openDb(":memory:"); migrate(db);
     const app=buildApp(db);
-    const res = await app.inject({method:"POST", url:"/api/refresh"});
+    const token = (app as any)._quotacapState.token;
+    const res = await app.inject({method:"POST", url:"/api/refresh", headers: { "X-QuotaCap-Token": token }});
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     // hardened server returns {fulfilled,rejected,lastPollAt} — always 200, degraded only for real failures (manual is skipped, not degraded)
