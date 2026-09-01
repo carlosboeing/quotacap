@@ -20,4 +20,24 @@ describe("mcp get_quotas", () => {
       await app.close();
     }
   });
+
+  it("mcp get_quotas does not leak raw and includes creditsUsd", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, {provider:"grok",plan:"SuperGrok",usedPct:30,resetsAt:"2026-09-07T00:22:00Z",periodStart:"2026-08-31T00:22:00Z",source:"tui" as const,fetchedAt:new Date().toISOString(),creditsUsd:4.85, raw:"secret"} as any);
+    const app = buildApp(db);
+    const addr = await app.listen({ port: 0, host: "127.0.0.1" });
+    process.env.QUOTACAP_URL = addr;
+    try {
+      const res: any = await handleTool("get_quotas", {});
+      const jsonText = res.content[1]?.text ?? res.content[0].text;
+      expect(jsonText).not.toContain("secret");
+      expect(jsonText).not.toContain("\"raw\"");
+      const parsed = JSON.parse(jsonText);
+      expect(parsed[0].creditsUsd).toBe(4.85);
+      expect(parsed[0].raw).toBeUndefined();
+    } finally {
+      delete process.env.QUOTACAP_URL;
+      await app.close();
+    }
+  });
 });

@@ -41,10 +41,10 @@ export function parseKimiTui(text: string, now = new Date()): Quota {
     sessionPct,
     resetsAt: weeklyIso,
     periodStart,
-    raw: cleaned.slice(0, 4096),
-    source: "tui" as unknown as Quota["source"],
+    source: "tui",
     fetchedAt: now.toISOString(),
-  };
+    raw: cleaned.slice(0, 4096),
+  } as unknown as Quota;
 }
 
 export const kimiAdapter = {

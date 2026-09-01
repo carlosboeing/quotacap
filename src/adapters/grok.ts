@@ -19,10 +19,10 @@ export function parseGrokUsage(body: any, now = new Date()): Quota {
     usedPct: pct,
     resetsAt: period.end ?? new Date(now.getTime() + 7 * 86400000).toISOString(),
     periodStart: period.start ?? new Date(now.getTime() - 7 * 86400000).toISOString(),
-    raw: JSON.stringify(body),
     source: "api",
     fetchedAt: now.toISOString(),
-  };
+    raw: JSON.stringify(body),
+  } as unknown as Quota;
 }
 
 interface GrokEntry {

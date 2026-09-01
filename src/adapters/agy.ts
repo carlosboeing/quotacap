@@ -50,10 +50,10 @@ function parseGroup(
     sessionPct,
     resetsAt,
     periodStart,
-    raw: rawJsonString,
     source: "cli",
     fetchedAt: now.toISOString(),
-  };
+    raw: rawJsonString,
+  } as unknown as Quota;
 }
 
 export function parseAgyUsage(parsedJson: any, now = new Date()): Quota[] {

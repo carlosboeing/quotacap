@@ -32,7 +32,7 @@ function isPidAlive(pid: number): boolean {
 }
 
 function acquirePidFile(file: string, exit: (code: number) => void): boolean {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  try { const d=path.dirname(file); fs.mkdirSync(d, { recursive: true, mode: 0o700 }); try{fs.chmodSync(d,0o700);}catch{} } catch {}
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const fd = fs.openSync(file, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o644);
@@ -132,7 +132,7 @@ export async function startDaemon(opts?: StartDaemonOptions) {
   }
 
   const dbDir = path.dirname(getDbPath());
-  fs.mkdirSync(dbDir, { recursive: true });
+  try { fs.mkdirSync(dbDir, { recursive: true, mode: 0o700 }); try{fs.chmodSync(dbDir,0o700);}catch{} } catch {}
   const db = openDb(getDbPath());
   migrate(db);
 
