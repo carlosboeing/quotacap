@@ -22,10 +22,10 @@ interface Rec {
     provider: string;
     daysLeft: number;
     idealRate: number;
-    burnRate: number;
+    burnRate: number | null;
     burnMeasured: boolean;
     status: string;
-    wastePct: number;
+    wastePct: number | null;
     urgency: string;
   }>;
   alternatives?: Quota[];

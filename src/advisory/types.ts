@@ -1,14 +1,14 @@
 export type Urgency = "burn now"|"use soon"|"slow down"|"save"|"on track";
-export type BurnStatus = "at risk"|"on track";
+export type BurnStatus = "at risk"|"on track"|"unknown";
 export interface Advisory {
   provider:string;
   daysLeft:number;
   remaining:number;
   idealRate:number;
-  burnRate:number;
+  burnRate:number | null;
   burnMeasured:boolean;
-  daysToExhaust:number;
+  daysToExhaust:number | null;
   status:BurnStatus;
-  wastePct:number;
+  wastePct:number | null;
   urgency:Urgency;
 }

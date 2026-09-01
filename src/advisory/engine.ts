@@ -19,11 +19,25 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   return Math.max(0, q.usedPct / elapsedDays);
 }
 
-export function computeAdvisory(q:Quota, burnRate:number, now=new Date(), burnMeasured=false): Advisory {
+export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), burnMeasured=false): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.usedPct;
   const idealRate = remaining / daysLeft;
+  if (burnRate === null) {
+    return {
+      provider: q.provider,
+      daysLeft,
+      remaining,
+      idealRate,
+      burnRate: null,
+      burnMeasured: false,
+      daysToExhaust: null,
+      status: "unknown",
+      wastePct: null,
+      urgency: "on track",
+    };
+  }
   const wastePct = Math.max(0, remaining - burnRate*daysLeft);
   // burn > ideal is exactly "quota exhausts before reset": remaining/burn < daysLeft
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
@@ -44,11 +58,15 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
   // to read "on track" beside "87% waste".
   const advisories = quotas.map(q => {
     const recent = burnByProvider.get(q.provider);
-    const pace = recent ?? averagePace(q, now) ?? 0;
+    const pace = recent ?? averagePace(q, now);
     return computeAdvisory(q, pace, now, recent !== undefined);
   });
-  const burnNow = advisories.filter(a=>a.urgency==="burn now");
-  const pool = burnNow.length? burnNow : advisories;
+  const measurable = advisories.filter((a): a is Advisory & { wastePct: number; burnRate: number } => a.wastePct !== null && a.burnRate !== null);
+  if (!measurable.length) {
+    return { use: "none", reason: "measuring pace", wastePct: 0, idealRate: 0, alternatives: quotas, advisories };
+  }
+  const burnNow = measurable.filter(a=>a.urgency==="burn now");
+  const pool = burnNow.length? burnNow : measurable;
   const use = pool.sort((a,b)=> b.wastePct - a.wastePct)[0];
   return { use: use.provider, reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`, wastePct:use.wastePct, idealRate:use.idealRate, alternatives: quotas, advisories };
 }
