@@ -1,7 +1,7 @@
 import { parseResetText } from "./parse.js";
-import type { Quota } from "./types.js";
+import type { ParsedQuota } from "./types.js";
 
-export function parseManualUsage(provider: string, text: string, now = new Date()): Quota {
+export function parseManualUsage(provider: string, text: string, now = new Date()): ParsedQuota {
   const m = text.match(/(\d+)% used/);
   const usedPct = m ? parseInt(m[1], 10) : 0;
   const parsedReset = parseResetText(text, now);
@@ -16,16 +16,16 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
     source: "manual",
     fetchedAt: now.toISOString(),
     raw: text,
-  } as unknown as Quota;
+  };
 }
 
 export const manualAdapter = {
   id: "manual",
   requiresAuth: "none",
-  async ingest(provider: string, text: string) {
+  async ingest(provider: string, text: string): Promise<ParsedQuota> {
     return parseManualUsage(provider, text);
   },
-  async poll(): Promise<Quota> {
+  async poll(): Promise<ParsedQuota> {
     throw new Error("manual has no poll — use ingest");
   },
 };

@@ -1,6 +1,6 @@
 import os from "node:os";
 import { runPty, stripAnsi } from "./pty.js";
-import type { Quota } from "./types.js";
+import type { ParsedQuota } from "./types.js";
 
 const FULL_MONTHS: Record<string, number> = {
   january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -32,7 +32,7 @@ function parseGrokReset(raw: string, now: Date): string | null {
   return dt.toISOString();
 }
 
-export function parseGrokTui(text: string, now = new Date()): Quota {
+export function parseGrokTui(text: string, now = new Date()): ParsedQuota {
   const cleaned = stripAnsi(text);
   const planMatch = cleaned.match(/Weekly lim[i!l]t\s*\(([^)]+)\)/i);
   let plan = "unknown";
@@ -78,7 +78,7 @@ export function parseGrokTui(text: string, now = new Date()): Quota {
     estimated = true;
   }
   const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
-  const quota: Quota = {
+  return {
     provider: "grok",
     plan,
     usedPct,
@@ -88,15 +88,14 @@ export function parseGrokTui(text: string, now = new Date()): Quota {
     fetchedAt: now.toISOString(),
     creditsUsd,
     resetsAtEstimated: estimated || undefined,
+    raw: cleaned.slice(0, 4096),
   };
-  (quota as any).raw = cleaned.slice(0, 4096);
-  return quota as unknown as Quota;
 }
 
 export const grokAdapter = {
   id: "grok",
   requiresAuth: "grok login (CLI owns credentials)",
-  async poll(): Promise<Quota> {
+  async poll(): Promise<ParsedQuota> {
     const transcript = await runPty({
       file: "grok",
       args: [],

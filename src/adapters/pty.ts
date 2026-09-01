@@ -26,7 +26,6 @@ export interface PtyRunOptions {
   completionRegex?: RegExp;
   /** If matched, abort immediately with a clear error (e.g. trust prompts). */
   abortOn?: RegExp;
-  trustPrompt?: { pattern: RegExp; response: string };
   timeoutMs: number;
   maxBytes?: number;
 }
@@ -147,13 +146,6 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       );
     }
   };
-  let trustHandled = false;
-  const checkTrust = (clean: string) => {
-    if (opts.trustPrompt && !trustHandled && regexTest(opts.trustPrompt.pattern, clean)) {
-      try { proc.stdin.write(opts.trustPrompt.response); if (typeof (proc.stdin as any).flush === "function") (proc.stdin as any).flush(); } catch {}
-      trustHandled = true;
-    }
-  };
   const kill = async () => {
     if (exited) return;
     try { proc.kill(); } catch {}
@@ -176,7 +168,6 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
         checkCap();
         if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
         const clean = stripAnsi(transcript);
-        checkTrust(clean);
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
           matched = true;
@@ -192,14 +183,12 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       checkCap();
       if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
       const postReadyClean = stripAnsi(transcript);
-      checkTrust(postReadyClean);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
       if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
       const c = stripAnsi(transcript);
-      checkTrust(c);
       checkAbort(c);
     }
 
@@ -217,7 +206,6 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         const clean = stripAnsi(transcript);
-        checkTrust(clean);
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
           done = true;
@@ -241,7 +229,6 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         const c = stripAnsi(transcript);
-        checkTrust(c);
         checkAbort(c);
         if (exited) break;
         await delay(40);
@@ -254,7 +241,6 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     await Promise.race([readLoop, delay(200)]);
     checkCap();
     const finalClean = stripAnsi(transcript);
-    checkTrust(finalClean);
     checkAbort(finalClean);
     return transcript;
   } catch (e) {
@@ -346,13 +332,6 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       );
     }
   };
-  let trustHandled = false;
-  const checkTrust = (clean: string) => {
-    if (opts.trustPrompt && !trustHandled && regexTest(opts.trustPrompt.pattern, clean)) {
-      try { ptyProcess.write(opts.trustPrompt.response); } catch {}
-      trustHandled = true;
-    }
-  };
 
   try {
     if (opts.readyRegex) {
@@ -362,7 +341,6 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
         checkCap();
         if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
         const clean = stripAnsi(transcript);
-        checkTrust(clean);
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
           matched = true;
@@ -378,14 +356,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       checkCap();
       if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
       const postReadyClean = stripAnsi(transcript);
-      checkTrust(postReadyClean);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
       if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
       const c = stripAnsi(transcript);
-      checkTrust(c);
       checkAbort(c);
     }
 
@@ -398,7 +374,6 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         const clean = stripAnsi(transcript);
-        checkTrust(clean);
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
           done = true;
@@ -422,7 +397,6 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         const c = stripAnsi(transcript);
-        checkTrust(c);
         checkAbort(c);
         if (exited) break;
         await delay(40);
@@ -432,7 +406,6 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
     await kill();
     checkCap();
     const finalClean = stripAnsi(transcript);
-    checkTrust(finalClean);
     checkAbort(finalClean);
     return transcript;
   } catch (e) {

@@ -1,6 +1,6 @@
 import os from "node:os";
 import { runPty, stripAnsi } from "./pty.js";
-import type { Quota } from "./types.js";
+import type { ParsedQuota } from "./types.js";
 
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
@@ -41,7 +41,7 @@ function parseFiveReset(raw: string, now: Date): string | null {
   return dt.toISOString();
 }
 
-export function parseCodexTui(text: string, now = new Date()): Quota {
+export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   const cleaned = stripAnsi(text);
   let weeklyLeft: number | null = null;
   let fiveLeft: number | null = null;
@@ -101,13 +101,13 @@ export function parseCodexTui(text: string, now = new Date()): Quota {
     fetchedAt: now.toISOString(),
     resetsAtEstimated: estimated || undefined,
     raw: cleaned.slice(0, 4096),
-  } as unknown as Quota;
+  };
 }
 
 export const codexAdapter = {
   id: "codex",
   requiresAuth: "codex login (CLI owns credentials)",
-  async poll(): Promise<Quota> {
+  async poll(): Promise<ParsedQuota> {
     const transcript = await runPty({
       file: "codex",
       args: ["--no-alt-screen"],

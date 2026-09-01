@@ -6,7 +6,7 @@ import { grokAdapter } from "./grok.js";
 import { agyAdapter } from "./agy.js";
 import type { Adapter } from "./types.js";
 export const adapters: Record<string, Adapter> = {
-  claude: claudeAdapter as Adapter,
+  claude: claudeAdapter,
   manual: manualAdapter as unknown as Adapter,
   codex: codexAdapter,
   kimi: kimiAdapter,
