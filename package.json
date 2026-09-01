@@ -3,7 +3,20 @@
   "version": "0.0.20",
   "description": "Local quota tracker for AI coding plans with a dashboard, CLI, MCP server, and next-plan recommendations.",
   "license": "MIT",
-  "keywords": ["ai-coding", "cli", "mcp", "quota-tracker", "usage-limits", "usage-tracker", "claude-code", "codex", "kimi-code", "grok", "antigravity", "agy"],
+  "keywords": [
+    "ai-coding",
+    "cli",
+    "mcp",
+    "quota-tracker",
+    "usage-limits",
+    "usage-tracker",
+    "claude-code",
+    "codex",
+    "kimi-code",
+    "grok",
+    "antigravity",
+    "agy"
+  ],
   "type": "module",
   "repository": {
     "type": "git",
@@ -27,6 +40,7 @@
   "scripts": {
     "build": "vite build --config web/vite.config.ts && node scripts/build-embed.mjs && tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
     "build:bin": "node scripts/build-binary.mjs",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
     "pretest": "npm run build",
     "test": "vitest run",
     "prepublishOnly": "npm run build",
@@ -37,6 +51,7 @@
     "date-fns": "^3.0.0",
     "date-fns-tz": "^3.0.0",
     "fastify": "^5.12.1",
+    "node-pty": "^1.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^3.23.0"

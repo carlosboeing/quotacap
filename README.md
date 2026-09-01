@@ -100,4 +100,6 @@ npm run build:bin
 The store uses `node:sqlite` on Node and `bun:sqlite` on Bun.
 The same code is an npm package and a compiled binary.
 
+`node-pty` is a native addon for the PTY-based adapters (Kimi, Codex, Grok). Prebuilt binaries are provided where available (macOS and Linux). If no prebuild matches your Node version or platform, `npm install` compiles it from source — this requires Xcode (macOS) or `build-essential` + `python3` (Linux). If the install fails, install the build tools and run `npm rebuild node-pty`.
+
 </details>
