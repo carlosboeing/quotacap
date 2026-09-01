@@ -226,14 +226,14 @@ setInterval(()=>{},1000);
 
 describe("kimiAdapter live poll", () => {
   it.skipIf(!process.env.QUOTACAP_LIVE_TUI)("polls live kimi TUI and returns correct Quota", async () => {
-    let q;
+    const { execFileSync } = await import("node:child_process");
     try {
-      q = await kimiAdapter.poll();
-    } catch (e) {
-      // if kimi not installed or not logged in, skip gracefully
-      console.warn("live kimi poll skipped:", (e as Error).message);
+      execFileSync("which", ["kimi"], { stdio: "ignore", timeout: 2000 });
+    } catch {
+      console.warn("live kimi poll skipped: kimi not on PATH");
       return;
     }
+    const q = await kimiAdapter.poll();
     expect(q.provider).toBe("kimi");
     expect((q as unknown as { source: string }).source).toBe("tui");
     expect(q.usedPct).toBeGreaterThanOrEqual(0);

@@ -234,4 +234,34 @@ setInterval(()=>{},1000);
     }
     expect(alive).toBe(false);
   });
+
+  it("aborts on trust prompt when abortOn is set (fail-closed, no silent trust)", async () => {
+    const fake = await writeFake(`process.stdout.write('Trust this folder?\\\\n'); setInterval(()=>{},1000);`);
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [fake],
+        readyRegex: /Welcome to Kimi Code/,
+        readyTimeoutMs: 800,
+        input: "/usage\r",
+        abortOn: /Trust this folder\?/i,
+        completionRegex: /Weekly limit/,
+        timeoutMs: 800,
+      }),
+    ).rejects.toThrow(/untrusted workspace/i);
+  });
+
+  it("degrades gracefully when node-pty is unavailable (guarded import)", async () => {
+    await expect(
+      runPty({
+        file: "definitely-not-a-real-binary-xyz-123",
+        args: [],
+        readyRegex: /Welcome/,
+        readyTimeoutMs: 300,
+        input: "/usage\r",
+        completionRegex: /Weekly/,
+        timeoutMs: 300,
+      }),
+    ).rejects.toThrow(/pty (spawn failed|exited before ready|node-pty not available)/);
+  });
 });

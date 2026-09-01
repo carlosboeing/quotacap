@@ -1,27 +1,7 @@
-import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { parseResetText } from "./parse.js";
 import { runPty, stripAnsi } from "./pty.js";
 import type { Quota } from "./types.js";
-
-function getTrustedCwd(): string | undefined {
-  const trustDir = path.join(os.homedir(), ".kimi-code", "workspace-trust");
-  try {
-    const files = fs.readdirSync(trustDir);
-    for (const f of files) {
-      try {
-        const raw = fs.readFileSync(path.join(trustDir, f), "utf8");
-        const j = JSON.parse(raw) as { root?: string };
-        if (j.root && fs.existsSync(j.root)) return j.root;
-      } catch {}
-    }
-  } catch {}
-  try {
-    if (fs.existsSync(process.cwd())) return process.cwd();
-  } catch {}
-  return undefined;
-}
 
 export function parseKimiTui(text: string, now = new Date()): Quota {
   const cleaned = stripAnsi(text);
@@ -71,17 +51,19 @@ export const kimiAdapter = {
   id: "kimi",
   requiresAuth: "kimi login (CLI owns credentials)",
   async poll(): Promise<Quota> {
-    const cwd = getTrustedCwd();
+    // Use homedir as neutral cwd so quota modal does not depend on project path
+    // and workspace-trust prompts are minimized. Fail closed if trust prompt appears.
     const transcript = await runPty({
       file: "kimi",
       args: [],
       cols: 140,
       rows: 35,
-      cwd,
+      cwd: os.homedir(),
       readyRegex: /Welcome to Kimi Code|context:/i,
       readyTimeoutMs: 8000,
       input: "/usage\r",
       completionRegex: /Weekly limit[\s\S]*?5h limit|5h limit[\s\S]*?Weekly limit/i,
+      abortOn: /Trust this folder\?/i,
       timeoutMs: 8000,
       maxBytes: 256 * 1024,
     });

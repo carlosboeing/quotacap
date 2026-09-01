@@ -1,4 +1,4 @@
-import * as pty from "node-pty";
+import { createRequire } from "node:module";
 
 export function stripAnsi(s: string): string {
   return s
@@ -21,6 +21,8 @@ export interface PtyRunOptions {
   settleDelayMs?: number;
   input: string;
   completionRegex?: RegExp;
+  /** If matched, abort immediately with a clear error (e.g. trust prompts). */
+  abortOn?: RegExp;
   timeoutMs: number;
   maxBytes?: number;
 }
@@ -30,9 +32,22 @@ function delay(ms: number): Promise<void> {
 }
 
 function regexTest(re: RegExp, s: string): boolean {
-  // avoid global lastIndex pitfalls
   const fresh = new RegExp(re.source, re.flags.replace("g", ""));
   return fresh.test(s);
+}
+
+let ptyMod: any | null = null;
+function getPty(): any {
+  if (ptyMod) return ptyMod;
+  try {
+    const require = createRequire(import.meta.url);
+    ptyMod = require("node-pty");
+    return ptyMod;
+  } catch (e) {
+    throw new Error(
+      "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only",
+    );
+  }
 }
 
 export async function runPty(opts: PtyRunOptions): Promise<string> {
@@ -46,7 +61,8 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
   let exited = false;
   let exitCode: number | undefined;
 
-  let ptyProcess: pty.IPty;
+  const pty = getPty();
+  let ptyProcess: any;
   try {
     ptyProcess = pty.spawn(opts.file, opts.args ?? [], {
       name: "xterm-color",
@@ -63,14 +79,14 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
     throw new Error(`pty spawn failed for ${opts.file}: ${(e as Error).message}`);
   }
 
-  const disposables: pty.IDisposable[] = [];
+  const disposables: any[] = [];
   disposables.push(
     ptyProcess.onData((data: string) => {
       transcript += data;
     }),
   );
   disposables.push(
-    ptyProcess.onExit(({ exitCode: c }) => {
+    ptyProcess.onExit(({ exitCode: c }: { exitCode: number }) => {
       exited = true;
       exitCode = c;
     }),
@@ -108,27 +124,26 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
     }
   };
 
+  const checkAbort = (clean: string) => {
+    if (opts.abortOn && regexTest(opts.abortOn, clean)) {
+      throw new Error(
+        `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+      );
+    }
+  };
+
   try {
     if (opts.readyRegex) {
       const deadline = Date.now() + readyTimeoutMs;
       let matched = false;
-      let trustHandled = false;
       while (Date.now() < deadline) {
         checkCap();
         if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
         const clean = stripAnsi(transcript);
+        checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
           matched = true;
           break;
-        }
-        if (!trustHandled && /Trust this folder\?/i.test(clean)) {
-          trustHandled = true;
-          try {
-            ptyProcess.write("\x1b[A");
-            await delay(120);
-            ptyProcess.write("\r");
-            await delay(400);
-          } catch {}
         }
         await delay(40);
       }
@@ -139,10 +154,13 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
       await delay(200);
       checkCap();
       if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+      const postReadyClean = stripAnsi(transcript);
+      checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
       if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
+      checkAbort(stripAnsi(transcript));
     }
 
     if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
@@ -153,12 +171,14 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
       let done = false;
       while (Date.now() < deadline) {
         checkCap();
-        if (regexTest(opts.completionRegex, stripAnsi(transcript))) {
+        const clean = stripAnsi(transcript);
+        checkAbort(clean);
+        if (regexTest(opts.completionRegex, clean)) {
           done = true;
           break;
         }
         if (exited) {
-          if (!regexTest(opts.completionRegex, stripAnsi(transcript))) {
+          if (!regexTest(opts.completionRegex, clean)) {
             throw new Error(`pty exited before completion (code ${exitCode})`);
           }
           done = true;
@@ -174,6 +194,7 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
       const deadline = Date.now() + opts.timeoutMs;
       while (Date.now() < deadline) {
         checkCap();
+        checkAbort(stripAnsi(transcript));
         if (exited) break;
         await delay(40);
       }
@@ -181,6 +202,7 @@ export async function runPty(opts: PtyRunOptions): Promise<string> {
 
     await kill();
     checkCap();
+    checkAbort(stripAnsi(transcript));
     return transcript;
   } catch (e) {
     await kill();
