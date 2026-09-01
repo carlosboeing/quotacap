@@ -16,15 +16,17 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 
 ## Providers
 
-| Provider | Source |
-|---|---|
-| Claude Code | Live |
-| Codex | Live |
-| Kimi Code | Live |
-| Grok | Live |
-| Antigravity | Live |
+| Provider | Mechanism | Source |
+|---|---|---|
+| Claude Code | `exec` — `claude -p /usage --output-format json` | Live |
+| Antigravity | `exec` — `agy -p /usage --output-format json` (two rows: `agy` Gemini, `agy:3p` 3p) | Live |
+| Codex | `pty` — `codex --no-alt-screen` then `/status`, parse `Weekly/5h limit: X% left` | Live |
+| Kimi Code | `pty` — `kimi` then `/usage`, parse `Weekly/5h limit: Y% used` | Live |
+| Grok | `pty` — `grok` then `/usage`, parse `Weekly limit (plan)` + `Credits: $X` | Live |
 
-Live adapters reuse the matching CLI login.
+Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion). It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
+
+Live adapters invoke the CLIs you already logged into. No API keys. No token files are read.
 
 ## Install
 
@@ -56,7 +58,7 @@ quotacap advise
 For a provider without a live adapter:
 
 ```bash
-quotacap ingest --provider agy --text "65% used · resets Sep 1"
+quotacap ingest --provider myplan --text "65% used · resets Sep 1"
 ```
 
 ## MCP
@@ -100,15 +102,24 @@ curl -X POST http://localhost:8787/api/refresh \
   -H "X-QuotaCap-Token: $(cat ~/.quotacap/token)"
 ```
 
-## Privacy
+## Security
 
-Bound to `127.0.0.1`, with usage history and authentication token stored under `~/.quotacap/` (directory mode `0700`, files mode `0600`). HTTP endpoints enforce loopback `Host` and `Origin` allowlists to prevent DNS rebinding and cross-origin access. Mutating routes (`POST /api/refresh`) require the `X-QuotaCap-Token` header. Live adapters contact provider usage endpoints or invoke the provider CLI using your existing login (Claude Code, Antigravity). Codex, Kimi, and Grok adapters run credential-free PTY sessions. QuotaCap stores no API keys.
+QuotaCap is a local daemon. It binds to `127.0.0.1` only (`src/cli/index.ts:56`). It does not listen on `0.0.0.0`. There is no LAN surface.
+
+It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`).
+
+It stores no `raw` provider payload. The `raw` column was dropped and migrated in `src/store/db.ts:37-48`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). History and the token live under `~/.quotacap/` with `0700` on the directory and `0600` on files.
+
+Every request checks `Host` and `Origin`. `Host` must be loopback (`127.0.0.1`, `localhost`, `[::1]`), otherwise `403`. `Origin` when present must be loopback, otherwise `403`. Absent `Origin` passes for `curl` and MCP. `POST /api/refresh` requires `X-QuotaCap-Token` matching `~/.quotacap/token` with `crypto.timingSafeEqual` (`src/http/server.ts:isValidToken`), otherwise `401`. `GET /assets/*` is rooted with `path.resolve` and a prefix check (`tests/http/api.test.ts`).
+
+Adapters fail closed. A timeout or unmatched TUI text becomes a stale row, never `0% used`. See `SECURITY.md` for the full "does and does not touch" list and how to report a vulnerability. See `docs/architecture.md` for the detailed security model.
 
 ## Docs
 
 - [Architecture](docs/architecture.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Security](SECURITY.md)
 
 ## License
 
