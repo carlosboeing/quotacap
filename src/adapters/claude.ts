@@ -19,11 +19,20 @@ export function parseClaudeUsage(result: string, now = new Date()): Quota {
     resetsAt, periodStart, raw: result, source: "cli", fetchedAt: now.toISOString()
   };
 }
-export const claudeAdapter = {
+export interface ClaudeAdapter {
+  id: string;
+  requiresAuth: string;
+  execPath: string;
+  poll(execPath?: string): Promise<Quota>;
+}
+
+export const claudeAdapter: ClaudeAdapter = {
   id: "claude",
   requiresAuth: "keychain:Claude Code-credentials",
-  async poll(): Promise<Quota> {
-    const { stdout } = await exec("claude", ["-p","/usage","--output-format","json"], { timeout: 8000 });
+  execPath: "claude",
+  async poll(execPath?: string): Promise<Quota> {
+    const bin = execPath ?? claudeAdapter.execPath ?? "claude";
+    const { stdout } = await exec(bin, ["-p","/usage","--output-format","json"], { timeout: 8000 });
     const parsed = JSON.parse(stdout);
     const result: string = parsed.result ?? stdout;
     return parseClaudeUsage(result);
