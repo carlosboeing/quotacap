@@ -1,13 +1,20 @@
 function mapRow(row:any){
   if(!row) return row;
-  // normalize snake_case DB row to camelCase Quota shape while keeping snake fields for compat
-  return {
+  const out:any = {
     ...row,
     usedPct: row.used_pct ?? row.usedPct,
     resetsAt: row.resets_at ?? row.resetsAt,
     periodStart: row.period_start ?? row.periodStart,
     fetchedAt: row.fetched_at ?? row.fetchedAt,
+    creditsUsd: row.credits_usd ?? row.creditsUsd,
   };
+  delete out.used_pct;
+  delete out.resets_at;
+  delete out.period_start;
+  delete out.fetched_at;
+  delete out.credits_usd;
+  delete out.raw;
+  return out;
 }
 
 export function upsertQuota(db:any, q:any){
@@ -15,7 +22,8 @@ export function upsertQuota(db:any, q:any){
     for (const item of q) upsertQuota(db, item);
     return;
   }
-  db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, raw, source, fetched_at) VALUES(?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.raw, q.source, q.fetchedAt);
+  const credits = q.creditsUsd ?? q.credits_usd ?? null;
+  db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd) VALUES(?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits);
   const day = new Date().toISOString().slice(0,10);
   db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
 }

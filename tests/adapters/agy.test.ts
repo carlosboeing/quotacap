@@ -101,7 +101,7 @@ describe("parseAgyUsage", () => {
     expect(gemini.resetsAt).toBe(new Date("2026-09-01T13:42:08Z").toISOString());
     expect(gemini.periodStart).toBe(new Date(Date.parse("2026-09-01T13:42:08Z") - 7 * 86400000).toISOString());
     expect(gemini.source).toBe("cli");
-    expect(gemini.raw).toBe(JSON.stringify(fixture));
+    expect((gemini as any).raw).toBe(JSON.stringify(fixture));
     expect(gemini.fetchedAt).toBe(now.toISOString());
 
     expect(threeP.provider).toBe("agy:3p");
@@ -111,7 +111,7 @@ describe("parseAgyUsage", () => {
     expect(threeP.resetsAt).toBe(new Date("2026-09-06T15:15:19Z").toISOString());
     expect(threeP.periodStart).toBe(new Date(Date.parse("2026-09-06T15:15:19Z") - 7 * 86400000).toISOString());
     expect(threeP.source).toBe("cli");
-    expect(threeP.raw).toBe(JSON.stringify(fixture));
+    expect((threeP as any).raw).toBe(JSON.stringify(fixture));
     expect(threeP.fetchedAt).toBe(now.toISOString());
   });
 
@@ -139,10 +139,10 @@ describe("parseAgyUsage", () => {
   it("persists the parsed json blob in raw for debugging on both rows", () => {
     const rows = parseAgyUsage(fixture, new Date("2026-08-31T00:00:00Z"));
     expect(rows).toHaveLength(2);
-    expect(rows[0].raw).toBe(JSON.stringify(fixture));
-    expect(rows[1].raw).toBe(JSON.stringify(fixture));
-    expect(JSON.parse(rows[0].raw)).toEqual(fixture);
-    expect(JSON.parse(rows[1].raw)).toEqual(fixture);
+    expect((rows[0] as any).raw).toBe(JSON.stringify(fixture));
+    expect((rows[1] as any).raw).toBe(JSON.stringify(fixture));
+    expect(JSON.parse((rows[0] as any).raw)).toEqual(fixture);
+    expect(JSON.parse((rows[1] as any).raw)).toEqual(fixture);
   });
 
   it("parses 3p group when Gemini models group is absent", () => {
@@ -167,7 +167,7 @@ describe("parseAgyUsage", () => {
     expect(rows[0].usedPct).toBe(60);
     expect(rows[0].resetsAt).toBe(new Date("2026-09-06T15:15:19Z").toISOString());
     expect(rows[0].sessionPct).toBeUndefined();
-    expect(rows[0].raw).toBe(JSON.stringify(parsed));
+    expect((rows[0] as any).raw).toBe(JSON.stringify(parsed));
   });
 
   it("omits sessionPct when 5h bucket is absent", () => {
@@ -244,27 +244,25 @@ describe("advisory handling for agy:3p", () => {
   it("recommends agy:3p when 3p has higher waste", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     // agy: burning fast, exhausts early, waste = 0%
-    const agyQuota: Quota = {
+    const agyQuota = {
       provider: "agy",
       plan: "unknown",
       usedPct: 80,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
-      raw: "{}",
-      source: "cli",
+      source: "cli" as const,
       fetchedAt: now.toISOString(),
-    };
+    } as Quota;
     // agy:3p: used 14% over 7 days (2%/day), 2 days left -> 86 - 4 = 82% waste
-    const threePQuota: Quota = {
+    const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
       usedPct: 14,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
-      raw: "{}",
-      source: "cli",
+      source: "cli" as const,
       fetchedAt: now.toISOString(),
-    };
+    } as Quota;
     const rec = recommend([agyQuota, threePQuota], "any", new Map(), now);
     expect(rec.use).toBe("agy:3p");
     expect(rec.advisories.find((a) => a.provider === "agy:3p")?.wastePct).toBeGreaterThan(50);
@@ -273,27 +271,25 @@ describe("advisory handling for agy:3p", () => {
   it("recommends agy when gemini has higher waste", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     // agy: used 14% over 7 days (2%/day), 2 days left -> 82% waste
-    const agyQuota: Quota = {
+    const agyQuota = {
       provider: "agy",
       plan: "unknown",
       usedPct: 14,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
-      raw: "{}",
-      source: "cli",
+      source: "cli" as const,
       fetchedAt: now.toISOString(),
-    };
+    } as Quota;
     // agy:3p: burning fast, exhausts early, waste = 0%
-    const threePQuota: Quota = {
+    const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
       usedPct: 80,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
-      raw: "{}",
-      source: "cli",
+      source: "cli" as const,
       fetchedAt: now.toISOString(),
-    };
+    } as Quota;
     const rec = recommend([agyQuota, threePQuota], "any", new Map(), now);
     expect(rec.use).toBe("agy");
     expect(rec.advisories.find((a) => a.provider === "agy")?.wastePct).toBeGreaterThan(50);
@@ -301,16 +297,15 @@ describe("advisory handling for agy:3p", () => {
 
   it("handles recent burn rate keyed by agy:3p", () => {
     const now = new Date("2026-09-01T00:00:00Z");
-    const threePQuota: Quota = {
+    const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
       usedPct: 50,
       periodStart: "2026-08-31T00:00:00Z",
       resetsAt: "2026-09-07T00:00:00Z",
-      raw: "{}",
-      source: "cli",
+      source: "cli" as const,
       fetchedAt: now.toISOString(),
-    };
+    } as Quota;
     const burns = new Map([["agy:3p", 25]]);
     const rec = recommend([threePQuota], "any", burns, now);
     const adv = rec.advisories[0];
@@ -337,8 +332,8 @@ describe("agyAdapter live poll", () => {
     expect(gemini.provider).toBe("agy");
     expect(gemini.plan).toBe("unknown");
     expect(gemini.source).toBe("cli");
-    expect(gemini.raw).not.toBe("");
-    expect(JSON.parse(gemini.raw).status).toBe("SUCCESS");
+    expect((gemini as any).raw).not.toBe("");
+    expect(JSON.parse((gemini as any).raw).status).toBe("SUCCESS");
     expect(gemini.usedPct).toBeGreaterThanOrEqual(0);
     expect(gemini.usedPct).toBeLessThanOrEqual(100);
     expect(Number.isNaN(new Date(gemini.resetsAt).getTime())).toBe(false);
@@ -351,8 +346,8 @@ describe("agyAdapter live poll", () => {
     expect(threeP.provider).toBe("agy:3p");
     expect(threeP.plan).toBe("unknown");
     expect(threeP.source).toBe("cli");
-    expect(threeP.raw).not.toBe("");
-    expect(JSON.parse(threeP.raw).status).toBe("SUCCESS");
+    expect((threeP as any).raw).not.toBe("");
+    expect(JSON.parse((threeP as any).raw).status).toBe("SUCCESS");
     expect(threeP.usedPct).toBeGreaterThanOrEqual(0);
     expect(threeP.usedPct).toBeLessThanOrEqual(100);
     expect(Number.isNaN(new Date(threeP.resetsAt).getTime())).toBe(false);

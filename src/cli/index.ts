@@ -6,7 +6,7 @@ import { VERSION } from "../version.js";
 import { buildApp } from "../http/server.js";
 import { openDb, migrate } from "../store/db.js";
 import { getDbPath, readConfig } from "../config.js";
-function ensureDbDir(){ try{ fs.mkdirSync(path.dirname(getDbPath()), {recursive:true}); }catch{} }
+function ensureDbDir(){ try{ const d=path.dirname(getDbPath()); fs.mkdirSync(d, {recursive:true, mode:0o700}); try{ fs.chmodSync(d,0o700);}catch{} }catch{} }
 const program = new Command();
 program.name("quotacap").version(VERSION);
 program.command("version").action(()=> console.log(VERSION));

@@ -15,10 +15,10 @@ export function parseCodexUsage(body: any, now = new Date()): Quota {
     usedPct: win.used_percent ?? 0,
     resetsAt,
     periodStart,
-    raw: JSON.stringify(body),
     source: "api",
     fetchedAt: now.toISOString(),
-  };
+    raw: JSON.stringify(body),
+  } as unknown as Quota;
 }
 
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";

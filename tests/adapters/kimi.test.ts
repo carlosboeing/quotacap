@@ -86,9 +86,9 @@ describe("parseKimiTui", () => {
 
   it("raw is capped and contains cleaned transcript", () => {
     const q = parseKimiTui(kimiFixture(), new Date());
-    expect(q.raw.length).toBeGreaterThan(0);
-    expect(q.raw.length).toBeLessThanOrEqual(4096);
-    expect(q.raw).toMatch(/Weekly limit/);
+    expect((q as any).raw.length).toBeGreaterThan(0);
+    expect((q as any).raw.length).toBeLessThanOrEqual(4096);
+    expect((q as any).raw).toMatch(/Weekly limit/);
   });
 });
 
@@ -244,7 +244,7 @@ describe("kimiAdapter live poll", () => {
     }
     expect(Number.isNaN(new Date(q.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(q.periodStart).getTime())).toBe(false);
-    expect(q.raw.length).toBeGreaterThan(0);
+    expect((q as any).raw.length).toBeGreaterThan(0);
     expect(q.fetchedAt).toBeDefined();
   }, 15000);
 });

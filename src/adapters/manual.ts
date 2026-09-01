@@ -13,10 +13,10 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
     usedPct,
     resetsAt,
     periodStart,
-    raw: text,
     source: "manual",
     fetchedAt: now.toISOString(),
-  };
+    raw: text,
+  } as unknown as Quota;
 }
 
 export const manualAdapter = {
