@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.
 npm install -g quotacap
 ```
 
-The binary is a self-contained executable from GitHub Releases.
+The binary is a self-contained executable from GitHub Releases (shipped as `quotacap-<os>-<arch>.tar.gz` with a `pty` sidecar for Kimi/Codex/Grok); `install.sh` handles the tarball and sidecar transparently.
 The npm package runs the same CLI on Node. To run without a global install, replace `quotacap` with `npx quotacap` in any command, for example `npx quotacap web`.
 
 ## Quick start
@@ -103,5 +103,10 @@ The same code is an npm package and a compiled binary.
 `node-pty` is a native addon for the PTY-based adapters (Kimi, Codex, Grok) and is an `optionalDependency`. Prebuilt binaries are provided where available (macOS and Linux). If no prebuild matches your Node version or platform, `npm install` compiles it from source — this requires Xcode (macOS) or `build-essential` + `python3` (Linux). If the compile fails the install still succeeds and exec-based adapters (Claude, Agy) continue to work; PTY adapters will report `node-pty not available` until you install the toolchain and run `npm rebuild node-pty`.
 
 The Kimi adapter spawns `kimi` in your home directory so the quota modal does not depend on the project path. If Kimi shows `Trust this folder?`, QuotaCap fails closed with `untrusted workspace — run \`kimi\` there and select Trust this folder` and does not auto-trust; trust remains an explicit interactive decision.
+
+The compiled binaries are built with `bun build --compile`.
+Each `dist-bin/quotacap-<os>-<arch>.tar.gz` bundles a `pty` sidecar.
+The sidecar is `pty/node-pty` with the matching prebuild.
+`install.sh` verifies the tarball and installs the sidecar to `~/.local/bin/pty` and `~/.local/share/quotacap/pty`.
 
 </details>

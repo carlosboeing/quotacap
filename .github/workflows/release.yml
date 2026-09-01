@@ -146,6 +146,25 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/build-binary.mjs ${{ matrix.target }}
+      - name: Verify binary and pty sidecar
+        run: |
+          set -euo pipefail
+          ls -lh dist-bin/
+          # Binary must exist
+          BIN="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//)"
+          test -f "$BIN"
+          "$BIN" --help | grep -q "Usage: quotacap"
+          # Tarball with sidecar must exist
+          TAR="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//).tar.gz"
+          test -f "$TAR"
+          tar -tzf "$TAR" | grep -q "^quotacap$"
+          tar -tzf "$TAR" | grep -q "pty/node-pty/prebuilds"
+          tar -tzf "$TAR" | grep -q "pty/node-pty/lib/index.js"
+          echo "tarball contents verified for ${{ matrix.target }}"
+          # Sidecar loads in Node (same arch as runner)
+          node -e "require('./dist-bin/pty/node-pty'); console.log('pty sidecar loads')"
+          test -x dist-bin/pty/node-pty/prebuilds/*/*spawn-helper 2>/dev/null || test -x dist-bin/pty/node-pty/prebuilds/*/*/*.node
+          echo "pty sidecar verified for ${{ matrix.target }}"
       - uses: actions/upload-artifact@v4
         with:
           name: quotacap-${{ matrix.target }}

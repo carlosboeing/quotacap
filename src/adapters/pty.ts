@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createRequire } from "node:module";
 
 export function stripAnsi(s: string): string {
@@ -42,12 +45,43 @@ function getPty(): any {
   try {
     const require = createRequire(import.meta.url);
     ptyMod = require("node-pty");
-    return ptyMod;
-  } catch (e) {
-    throw new Error(
-      "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only",
-    );
+    if (ptyMod?.spawn) return ptyMod;
+  } catch {}
+  // Compiled binary (bun --compile) has no node_modules; try sidecar locations
+  const execDir = path.dirname(process.execPath);
+  const platformArch = `${process.platform}-${process.arch}`;
+  const candidates = [
+    path.join(execDir, "pty", "node-pty"),
+    path.join(execDir, "node-pty"),
+    path.join(execDir, "..", "share", "quotacap", "pty", "node-pty"),
+    path.join(os.homedir(), ".local", "share", "quotacap", "pty", "node-pty"),
+    path.join(os.homedir(), ".local", "share", "quotacap", "pty", platformArch, "node-pty"),
+    path.join(os.homedir(), ".quotacap", "pty", "node-pty"),
+  ];
+  for (const c of candidates) {
+    try {
+      if (!fs.existsSync(c)) continue;
+      const require2 = createRequire(import.meta.url);
+      const mod = require2(c);
+      if (mod?.spawn) {
+        ptyMod = mod;
+        return ptyMod;
+      }
+    } catch {}
+    try {
+      const libIndex = path.join(c, "lib", "index.js");
+      if (!fs.existsSync(libIndex)) continue;
+      const require3 = createRequire(import.meta.url);
+      const mod = require3(libIndex);
+      if (mod?.spawn) {
+        ptyMod = mod;
+        return ptyMod;
+      }
+    } catch {}
   }
+  throw new Error(
+    "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only; for compiled binaries, ensure the pty sidecar is installed alongside the binary (see install.sh)",
+  );
 }
 
 export async function runPty(opts: PtyRunOptions): Promise<string> {
