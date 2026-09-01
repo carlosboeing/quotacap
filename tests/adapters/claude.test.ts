@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parseClaudeUsage } from "../../src/adapters/claude.js";
+import { parseClaudeUsage, claudeAdapter } from "../../src/adapters/claude.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const sample = `You are currently using your subscription
 
@@ -44,5 +47,45 @@ describe("pollAll isolation", () => {
     expect(res[1].status).toBe("rejected");
     expect(res[0].provider).toBe("unknown1");
     expect(res[1].provider).toBe("unknown2");
+  });
+});
+
+describe("claudeAdapter execPath", () => {
+  it("defaults execPath to 'claude'", () => {
+    expect(claudeAdapter.execPath).toBe("claude");
+  });
+
+  it("executes the pinned execPath when polling", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qc-claude-test-"));
+    const scriptPath = path.join(tmpDir, "mock-claude");
+    const jsonOutput = JSON.stringify({ result: sample });
+    fs.writeFileSync(scriptPath, `#!/bin/sh\nprintf '%s' '${jsonOutput}'\n`, { mode: 0o755 });
+
+    const originalExecPath = claudeAdapter.execPath;
+    try {
+      claudeAdapter.execPath = scriptPath;
+      const q = await claudeAdapter.poll();
+      expect(q.provider).toBe("claude");
+      expect(q.usedPct).toBe(25);
+      expect(q.sessionPct).toBe(46);
+    } finally {
+      claudeAdapter.execPath = originalExecPath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows passing an explicit execPath parameter to poll()", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qc-claude-test-"));
+    const scriptPath = path.join(tmpDir, "mock-claude-arg");
+    const jsonOutput = JSON.stringify({ result: sample });
+    fs.writeFileSync(scriptPath, `#!/bin/sh\nprintf '%s' '${jsonOutput}'\n`, { mode: 0o755 });
+
+    try {
+      const q = await claudeAdapter.poll(scriptPath);
+      expect(q.provider).toBe("claude");
+      expect(q.usedPct).toBe(25);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
