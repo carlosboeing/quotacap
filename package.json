@@ -1,6 +1,6 @@
 {
   "name": "quotacap",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "description": "Local quota tracker for AI coding plans with a dashboard, CLI, MCP server, and next-plan recommendations.",
   "license": "MIT",
   "keywords": [
