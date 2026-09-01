@@ -1,105 +1,72 @@
 import os from "node:os";
-import path from "node:path";
-import { readJsonFile, getJson, postForm, persistCreds, HttpError } from "./core.js";
+import { parseResetText } from "./parse.js";
+import { runPty, stripAnsi } from "./pty.js";
 import type { Quota } from "./types.js";
 
-const USAGE_URL = "https://api.kimi.com/coding/v1/usages";
-const REFRESH_URL = "https://auth.kimi.com/api/oauth/token";
-const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
+export function parseKimiTui(text: string, now = new Date()): Quota {
+  const cleaned = stripAnsi(text);
+  const weeklyRe = /Weekly limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
+  const fiveRe = /5h limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
+  const w = cleaned.match(weeklyRe);
+  if (!w) throw new Error("kimi: weekly limit not found in TUI output");
+  const f = cleaned.match(fiveRe);
+  if (!f) throw new Error("kimi: 5h limit not found in TUI output");
+  const usedPct = parseInt(w[1], 10);
+  const sessionPct = parseInt(f[1], 10);
+  if (!Number.isFinite(usedPct) || usedPct < 0 || usedPct > 100)
+    throw new Error("kimi: bad weekly pct");
+  if (!Number.isFinite(sessionPct) || sessionPct < 0 || sessionPct > 100)
+    throw new Error("kimi: bad 5h pct");
+  const weeklyRaw = w[2].trim();
+  const fiveRaw = f[2].trim();
+  const weeklyIso = parseResetText(`resets ${weeklyRaw}`, now);
+  if (!weeklyIso) throw new Error(`kimi: bad weekly reset "${weeklyRaw}"`);
+  const fiveIso = parseResetText(`resets ${fiveRaw}`, now);
+  if (!fiveIso) throw new Error(`kimi: bad 5h reset "${fiveRaw}"`);
 
-export function parseKimiUsage(body: any, now = new Date()): Quota {
-  const usage = body?.usage;
-  if (!usage) throw new Error("kimi: no usage in response");
-  const limit = Number(usage.limit);
-  const used = Number(usage.used);
-  if (!(limit > 0) || Number.isNaN(used)) throw new Error("kimi: bad usage numbers");
-  const resetsAt = usage.resetTime;
-  if (Number.isNaN(new Date(resetsAt).getTime())) throw new Error("kimi: bad resetTime");
-  const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
-  const level = body?.user?.membership?.level;
+  let plan = "unknown";
+  const paren = cleaned.match(/Weekly limit\s*\(([^)]+)\)/i);
+  if (paren) {
+    plan = paren[1].trim().toLowerCase();
+  } else {
+    const lvl = cleaned.match(/level\s*[:\-]\s*([A-Za-z0-9_\-]+)/i);
+    if (lvl) plan = lvl[1].trim().toLowerCase().replace(/^level_/i, "");
+  }
+
+  const periodStart = new Date(new Date(weeklyIso).getTime() - 7 * 86400000).toISOString();
   return {
     provider: "kimi",
-    plan: level ? String(level).replace(/^LEVEL_/, "").toLowerCase() : "unknown",
-    usedPct: Math.round((used / limit) * 100),
-    resetsAt,
+    plan,
+    usedPct,
+    sessionPct,
+    resetsAt: weeklyIso,
     periodStart,
-    raw: JSON.stringify(body),
-    source: "api",
+    raw: cleaned.slice(0, 4096),
+    source: "tui" as unknown as Quota["source"],
     fetchedAt: now.toISOString(),
   };
 }
 
-interface KimiCreds {
-  access_token?: string;
-  refresh_token?: string;
-  expires_at?: number;
-  token_type?: string;
-  scope?: string;
-}
-
-function credsCandidates(): string[] {
-  const home = process.env.KIMI_CODE_HOME ?? path.join(os.homedir(), ".kimi-code");
-  const legacy = path.join(os.homedir(), ".kimi", "credentials", "kimi-code.json");
-  return [path.join(home, "credentials", "kimi-code.json"), legacy];
-}
-
-async function loadCreds(): Promise<{ file: string; creds: KimiCreds }> {
-  for (const file of credsCandidates()) {
-    try {
-      return { file, creds: await readJsonFile<KimiCreds>(file) };
-    } catch {
-      continue;
-    }
-  }
-  throw new Error("kimi: no credentials file — run `kimi login`");
-}
-
-function isFreshExpiry(raw: unknown): boolean {
-  const v = Number(raw);
-  if (!Number.isFinite(v) || v <= 0) return false;
-  const ms = v < 1e12 ? v * 1000 : v; // CLI stores seconds; legacy rows from earlier quotas are ms
-  return ms > Date.now();
-}
-
-async function refreshAndPersist(file: string, creds: KimiCreds): Promise<string> {
-  if (!creds.refresh_token) throw new Error("kimi: no refresh_token — run `kimi login`");
-  const tok = await postForm(REFRESH_URL, {
-    grant_type: "refresh_token",
-    client_id: CLIENT_ID,
-    refresh_token: creds.refresh_token,
-  });
-  if (!tok.access_token) throw new Error("kimi: refresh returned no access_token");
-  await persistCreds<KimiCreds>(file, (cur) => ({
-    ...cur,
-    access_token: tok.access_token,
-    refresh_token: tok.refresh_token ?? cur.refresh_token,
-    expires_at: Math.floor(Date.now() / 1000) + (Number(tok.expires_in) || 3600),
-    token_type: tok.token_type ?? cur.token_type,
-    scope: tok.scope ?? cur.scope,
-  }));
-  return String(tok.access_token);
-}
-
 export const kimiAdapter = {
   id: "kimi",
-  requiresAuth: "~/.kimi-code/credentials/kimi-code.json (kimi login)",
+  requiresAuth: "kimi login (CLI owns credentials)",
   async poll(): Promise<Quota> {
-    const { file, creds } = await loadCreds();
-    let token = creds.access_token ?? "";
-    let justRefreshed = false;
-    if (!token) throw new Error("kimi: no access_token — run `kimi login`");
-    if (!isFreshExpiry(creds.expires_at)) {
-      token = await refreshAndPersist(file, creds);
-      justRefreshed = true;
-    }
-    const call = (t: string) =>
-      getJson(USAGE_URL, { Authorization: `Bearer ${t}` }).then(parseKimiUsage);
-    try {
-      return await call(token);
-    } catch (e) {
-      if ((e as HttpError).status !== 401 || justRefreshed) throw e;
-      const fresh = await refreshAndPersist(file, creds);
-      return await call(fresh);
-    }
+    // Use homedir as neutral cwd so quota modal does not depend on project path
+    // and workspace-trust prompts are minimized. Fail closed if trust prompt appears.
+    const transcript = await runPty({
+      file: "kimi",
+      args: [],
+      cols: 140,
+      rows: 35,
+      cwd: os.homedir(),
+      readyRegex: /Welcome to Kimi Code|context:/i,
+      readyTimeoutMs: 8000,
+      input: "/usage\r",
+      completionRegex: /Weekly limit[\s\S]*?5h limit|5h limit[\s\S]*?Weekly limit/i,
+      abortOn: /Trust this folder\?/i,
+      timeoutMs: 8000,
+      maxBytes: 256 * 1024,
+    });
+    return parseKimiTui(transcript);
   },
 };

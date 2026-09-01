@@ -3,7 +3,20 @@
   "version": "0.0.20",
   "description": "Local quota tracker for AI coding plans with a dashboard, CLI, MCP server, and next-plan recommendations.",
   "license": "MIT",
-  "keywords": ["ai-coding", "cli", "mcp", "quota-tracker", "usage-limits", "usage-tracker", "claude-code", "codex", "kimi-code", "grok", "antigravity", "agy"],
+  "keywords": [
+    "ai-coding",
+    "cli",
+    "mcp",
+    "quota-tracker",
+    "usage-limits",
+    "usage-tracker",
+    "claude-code",
+    "codex",
+    "kimi-code",
+    "grok",
+    "antigravity",
+    "agy"
+  ],
   "type": "module",
   "repository": {
     "type": "git",
@@ -18,6 +31,7 @@
   "files": [
     "dist/",
     "web/dist/",
+    "scripts/fix-pty-perms.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -27,6 +41,7 @@
   "scripts": {
     "build": "vite build --config web/vite.config.ts && node scripts/build-embed.mjs && tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
     "build:bin": "node scripts/build-binary.mjs",
+    "postinstall": "node scripts/fix-pty-perms.mjs",
     "pretest": "npm run build",
     "test": "vitest run",
     "prepublishOnly": "npm run build",
@@ -40,6 +55,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
