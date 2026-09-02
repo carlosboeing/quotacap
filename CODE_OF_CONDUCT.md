@@ -59,8 +59,9 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-carlosboeing@gmail.com.
+reported to the community leaders responsible for enforcement via
+[GitHub's private advisory form](https://github.com/carlosboeing/quotacap/security/advisories/new)
+or by contacting [@carlosboeing](https://github.com/carlosboeing) directly through GitHub.
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
