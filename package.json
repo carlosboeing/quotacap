@@ -48,7 +48,7 @@
     "dev": "tsx src/cli/index.ts"
   },
   "dependencies": {
-    "commander": "^12.0.0",
+    "commander": "^15.0.0",
     "date-fns": "^3.0.0",
     "date-fns-tz": "^3.0.0",
     "fastify": "^5.12.1",
