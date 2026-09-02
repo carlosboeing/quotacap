@@ -41,10 +41,10 @@ Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discove
 
 ## Current state
 
-* Four live adapters: claude, codex, kimi, grok, plus manual ingest
+* Five live adapters: claude, codex, kimi, grok, agy, plus manual ingest
 * npm `quotacap` and GitHub Releases binaries (macOS and Linux)
 * Dashboard, CLI, and MCP share one local HTTP handler on 127.0.0.1:8787
-* Next work: Antigravity adapter, Windows binary, forecast validation (`docs/ROADMAP.md`)
+* Next work: Windows binary, forecast validation (`docs/ROADMAP.md`)
 * Private workbench at `.workbench/` (gitignored)
 
 ## Brand

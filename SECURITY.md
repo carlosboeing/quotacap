@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Email the maintainer at the address in `package.json` (`carlos@quotacap.ai` when published) or open a private security advisory on GitHub (`Security → Advisories → New draft advisory`). Do not open a public issue for a vulnerability.
+Do not open a public issue for a vulnerability. Report privately through GitHub's private vulnerability reporting (`Security → Advisories → New draft advisory`). If you cannot use private reporting, email **carlosboeing@gmail.com** with the same detail and `QuotaCap security` in the subject.
 
 We will acknowledge within 48 hours and aim to ship a fix or mitigation within 7 days. We will credit you in the changelog unless you prefer to stay anonymous.
 

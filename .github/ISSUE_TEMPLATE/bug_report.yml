@@ -1,0 +1,52 @@
+name: Bug Report
+description: Report a reproducible bug or error in QuotaCap
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem in QuotaCap. If this is a security vulnerability, please report it privately according to our [Security Policy](https://github.com/carlosboeing/quotacap/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: QuotaCap Version
+      description: Run `quotacap version` or check `package.json`.
+      placeholder: "e.g. 0.0.21"
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime / Environment
+      options:
+        - "Node.js (npm / npx)"
+        - "Standalone Binary (macOS arm64)"
+        - "Standalone Binary (macOS x64)"
+        - "Standalone Binary (Linux x64)"
+        - "Standalone Binary (Linux arm64)"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can maintainers reproduce this issue?
+      placeholder: |
+        1. Run `quotacap status`
+        2. Observe error ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Output
+      description: Paste any terminal output or error messages.
+      render: shell
