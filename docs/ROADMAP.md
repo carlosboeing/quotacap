@@ -45,6 +45,7 @@
 
 ## Next
 
+* OSS house-standard alignment (CI hardening, Dependabot, community health, rulesets)
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)

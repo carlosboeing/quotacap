@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Governance & CI: Align repository with OSS house standard. Immutable action commit SHA pinning with version comments across all workflows (`test.yml`, `release.yml`).
+- CI: Deterministic `npm ci` installation, Node compatibility floor (`22.13.0`) and current (`22`) matrix testing with `fail-fast: false`, stable aggregate gate check `required`.
+- Release: Arch-matched binary execution smoke tests to prevent runner cross-compilation crashes, artifact provenance attestations via `actions/attest-build-provenance`.
+- Supply chain: Automated weekly Dependabot configuration for GitHub Actions and npm dependencies (`.github/dependabot.yml`).
+- Community health: Added `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1), pull request template, structured GitHub issue forms, `CODEOWNERS`, and `THIRD_PARTY_NOTICES.md`.
+
 ## 0.0.21
 
 - Security: loopback `Host` and `Origin` allowlists, `X-QuotaCap-Token` on `POST /api/refresh` with `timingSafeEqual` and `~/.quotacap/token` (`0600`), `GET /api/token` same-origin gated, 60s debounce (#13). Rooted `GET /assets/*` with `path.resolve` and prefix check, reject `..` and absolute splats, `GET /assets//etc/passwd` → `400` (#7).

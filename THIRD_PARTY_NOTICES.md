@@ -1,0 +1,41 @@
+# Third-Party Notices
+
+QuotaCap incorporates open-source software packages under their respective license terms.
+
+## Production Dependencies
+
+- **commander** — MIT License (Copyright (c) 2011-2024 Holowaychuk and contributors)
+- **date-fns** — MIT License (Copyright (c) 2021 Sasha Koss and Lesha Koss)
+- **date-fns-tz** — MIT License (Copyright (c) 2018 Sasha Koss)
+- **fastify** — MIT License (Copyright (c) 2016-2024 Fastify contributors)
+- **react** — MIT License (Copyright (c) Meta Platforms, Inc. and affiliates)
+- **react-dom** — MIT License (Copyright (c) Meta Platforms, Inc. and affiliates)
+- **zod** — MIT License (Copyright (c) 2020 Colin McDonnell)
+- **node-pty** (optional) — MIT License (Copyright (c) Microsoft Corporation)
+
+## License Text (MIT)
+
+The above packages are each licensed under the MIT License. The full text that
+applies to each is reproduced below:
+
+```
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
