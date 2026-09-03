@@ -45,6 +45,7 @@
 
 ## Next
 
+* UX/UI redesign — consolidated dashboard/CLI presentation system (decision-ranked rows, pace visual, reset rail, explicit degraded states, colour tokens, terminal contract; approved design, implementation plan next)
 * OSS house-standard alignment (CI hardening, Dependabot, community health, rulesets)
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
