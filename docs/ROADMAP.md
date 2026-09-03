@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — Unreleased
+
+* OSS house-standard alignment — immutable action SHA pinning, `npm ci`, Node 22.13/22 matrix with `required` gate, arch-matched release smoke tests, provenance attestations, Dependabot, community health files (#16, #24)
+
 ## Recently shipped — 0.0.21 — 2026-09-02
 
 * Security hardening — `Host` and `Origin` loopback allowlists and `X-QuotaCap-Token` on `POST /api/refresh` (`timingSafeEqual`, `~/.quotacap/token` `0600`) (#13), rooted `GET /assets/*` against absolute splats `GET /assets//etc/passwd` → `400` (#7), `0700`/`0600` on `~/.quotacap` and `quotacap.db` with `raw` column dropped and migrated, `credits_usd` + `resets_at_estimated` added (#12), exclusive `O_EXCL` pidfile with stale-steal and pinned `claude` path (#8), 24 h rolling burn (#6) and estimated resets (#12), `SHA256SUMS` + `npm ci` in release (#10)
@@ -46,7 +50,6 @@
 ## Next
 
 * UX/UI redesign — consolidated dashboard/CLI presentation system (decision-ranked rows, pace visual, reset rail, explicit degraded states, colour tokens, terminal contract; approved design, implementation plan next)
-* OSS house-standard alignment (CI hardening, Dependabot, community health, rulesets)
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
