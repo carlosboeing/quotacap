@@ -1,44 +1,50 @@
 import { describe, it, expect } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { VERSION } from "../../src/version.js";
+import { stripWarnings } from "./helpers.js";
 const exec = promisify(execFile);
-describe("cli", () => {
-  it("--help lists commands", async () => {
-    const { stdout } = await exec("node", ["dist/cli/index.js","--help"]);
-    expect(stdout).toMatch(/status/);
+
+// Contract shell: help lists every command, version is byte-identical.
+// Command behavior lives in the per-command suites (status/advise/ingest).
+describe("cli contract", () => {
+  it("--help lists all commands", async () => {
+    const { stdout } = await exec("node", ["dist/cli/index.js", "--help"]);
+    for (const cmd of ["status", "advise", "ingest", "init", "version", "mcp", "daemon", "web", "service"]) {
+      expect(stdout).toMatch(new RegExp(`\\b${cmd}\\b`));
+    }
   });
-  it("status prints the shared quota table", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-cli-"));
-    const env = { ...process.env, HOME: home };
-    try {
-      await exec("node", ["dist/cli/index.js","ingest","--provider","kimi","--text","Weekly limit 16% used resets in 3d"], { env });
-      const { stdout } = await exec("node", ["dist/cli/index.js","status"], { env });
-      expect(stdout).toMatch(/\| Provider \| Used \| Left \| Resets \| Days left \|/);
-      expect(stdout).toMatch(/\| kimi \| 16% \| 84% \|/);
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
+  it("status --help lists the four options", async () => {
+    const { stdout } = await exec("node", ["dist/cli/index.js", "status", "--help"]);
+    for (const opt of ["--json", "--compact", "--ascii", "--sort"]) {
+      expect(stdout).toContain(opt);
     }
-  }, 10000);
-  it("advise prints recommendation and basis offline", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-cli-adv-"));
-    const env = { ...process.env, HOME: home };
-    try {
-      fs.mkdirSync(path.join(home, ".quotacap"), { recursive: true });
-      fs.writeFileSync(path.join(home, ".quotacap", "config.json"), JSON.stringify({ port: 59123 }));
-      await exec("node", ["dist/cli/index.js","ingest","--provider","kimi","--text","Weekly limit 1% used resets in 7d"], { env });
-      const { stdout } = await exec("node", ["dist/cli/index.js","advise","--json"], { env });
-      const j = JSON.parse(stdout);
-      expect(j.use).toBe("kimi");
-      expect(j.recommendationBasis).toBe("unknown-headroom");
-      expect(j.wastePct).toBeNull();
-      expect(j.reason).toMatch(/Measuring pace; 99% remains with \d\.\dd until reset/);
-      expect(j.advisories[0].status).toBe("unknown");
-      expect(j.advisories[0].burnRate).toBeNull();
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
-  }, 10000);
+  });
+  it("version prints the release version", async () => {
+    const { stdout } = await exec("node", ["dist/cli/index.js", "version"]);
+    expect(stdout.trim()).toBe(VERSION);
+  });
 });
+
+describe("stripWarnings helper", () => {
+  it("filters out node experimental warnings from stderr", () => {
+    const raw =
+      "(node:2585) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n" +
+      "(Use `node --trace-warnings ...` to show where the warning was created)\n";
+    expect(stripWarnings(raw)).toBe("");
+  });
+
+  it("preserves real stderr content while removing warning lines", () => {
+    const raw =
+      "(node:2585) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n" +
+      "(Use `node --trace-warnings ...` to show where the warning was created)\n" +
+      "offline: showing stored readings (service unreachable)\n";
+    expect(stripWarnings(raw)).toBe("offline: showing stored readings (service unreachable)");
+  });
+
+  it("handles empty or blank stderr", () => {
+    expect(stripWarnings("")).toBe("");
+    expect(stripWarnings("   ")).toBe("");
+  });
+});
+
