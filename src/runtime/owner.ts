@@ -21,10 +21,10 @@ export interface AcquireOptions {
   graceMs?: number;
   rounds?: number;
   /**
-   * Test seam. `beforeStaleUnlink` is awaited between the last read of a
-   * stale claim and the unlink that removes it, so a test can drive the one
-   * interleaving that unlink has to survive: the old owner releasing and a
-   * new owner creating a lock in that window.
+   * Test seam. `beforeStaleUnlink` is awaited after the identity check and
+   * before the unlink, so a test can drive release+create in that window.
+   * Creation, release and recovery share the takeover mutex, so a real
+   * contender cannot install a new lock there; the hook exists to prove it.
    */
   hooks?: { beforeStaleUnlink?: () => void | Promise<void> };
 }
@@ -52,12 +52,18 @@ export function lockPath(dataDir: string): string {
   return path.join(dataDir, "service.lock");
 }
 
-// Stale recovery runs under this mutex, so read-verify-remove-create is one
-// critical section across processes. Without it two processes can both read
-// the same stale claim and the slower one unlinks the winner's fresh lock.
+// Creation, release and stale recovery share this mutex, so the unlink of a
+// stale claim cannot land on a lock that another process just created.
+// Without it two processes can both read the same stale claim and the slower
+// one unlinks the winner's fresh lock. A holder that dies leaves the file
+// behind, so an entry older than staleMs is removed and retried.
 function takeoverPath(dataDir: string): string {
   return path.join(dataDir, "service.lock.takeover");
 }
+
+// Same-process reentry: claimWith's failed verify calls release() while
+// acquireClaim still holds the mutex, and that release must still unlink.
+const heldTakeovers = new Set<string>();
 
 function inodeOf(target: string | number): number | null {
   try {
@@ -99,6 +105,7 @@ function startHeartbeat(
   fd: number,
   mine: ClaimInfo,
   beatIntervalMs: number,
+  staleMs: number,
 ): Claim {
   const dataDir = path.dirname(file);
   const myInode = inodeOf(fd);
@@ -152,18 +159,28 @@ function startHeartbeat(
         } catch {}
       }
       if (mustUnlink) {
-        try {
-          fs.rmSync(file, { force: true });
-        } catch {}
+        const unlock = acquireTakeover(dataDir, staleMs);
+        if (unlock) {
+          try {
+            if (stillMine()) {
+              try {
+                fs.rmSync(file, { force: true });
+              } catch {}
+            }
+          } finally {
+            unlock();
+          }
+        }
       }
     },
   };
 }
 
-// Best-effort mutex over stale recovery. A holder that dies leaves the file
-// behind, so an entry older than staleMs is removed and retried.
 function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null {
   const file = takeoverPath(dataDir);
+  if (heldTakeovers.has(file)) {
+    return () => {};
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fd = fs.openSync(
@@ -176,7 +193,9 @@ function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null 
       } finally {
         fs.closeSync(fd);
       }
+      heldTakeovers.add(file);
       return () => {
+        heldTakeovers.delete(file);
         try {
           fs.rmSync(file, { force: true });
         } catch {}
@@ -258,7 +277,7 @@ export async function acquireClaim(
       } catch {}
       throw err;
     }
-    const claim = startHeartbeat(file, fd, mine, beatIntervalMs);
+    const claim = startHeartbeat(file, fd, mine, beatIntervalMs, staleMs);
     // Confirm the file on disk is still the one just written. Another
     // process recovering a stale claim can unlink between the create and
     // this read, and a claim that was never really held must fail startup
@@ -271,27 +290,36 @@ export async function acquireClaim(
   };
 
   for (let round = 0; round < rounds; round++) {
-    const fresh = create();
-    if (fresh !== null) return claimWith(fresh);
-
-    const holder = readClaim(dataDir);
-    const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
-    if (holder && age < staleMs) {
-      throw new AlreadyRunningError(holder);
+    // Wait for the mutex without burning a round: a live owner finishes
+    // acquire in microseconds, and a recovery that holds it through grace
+    // still refreshes the claim we will see on the next try.
+    let releaseTakeover: (() => void) | null = null;
+    for (;;) {
+      releaseTakeover = acquireTakeover(dataDir, staleMs);
+      if (releaseTakeover !== null) break;
+      const holder = readClaim(dataDir);
+      const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
+      if (holder && age < staleMs) {
+        throw new AlreadyRunningError(holder);
+      }
+      await delay(Math.min(50, graceMs));
     }
-
-    // Stale or unreadable. Take the recovery mutex so the grace wait, the
-    // re-read, the unlink and the create are one critical section: a
-    // contender must wait for it and then sees this process's fresh claim.
-    const releaseTakeover = acquireTakeover(dataDir, staleMs);
-    if (releaseTakeover === null) {
-      // Another process is recovering. Let it finish, then retry.
-      await delay(graceMs);
-      continue;
-    }
+    const unlock = releaseTakeover;
     try {
-      // The re-read protects an owner mid-beat whose file we caught
-      // half-written, and an owner that started while we queued here.
+      const fresh = create();
+      if (fresh !== null) return claimWith(fresh);
+
+      const holder = readClaim(dataDir);
+      const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
+      if (holder && age < staleMs) {
+        throw new AlreadyRunningError(holder);
+      }
+
+      // Stale or unreadable. Grace wait, re-read, unlink and create stay
+      // one critical section: a contender must wait for the mutex and then
+      // sees this process's fresh claim. Release takes the same mutex, so
+      // the old owner cannot unlink between the identity check and this
+      // unlink and open a hole for a third process to create into.
       await delay(graceMs);
       const recheck = readClaim(dataDir);
       const reAge = recheck
@@ -300,25 +328,18 @@ export async function acquireClaim(
       if (recheck && reAge < staleMs) {
         throw new AlreadyRunningError(recheck);
       }
-      // Identity of the file this round decided to remove. Creation and
-      // release never take the takeover mutex, so between the read above and
-      // the unlink below the old owner can release and a third process can
-      // create a fresh lock. Unlinking by path alone would delete that new
-      // owner's file, leaving two processes each believing they hold one.
       const observedIno = inodeOf(file);
       const observedNonce = recheck?.nonce ?? null;
-      if (opts?.hooks?.beforeStaleUnlink) {
-        await opts.hooks.beforeStaleUnlink();
-      }
-      const current = readClaim(dataDir);
       if (
         inodeOf(file) !== observedIno ||
-        (current?.nonce ?? null) !== observedNonce
+        (readClaim(dataDir)?.nonce ?? null) !== observedNonce
       ) {
-        // Replaced while we waited: not the stale file we examined, so not
-        // ours to remove.
+        const current = readClaim(dataDir);
         if (current) throw new AlreadyRunningError(current);
         continue;
+      }
+      if (opts?.hooks?.beforeStaleUnlink) {
+        await opts.hooks.beforeStaleUnlink();
       }
       try {
         fs.rmSync(file, { force: true });
@@ -328,7 +349,7 @@ export async function acquireClaim(
       const stolen = create();
       if (stolen !== null) return claimWith(stolen);
     } finally {
-      releaseTakeover();
+      unlock();
     }
   }
   throw new AlreadyRunningError(readClaim(dataDir));

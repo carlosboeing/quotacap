@@ -88,6 +88,28 @@ function setupLogFile(): () => void {
       error: console.error,
       debug: console.debug,
     };
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      console.log = orig.log;
+      console.info = orig.info;
+      console.warn = orig.warn;
+      console.error = orig.error;
+      console.debug = orig.debug;
+      try {
+        stream.end();
+      } catch {}
+    };
+    stream.on("error", (err) => {
+      const first = !restored;
+      restore();
+      if (first) {
+        orig.error(
+          `[quotacap] log file error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    });
     const write = (...args: any[]) => {
       try {
         stream.write(`${format(...args)}\n`);
@@ -98,16 +120,7 @@ function setupLogFile(): () => void {
     console.warn = write;
     console.error = write;
     console.debug = write;
-    return () => {
-      console.log = orig.log;
-      console.info = orig.info;
-      console.warn = orig.warn;
-      console.error = orig.error;
-      console.debug = orig.debug;
-      try {
-        stream.end();
-      } catch {}
-    };
+    return restore;
   } catch {
     return () => {};
   }

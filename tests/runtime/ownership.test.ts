@@ -201,28 +201,43 @@ describe("ownership claim", () => {
         lastBeat: new Date(Date.now() - 120_000).toISOString(),
       }) + "\n",
     );
-    const fresh: Claim[] = [];
-    // The hook fires between the recovering acquire's last read of the stale
-    // claim and its unlink: the old owner releases and a new owner takes the
-    // lock inside that window.
-    const recovery = acquireClaim(dir, {
+    // The hook fires after the identity check and before unlink. Release and
+    // a third-process create in that window must not become the owner: they
+    // share the takeover mutex with recovery, so the child waits and then
+    // sees the recovered claim. Do not await the child inside the hook —
+    // that would deadlock on the mutex recovery still holds.
+    let contender: Promise<RunResult> | undefined;
+    const recovery = await acquireClaim(dir, {
       staleMs: 1000,
       graceMs: 10,
       rounds: 1,
       hooks: {
-        beforeStaleUnlink: async () => {
+        beforeStaleUnlink: () => {
           old.release();
-          const next = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
-          claims.push(next);
-          fresh.push(next);
+          contender = runHolder([
+            "--dir",
+            dir,
+            "--hold-ms",
+            "500",
+            "--stale-ms",
+            "1000",
+            "--grace-ms",
+            "50",
+          ]);
         },
       },
     });
-    await expect(recovery).rejects.toBeInstanceOf(AlreadyRunningError);
-    expect(fresh).toHaveLength(1);
-    expect(fresh[0].verify()).toBe(true);
-    expect(readClaim(dir)?.nonce).toBe(fresh[0].info.nonce);
-  });
+    claims.push(recovery);
+    expect(recovery.verify()).toBe(true);
+    expect(contender).toBeDefined();
+    const child = await contender!;
+    if (child.code !== 1 || !child.stdout.includes("CONTENDED:")) {
+      throw new Error(
+        `contender in unlink window: code=${child.code} ${JSON.stringify(child.stdout)} ${JSON.stringify(child.stderr)}`,
+      );
+    }
+    expect(readClaim(dir)?.nonce).toBe(recovery.info.nonce);
+  }, 15000);
 
   it("(e) release by a non-owner leaves the file", async () => {
     const dir = mkHome();

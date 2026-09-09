@@ -138,6 +138,37 @@ describe("daemon single-instance", () => {
     expect(isDaemonRunning()).toBe(false);
   });
 
+  it("async log stream failure restores console and leaves the service running", async () => {
+    isolatedHome();
+    // A directory at the log path makes createWriteStream emit EISDIR on
+    // the later open, which is the failure the surrounding try/catch misses.
+    const logDir = path.join(home, "not-a-log-file");
+    fs.mkdirSync(logDir);
+    const prevLog = process.env.QUOTACAP_LOG_FILE;
+    process.env.QUOTACAP_LOG_FILE = logDir;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const started = await startDaemon({ port: 0, signals: false });
+      handles.push(started);
+      const deadline = Date.now() + 2000;
+      while (
+        Date.now() < deadline &&
+        !spy.mock.calls.some((c) => String(c[0]).includes("log file error"))
+      ) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(isDaemonRunning()).toBe(true);
+      expect(spy.mock.calls.some((c) => String(c[0]).includes("log file error"))).toBe(
+        true,
+      );
+      await started.stop();
+    } finally {
+      spy.mockRestore();
+      if (prevLog === undefined) delete process.env.QUOTACAP_LOG_FILE;
+      else process.env.QUOTACAP_LOG_FILE = prevLog;
+    }
+  });
+
   it("pins the absolute path of the claude binary into the adapter via injectable resolver", async () => {
     isolatedHome();
     const customBin = "/pinned/test/claude";
