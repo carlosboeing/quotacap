@@ -28,7 +28,7 @@ export function openDb(p: string) {
   return db;
 }
 export function migrate(db:any){
-  db.exec(`CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER);
+  db.exec(`CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
            CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
            CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);`);
   try {
@@ -37,17 +37,20 @@ export function migrate(db:any){
     const hasRaw = names.has("raw");
     const hasCredits = names.has("credits_usd");
     const hasEstimated = names.has("resets_at_estimated");
+    const hasSessionPct = names.has("session_pct");
     if (hasRaw) {
-      db.exec(`CREATE TABLE IF NOT EXISTS quotas_new(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER)`);
+      db.exec(`CREATE TABLE IF NOT EXISTS quotas_new(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL)`);
       const selCredits = hasCredits ? "credits_usd" : "NULL";
       const selEst = hasEstimated ? "resets_at_estimated" : "NULL";
-      db.exec(`INSERT INTO quotas_new(id, provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated) SELECT id, provider, plan, used_pct, resets_at, period_start, source, fetched_at, ${selCredits}, ${selEst} FROM quotas`);
+      const selSession = hasSessionPct ? "session_pct" : "NULL";
+      db.exec(`INSERT INTO quotas_new(id, provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct) SELECT id, provider, plan, used_pct, resets_at, period_start, source, fetched_at, ${selCredits}, ${selEst}, ${selSession} FROM quotas`);
       db.exec(`DROP TABLE quotas`);
       db.exec(`ALTER TABLE quotas_new RENAME TO quotas`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider)`);
     } else {
       if (!hasCredits) db.exec(`ALTER TABLE quotas ADD COLUMN credits_usd REAL`);
       if (!hasEstimated) db.exec(`ALTER TABLE quotas ADD COLUMN resets_at_estimated INTEGER`);
+      if (!hasSessionPct) db.exec(`ALTER TABLE quotas ADD COLUMN session_pct REAL`);
     }
   } catch {}
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider)`); } catch {}
