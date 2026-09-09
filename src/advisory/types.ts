@@ -1,20 +1,33 @@
-export type Urgency = "burn now"|"use soon"|"slow down"|"save"|"on track";
-export type BurnStatus = "at risk"|"on track"|"unknown";
-export type PaceSource = "recent"|"window-average"|"unknown";
-export type RecommendationBasis = "known-waste"|"unknown-headroom"|"none";
+import type { Quota } from "../adapters/types.js";
+import type { AttemptRecord } from "../store/attempts.js";
+
+export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track";
+export type BurnStatus = "at risk" | "on track" | "unknown";
+export type PaceSource = "recent" | "window-average" | "unknown";
+export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
+
+export type ExclusionReason =
+  | "not-reporting"
+  | "stale"
+  | "reset-passed"
+  | "invalid"
+  | "provider-failed"
+  | null;
+
+export type { AttemptRecord };
 
 export interface Advisory {
-  provider:string;
-  daysLeft:number;
-  remaining:number;
-  idealRate:number;
-  burnRate:number | null;
-  burnMeasured:boolean;
-  paceSource:PaceSource;
-  daysToExhaust:number | null;
-  status:BurnStatus;
-  wastePct:number | null;
-  urgency:Urgency;
+  provider: string;
+  daysLeft: number;
+  remaining: number;
+  idealRate: number;
+  burnRate: number | null;
+  burnMeasured: boolean;
+  paceSource: PaceSource;
+  daysToExhaust: number | null;
+  status: BurnStatus;
+  wastePct: number | null;
+  urgency: Urgency;
 }
 
 export interface Recommendation {
@@ -25,4 +38,32 @@ export interface Recommendation {
   recommendationBasis: RecommendationBasis;
   alternatives: any[];
   advisories: Advisory[];
+}
+
+export interface ProviderSnapshot {
+  id: string;
+  enabled: boolean;
+  quota: Quota | null;
+  lastAttempt: AttemptRecord | null;
+  lastSuccessAt: string | null;
+  reporting: boolean;
+  stale: boolean;
+  resetPassed: boolean;
+  ageMs: number | null;
+  evidence: string[];
+  exclusionReason: ExclusionReason;
+  advisory: Advisory | null;
+}
+
+export interface StateSnapshot {
+  asOf: string;
+  runtime: {
+    available: boolean;
+    ready: boolean;
+    polling: "idle" | "in-progress" | "cooldown";
+    lastCompletedPollAt: string | null;
+    version: string;
+  };
+  providers: ProviderSnapshot[];
+  recommendation: Recommendation;
 }
