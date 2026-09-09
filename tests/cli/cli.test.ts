@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { VERSION } from "../../src/version.js";
+import { stripWarnings } from "./helpers.js";
 const exec = promisify(execFile);
 
 // Contract shell: help lists every command, version is byte-identical.
@@ -24,3 +25,26 @@ describe("cli contract", () => {
     expect(stdout.trim()).toBe(VERSION);
   });
 });
+
+describe("stripWarnings helper", () => {
+  it("filters out node experimental warnings from stderr", () => {
+    const raw =
+      "(node:2585) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n" +
+      "(Use `node --trace-warnings ...` to show where the warning was created)\n";
+    expect(stripWarnings(raw)).toBe("");
+  });
+
+  it("preserves real stderr content while removing warning lines", () => {
+    const raw =
+      "(node:2585) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n" +
+      "(Use `node --trace-warnings ...` to show where the warning was created)\n" +
+      "offline: showing stored readings (service unreachable)\n";
+    expect(stripWarnings(raw)).toBe("offline: showing stored readings (service unreachable)");
+  });
+
+  it("handles empty or blank stderr", () => {
+    expect(stripWarnings("")).toBe("");
+    expect(stripWarnings("   ")).toBe("");
+  });
+});
+

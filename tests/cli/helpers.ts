@@ -2,8 +2,52 @@
 // builders via VACUUM INTO (D14) — no A changes, no live-database contact.
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { migrate, openDb } from "../../src/store/db.js";
 import { FIXED_NOW, buildFixtureDb } from "../fixtures/stable-state.js";
+
+const exec = promisify(execFile);
+
+export function stripWarnings(stderr: string): string {
+  if (!stderr) return "";
+  return stderr
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.includes("ExperimentalWarning") &&
+        !line.includes("--trace-warnings"),
+    )
+    .join("\n")
+    .trim();
+}
+
+export async function runCli(
+  home: string,
+  args: string[],
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await exec(
+      "node",
+      ["--no-warnings", "dist/cli/index.js", ...args],
+      {
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --no-warnings`.trim(),
+          QUOTACAP_HOME: home,
+        },
+      },
+    );
+    return { code: 0, stdout, stderr: stripWarnings(stderr) };
+  } catch (e: any) {
+    return {
+      code: e.code ?? 1,
+      stdout: e.stdout ?? "",
+      stderr: stripWarnings(e.stderr ?? ""),
+    };
+  }
+}
+
 
 export function seedEmptyDb(filePath: string): string {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

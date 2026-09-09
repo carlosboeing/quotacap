@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { Command } from "commander";
 import fs from "node:fs";
 import http from "node:http";
@@ -21,9 +19,8 @@ import {
   exampleStateSnapshot,
   exampleStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { seedFileDb } from "./helpers.js";
+import { seedFileDb, runCli } from "./helpers.js";
 
-const exec = promisify(execFile);
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 
@@ -37,20 +34,6 @@ afterEach(() => {
   while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
-
-async function runCli(
-  home: string,
-  args: string[],
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  try {
-    const { stdout, stderr } = await exec("node", ["dist/cli/index.js", ...args], {
-      env: { ...process.env, QUOTACAP_HOME: home },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (e: any) {
-    return { code: e.code ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
-  }
-}
 
 function writeConfig(home: string, port: number): void {
   const dir = path.join(home, ".quotacap");

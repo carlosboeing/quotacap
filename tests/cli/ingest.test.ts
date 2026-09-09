@@ -1,13 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { seedFileDb } from "./helpers.js";
-
-const exec = promisify(execFile);
+import { seedFileDb, runCli } from "./helpers.js";
 
 const tmpDirs: string[] = [];
 function tmpDir(): string {
@@ -18,20 +14,6 @@ function tmpDir(): string {
 afterEach(() => {
   while (tmpDirs.length) fs.rmSync(tmpDirs.pop()!, { recursive: true, force: true });
 });
-
-async function runCli(
-  home: string,
-  args: string[],
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  try {
-    const { stdout, stderr } = await exec("node", ["dist/cli/index.js", ...args], {
-      env: { ...process.env, QUOTACAP_HOME: home },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (e: any) {
-    return { code: e.code ?? 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
-  }
-}
 
 function writeConfig(home: string, port: number): void {
   const dir = path.join(home, ".quotacap");
