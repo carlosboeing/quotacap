@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { registerTrackedChild } from "../runtime/spawn.js";
 
 export function stripAnsi(s: string): string {
   return s
@@ -28,6 +29,10 @@ export interface PtyRunOptions {
   abortOn?: RegExp;
   timeoutMs: number;
   maxBytes?: number;
+  /** Abort kills the child via the existing kill path and rejects `pty aborted`. */
+  signal?: AbortSignal;
+  /** Diagnostic label for the tracked child (adapter id). */
+  label?: string;
 }
 
 function delay(ms: number): Promise<void> {
@@ -94,6 +99,18 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   const rows = opts.rows ?? 50;
   const readyTimeoutMs = opts.readyTimeoutMs ?? 6000;
   if (opts.timeoutMs <= 0) throw new Error("pty: timeoutMs must be > 0");
+  if (opts.signal?.aborted) throw new Error("pty aborted");
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+  };
+  if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true });
+  const checkAborted = () => {
+    if (aborted) throw new Error("pty aborted");
+  };
+  const teardownAbort = () => {
+    if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
+  };
 
   const BunGlobal: any = (globalThis as any).Bun;
   let transcript = "";
@@ -160,12 +177,19 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     }
   };
 
+  const unregisterChild = registerTrackedChild(() => {
+    try {
+      proc.kill();
+    } catch {}
+  }, opts.label ?? opts.file);
+
   try {
     if (opts.readyRegex) {
       const deadline = Date.now() + readyTimeoutMs;
       let matched = false;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
         const clean = stripAnsi(transcript);
         checkAbort(clean);
@@ -181,12 +205,14 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       }
       await delay(200);
       checkCap();
+      checkAborted();
       if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
       const postReadyClean = stripAnsi(transcript);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
+      checkAborted();
       if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
       const c = stripAnsi(transcript);
       checkAbort(c);
@@ -205,6 +231,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       let done = false;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         const clean = stripAnsi(transcript);
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
@@ -228,6 +255,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       const deadline = Date.now() + opts.timeoutMs;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         const c = stripAnsi(transcript);
         checkAbort(c);
         if (exited) break;
@@ -240,13 +268,18 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     try { reader.cancel(); } catch {}
     await Promise.race([readLoop, delay(200)]);
     checkCap();
+    checkAborted();
     const finalClean = stripAnsi(transcript);
     checkAbort(finalClean);
+    unregisterChild();
+    teardownAbort();
     return transcript;
   } catch (e) {
     reading = false;
     try { reader.cancel(); } catch {}
     await kill();
+    unregisterChild();
+    teardownAbort();
     throw e;
   }
 }
@@ -257,6 +290,18 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   const rows = opts.rows ?? 50;
   const readyTimeoutMs = opts.readyTimeoutMs ?? 6000;
   if (opts.timeoutMs <= 0) throw new Error("pty: timeoutMs must be > 0");
+  if (opts.signal?.aborted) throw new Error("pty aborted");
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+  };
+  if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true });
+  const checkAborted = () => {
+    if (aborted) throw new Error("pty aborted");
+  };
+  const teardownAbort = () => {
+    if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
+  };
 
   let transcript = "";
   let exited = false;
@@ -279,6 +324,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   } catch (e) {
     throw new Error(`pty spawn failed for ${opts.file}: ${(e as Error).message}`);
   }
+
+  const unregisterChild = registerTrackedChild(() => {
+    try {
+      ptyProcess.kill("SIGTERM");
+    } catch {}
+  }, opts.label ?? opts.file);
 
   const disposables: any[] = [];
   disposables.push(
@@ -339,6 +390,7 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       let matched = false;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
         const clean = stripAnsi(transcript);
         checkAbort(clean);
@@ -354,12 +406,14 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       }
       await delay(200);
       checkCap();
+      checkAborted();
       if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
       const postReadyClean = stripAnsi(transcript);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
+      checkAborted();
       if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
       const c = stripAnsi(transcript);
       checkAbort(c);
@@ -373,6 +427,7 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       let done = false;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         const clean = stripAnsi(transcript);
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
@@ -396,6 +451,7 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       const deadline = Date.now() + opts.timeoutMs;
       while (Date.now() < deadline) {
         checkCap();
+        checkAborted();
         const c = stripAnsi(transcript);
         checkAbort(c);
         if (exited) break;
@@ -405,14 +461,19 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
 
     await kill();
     checkCap();
+    checkAborted();
     const finalClean = stripAnsi(transcript);
     checkAbort(finalClean);
+    unregisterChild();
+    teardownAbort();
     return transcript;
   } catch (e) {
     await kill();
     throw e;
   } finally {
     cleanup();
+    unregisterChild();
+    teardownAbort();
   }
 }
 

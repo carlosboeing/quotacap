@@ -1,5 +1,6 @@
 import os from "node:os";
 import { runPty, stripAnsi } from "./pty.js";
+import { adapterSignal } from "../runtime/spawn.js";
 import type { ParsedQuota } from "./types.js";
 
 const MONTHS: Record<string, number> = {
@@ -120,6 +121,8 @@ export const codexAdapter = {
       abortOn: /Do you trust|Trust.*folder|trust the files in this folder/i,
       timeoutMs: 12000,
       maxBytes: 256 * 1024,
+      signal: adapterSignal("codex"),
+      label: "codex",
     });
     return parseCodexTui(transcript);
   },
