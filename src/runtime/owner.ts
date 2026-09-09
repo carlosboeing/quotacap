@@ -74,18 +74,25 @@ interface SqliteConn {
   close(): unknown;
 }
 
-function openSqlite(file: string): SqliteConn {
+function openSqlite(file: string, timeoutMs = 0): SqliteConn {
   let Ctor: new (path: string, opts?: { timeout?: number }) => SqliteConn;
   try {
     Ctor = nodeRequire("node:sqlite").DatabaseSync;
   } catch {
     Ctor = nodeRequire(BUN_SQLITE).Database;
   }
+  let db: SqliteConn;
   try {
-    return new Ctor(file, { timeout: 0 });
+    db = new Ctor(file, { timeout: timeoutMs });
   } catch {
-    return new Ctor(file);
+    db = new Ctor(file);
   }
+  if (timeoutMs > 0) {
+    try {
+      db.exec(`PRAGMA busy_timeout = ${timeoutMs}`);
+    } catch {}
+  }
+  return db;
 }
 
 function sqliteLocked(err: unknown): boolean {
@@ -226,7 +233,7 @@ function startHeartbeat(
         } catch {}
       }
       if (mustUnlink) {
-        const takeover = acquireTakeover(dataDir);
+        const takeover = acquireTakeover(dataDir, 1000);
         if (takeover) {
           try {
             if (stillMine()) {
@@ -248,7 +255,7 @@ interface TakeoverLock {
   owns(): boolean;
 }
 
-function acquireTakeover(dataDir: string): TakeoverLock | null {
+function acquireTakeover(dataDir: string, timeoutMs = 0): TakeoverLock | null {
   const file = takeoverPath(dataDir);
   if (heldTakeovers.has(file)) {
     return { unlock() {}, owns: () => true };
@@ -256,7 +263,7 @@ function acquireTakeover(dataDir: string): TakeoverLock | null {
   let db: SqliteConn | undefined;
   try {
     ensureTakeoverDb(file);
-    db = openSqlite(file);
+    db = openSqlite(file, timeoutMs);
     db.exec("BEGIN EXCLUSIVE");
   } catch (err) {
     try {

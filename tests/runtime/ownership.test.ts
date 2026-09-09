@@ -384,4 +384,37 @@ describe("ownership claim", () => {
   it("readClaim returns null when no claim exists", () => {
     expect(readClaim(mkHome())).toBeNull();
   });
+
+  it("release waits out brief takeover contention and unlinks claim", async () => {
+    const dir = mkHome();
+    const claim = await acquireClaim(dir);
+    claims.push(claim);
+
+    const child = spawn(process.execPath, [
+      "-e",
+      `
+      const { createRequire } = require("node:module");
+      const req = createRequire(process.cwd() + "/");
+      let Database;
+      try { Database = req("node:sqlite").DatabaseSync; } catch { Database = req("bun:sqlite").Database; }
+      const db = new Database("${path.join(dir, "service.lock.takeover")}");
+      db.exec("BEGIN EXCLUSIVE;");
+      process.stdout.write("LOCKED\\n");
+      setTimeout(() => {
+        try { db.exec("ROLLBACK;"); } catch {}
+        try { db.close(); } catch {}
+      }, 150);
+      `,
+    ]);
+    procs.push(child);
+    await new Promise<void>((resolve, reject) => {
+      child.stdout.on("data", (d) => {
+        if (String(d).includes("LOCKED")) resolve();
+      });
+      child.on("error", reject);
+    });
+
+    claim.release();
+    expect(fs.existsSync(lockFile(dir))).toBe(false);
+  });
 });

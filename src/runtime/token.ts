@@ -18,25 +18,39 @@ export function ensureToken(file = tokenFile()): string {
     } catch {}
   } catch {}
   try {
-    if (fs.existsSync(file)) {
-      const existing = fs.readFileSync(file, "utf8").trim();
-      if (existing.length > 0) return existing;
-    }
+    const existing = fs.readFileSync(file, "utf8").trim();
+    if (existing.length > 0) return existing;
   } catch {}
   const token = crypto.randomBytes(32).toString("hex");
-  fs.writeFileSync(file, `${token}\n`, { mode: 0o600, encoding: "utf8" });
   try {
-    fs.chmodSync(file, 0o600);
-  } catch {}
-  return token;
+    fs.writeFileSync(file, `${token}\n`, {
+      flag: "wx",
+      mode: 0o600,
+      encoding: "utf8",
+    });
+    try {
+      fs.chmodSync(file, 0o600);
+    } catch {}
+    return token;
+  } catch (err: any) {
+    if (err?.code === "EEXIST") {
+      try {
+        const existing = fs.readFileSync(file, "utf8").trim();
+        if (existing.length > 0) return existing;
+      } catch {}
+    }
+    fs.writeFileSync(file, `${token}\n`, { mode: 0o600, encoding: "utf8" });
+    try {
+      fs.chmodSync(file, 0o600);
+    } catch {}
+    return token;
+  }
 }
 
 export function readToken(file = tokenFile()): string | undefined {
   try {
-    if (fs.existsSync(file)) {
-      const existing = fs.readFileSync(file, "utf8").trim();
-      if (existing.length > 0) return existing;
-    }
+    const existing = fs.readFileSync(file, "utf8").trim();
+    if (existing.length > 0) return existing;
   } catch {}
   return undefined;
 }

@@ -398,16 +398,20 @@ export async function uninstall(deps: ServiceDeps = {}): Promise<void> {
   }
   const { home, uid, dataDir, print, run } = resolved(deps);
   const plistFile = plistFileFor(home);
-  if (fs.existsSync(plistFile)) {
+  try {
     const { label } = parsePlistIdentity(fs.readFileSync(plistFile, "utf8"));
     if (label !== SERVICE_LABEL) {
       throw new Error(
         `refusing to remove foreign plist at ${plistFile} (label ${label ?? "unknown"} is not ${SERVICE_LABEL})`,
       );
     }
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") throw err;
   }
   bootoutQuiet(run, uid, print);
-  if (fs.existsSync(plistFile)) fs.rmSync(plistFile);
+  try {
+    fs.rmSync(plistFile, { force: true });
+  } catch {}
   print(`service registration removed; quota data and config preserved in ${dataDir}`);
 }
 
