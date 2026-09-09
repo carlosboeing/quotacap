@@ -1,5 +1,6 @@
 import os from "node:os";
 import { runPty, stripAnsi } from "./pty.js";
+import { adapterSignal } from "../runtime/spawn.js";
 import type { ParsedQuota } from "./types.js";
 
 const FULL_MONTHS: Record<string, number> = {
@@ -107,6 +108,8 @@ export const grokAdapter = {
       completionRegex: /Weekly lim|Credits:/i,
       timeoutMs: 14000,
       maxBytes: 256 * 1024,
+      signal: adapterSignal("grok"),
+      label: "grok",
     });
     return parseGrokTui(transcript);
   },

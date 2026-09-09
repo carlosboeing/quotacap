@@ -4,6 +4,7 @@ import { codexAdapter } from "./codex.js";
 import { kimiAdapter } from "./kimi.js";
 import { grokAdapter } from "./grok.js";
 import { agyAdapter } from "./agy.js";
+import { installAdapterSignal, clearAdapterSignal } from "../runtime/spawn.js";
 import type { Adapter } from "./types.js";
 export const adapters: Record<string, Adapter> = {
   claude: claudeAdapter,
@@ -13,15 +14,6 @@ export const adapters: Record<string, Adapter> = {
   grok: grokAdapter,
   agy: agyAdapter,
 };
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
-    Promise.resolve(p).then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e) => { clearTimeout(timer); reject(e); }
-    );
-  });
-}
 const ADAPTER_TIMEOUTS: Record<string, number> = {
   claude: 8000,
   codex: 12000,
@@ -30,14 +22,39 @@ const ADAPTER_TIMEOUTS: Record<string, number> = {
   agy: 20000,
 };
 
-export async function pollAll(enabled: string[]){
+export interface PollAllOptions {
+  timeouts?: Record<string, number>;
+}
+
+export async function pollAll(enabled: string[], opts?: PollAllOptions){
   const rawJobs = enabled.map(id => {
     const a = adapters[id];
     if (!a) return Promise.reject(new Error(`unknown adapter ${id}`));
     // manual adapter has no poll capability — skip without degraded
     if (id === "manual") return Promise.reject(new Error("manual skipped — use ingest"));
-    const timeout = ADAPTER_TIMEOUTS[id] ?? 8000;
-    return withTimeout(a.poll(), timeout);
+    const timeout = opts?.timeouts?.[id] ?? ADAPTER_TIMEOUTS[id] ?? 8000;
+    // One controller per adapter: a timeout aborts only that adapter's
+    // children; the signal clears when its job settles.
+    const controller = new AbortController();
+    installAdapterSignal(id, controller.signal);
+    let p: Promise<unknown>;
+    try {
+      p = Promise.resolve(a.poll());
+    } catch (e) {
+      clearAdapterSignal(id);
+      throw e;
+    }
+    const gated = new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        try { controller.abort(); } catch {}
+        reject(new Error(`timeout after ${timeout}ms`));
+      }, timeout);
+      p.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); }
+      );
+    });
+    return gated.finally(() => clearAdapterSignal(id));
   });
   const settled = await Promise.allSettled(rawJobs);
   return settled.map((s, i) => {

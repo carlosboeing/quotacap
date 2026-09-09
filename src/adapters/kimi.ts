@@ -1,6 +1,7 @@
 import os from "node:os";
 import { parseResetText } from "./parse.js";
 import { runPty, stripAnsi } from "./pty.js";
+import { adapterSignal } from "../runtime/spawn.js";
 import type { ParsedQuota } from "./types.js";
 
 export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
@@ -66,6 +67,8 @@ export const kimiAdapter = {
       abortOn: /Trust this folder\?/i,
       timeoutMs: 8000,
       maxBytes: 256 * 1024,
+      signal: adapterSignal("kimi"),
+      label: "kimi",
     });
     return parseKimiTui(transcript);
   },

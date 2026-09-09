@@ -2,11 +2,24 @@ import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { webHtml } from "../webHtml.js";
 import { webAssets } from "../webAssets.js";
+import {
+  buildSnapshot,
+  projectQuotasResponse,
+  projectRecommendationResponse,
+} from "../advisory/snapshot.js";
+import type { StateSnapshot } from "../advisory/types.js";
+import { validateTask } from "../advisory/validate.js";
+import { parseManualUsage } from "../adapters/manual.js";
+import { upsertQuota } from "../store/quotas.js";
+import {
+  createCoordinator,
+  ServiceClosing,
+  type Coordinator,
+} from "../runtime/poll.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -53,34 +66,6 @@ export function isAllowedOrigin(origin: unknown): boolean {
   }
 }
 
-export function getTokenPath(): string {
-  return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "token");
-}
-
-export function readToken(tokenPath = getTokenPath()): string | undefined {
-  try {
-    if (fs.existsSync(tokenPath)) {
-      const existing = fs.readFileSync(tokenPath, "utf8").trim();
-      if (existing.length > 0) return existing;
-    }
-  } catch {}
-  return undefined;
-}
-
-export function ensureToken(tokenPath = getTokenPath()): string {
-  const existing = readToken(tokenPath);
-  if (existing) return existing;
-  const token = crypto.randomBytes(32).toString("hex");
-  try {
-    const dir = path.dirname(tokenPath);
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    try { fs.chmodSync(dir, 0o700); } catch {}
-    fs.writeFileSync(tokenPath, `${token}\n`, { mode: 0o600, encoding: "utf8" });
-    try { fs.chmodSync(tokenPath, 0o600); } catch {}
-  } catch {}
-  return token;
-}
-
 export function isValidToken(received: unknown, expected: string): boolean {
   if (typeof received !== "string" || !received.trim() || !expected) return false;
   const recBuf = Buffer.from(received.trim());
@@ -89,24 +74,73 @@ export function isValidToken(received: unknown, expected: string): boolean {
   return crypto.timingSafeEqual(recBuf, expBuf);
 }
 
-// per-app state registry for backward-compat helpers
-const appStates = new WeakMap<FastifyInstance, { lastPollAt: string | null; lastRefreshAt: number; lastRefreshResult: any; token: string }>();
-const allStates = new Set<{ lastPollAt: string | null; lastRefreshAt: number; lastRefreshResult: any; token: string }>();
-
-export interface BuildAppOptions {
-  token?: string;
+export interface RuntimeContext {
+  db: any;
+  token: string;
+  coordinator: Coordinator;
+  enabledProviders: string[];
+  version: string;
+  exec: string;
+  now?: () => Date;
+  /**
+   * True while this process may still write to the database. The service
+   * supplies closing state plus claim ownership; a process that lost its
+   * claim must stop writing at once, not at its next scheduled poll.
+   */
+  canWrite?: () => boolean;
 }
 
-export function buildApp(db: any, opts?: BuildAppOptions): FastifyInstance {
-  const token = opts?.token ?? ensureToken();
-  const state = { lastPollAt: null as string | null, lastRefreshAt: 0, lastRefreshResult: null as any, token };
-  const app = Fastify({ logger: false });
-  appStates.set(app, state);
-  allStates.add(state);
-  app.addHook("onClose", async () => {
-    appStates.delete(app);
-    allStates.delete(state);
+// Ingest writes outside the poll path, so it needs the same fence the
+// coordinator applies before a poll write.
+function writable(ctx: RuntimeContext): boolean {
+  if (ctx.coordinator.isClosing()) return false;
+  return ctx.canWrite ? ctx.canWrite() : true;
+}
+
+export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeContext {
+  return {
+    db,
+    token: "test-token",
+    coordinator: createCoordinator({ db, enabledProviders: [] }),
+    enabledProviders: [],
+    version: "test",
+    exec: "test",
+    ...overrides,
+  };
+}
+
+function snapshotOf(ctx: RuntimeContext): StateSnapshot {
+  const st = ctx.coordinator.getState();
+  return buildSnapshot(ctx.db, {
+    enabledProviders: ctx.enabledProviders,
+    now: ctx.now?.() ?? new Date(),
+    runtime: {
+      available: true,
+      ready: true,
+      polling: st.polling,
+      lastCompletedPollAt: st.lastCompletedPollAt,
+      version: ctx.version,
+    },
   });
+}
+
+function readIndexHtml(): string {
+  const candidates = [
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/index.html"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/index.html"),
+    path.join(process.cwd(), "web/dist/index.html"),
+    path.join(process.cwd(), "web/index.html"),
+  ];
+  for (const p of candidates) {
+    try {
+      return fs.readFileSync(p, "utf8");
+    } catch {}
+  }
+  return webHtml ?? `<!doctype html><title>QuotaCap</title><div id=app>loading…</div>`;
+}
+
+export function buildApp(ctx: RuntimeContext): FastifyInstance {
+  const app = Fastify({ logger: false });
   app.addHook("onRequest", async (req, reply) => {
     const host = hostnameFromHostHeader(req.headers.host);
     if (!isLoopbackHostname(host)) {
@@ -117,70 +151,96 @@ export function buildApp(db: any, opts?: BuildAppOptions): FastifyInstance {
     }
   });
 
-  // expose for per-app helpers
-  (app as any)._quotacapState = state;
-
-  app.get("/health", async () => ({ ok: true, uptime: process.uptime(), lastPollAt: state.lastPollAt }));
-
-  app.get("/api/token", async () => ({ token: state.token }));
-
-  app.get("/api/quotas", async () => {
-    const { getAllLatest } = await import("../store/quotas.js");
-    const quotas = getAllLatest(db);
-    const now = Date.now();
-    return quotas.map((q: any) => {
-      const fetched = q.fetchedAt ? new Date(q.fetchedAt).getTime() : 0;
-      const ageMs = fetched ? now - fetched : Infinity;
-      const stale = ageMs > 60 * 60 * 1000;
-      return { ...q, stale, ageMs };
-    });
+  app.get("/health", async () => {
+    const st = ctx.coordinator.getState();
+    return {
+      ok: true,
+      uptime: process.uptime(),
+      lastPollAt: st.lastCompletedPollAt,
+      version: ctx.version,
+      exec: ctx.exec,
+      ready: true,
+      polling: st.polling,
+      lastCompletedPollAt: st.lastCompletedPollAt,
+    };
   });
 
-  app.get("/api/recommendation", async (req: any) => {
-    const { getAllLatest } = await import("../store/quotas.js");
-    const quotas = getAllLatest(db);
-    if (!quotas.length) {
-      return { use: "none", reason: "no quotas yet", alternatives: [], advisories: [] };
-    }
-    let recommend: any;
+  app.get("/api/token", async () => ({ token: ctx.token }));
+
+  app.get("/api/state", async () => snapshotOf(ctx));
+
+  app.get("/api/quotas", async () => projectQuotasResponse(snapshotOf(ctx)));
+
+  app.get("/api/recommendation", async (req: any, reply) => {
+    const task = req.query?.task ?? "any";
     try {
-      recommend = (await import("../advisory/engine.js")).recommend;
-    } catch {
-      return { use: quotas[0]?.provider ?? "none", reason: "advisory not yet implemented", alternatives: quotas };
-    }
-    try {
-      const task = (req.query?.task as string) ?? "any";
-      const { getBurnRates } = await import("../store/quotas.js");
-      const burnByProvider = getBurnRates(db);
-      return recommend(quotas, task, burnByProvider);
+      validateTask(task);
     } catch (e: any) {
-      return { use: quotas[0]?.provider ?? "none", reason: `advisory error: ${e?.message ?? String(e)}`, alternatives: quotas };
+      return reply.status(400).send({ error: String(e?.message ?? e) });
     }
+    return projectRecommendationResponse(snapshotOf(ctx), task);
   });
 
   app.post("/api/refresh", async (req: any, reply) => {
     const headerToken = req.headers["x-quotacap-token"];
-    if (!isValidToken(headerToken, state.token)) {
+    if (!isValidToken(headerToken, ctx.token)) {
       return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
     }
-    const now = Date.now();
-    if (now - state.lastRefreshAt < 60_000 && state.lastRefreshResult) {
-      return state.lastRefreshResult;
-    }
     try {
-      const { pollOnce } = await import("../daemon.js");
-      const { readConfig } = await import("../config.js");
-      const cfg = await readConfig();
-      const results: any[] = await pollOnce(db, cfg.enabledProviders);
-      const fulfilled = results.filter((r: any) => r.status === "fulfilled").map((r: any) => r.value);
-      const rejected = results.filter((r: any) => r.status === "rejected").map((r: any) => ({ provider: r.provider, reason: String(r.reason?.message ?? r.reason) }));
-      state.lastPollAt = new Date().toISOString();
-      state.lastRefreshAt = now;
-      state.lastRefreshResult = { fulfilled, rejected, lastPollAt: state.lastPollAt, results, degraded: rejected.length > 0 };
-      return state.lastRefreshResult;
+      return await ctx.coordinator.refresh();
     } catch (e: any) {
-      return { fulfilled: [], rejected: [{ provider: "all", reason: String(e?.message ?? e) }], lastPollAt: state.lastPollAt, degraded: true, error: String(e?.message ?? e) };
+      if (e instanceof ServiceClosing) {
+        return reply.status(503).send({ error: "service unavailable: closing" });
+      }
+      const st = ctx.coordinator.getState();
+      return {
+        fulfilled: [],
+        rejected: [{ provider: "all", reason: String(e?.message ?? e) }],
+        lastPollAt: st.lastCompletedPollAt,
+        degraded: true,
+        shared: false,
+        cooldown: false,
+        error: String(e?.message ?? e),
+      };
     }
+  });
+
+  app.post("/api/ingest", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+    const body = req.body as any;
+    const provider = body?.provider;
+    const text = body?.text;
+    if (
+      typeof provider !== "string" ||
+      !provider.trim() ||
+      typeof text !== "string" ||
+      !text
+    ) {
+      return reply.status(400).send({ error: "invalid-argument: provider and text are required" });
+    }
+    if (!writable(ctx)) {
+      return reply
+        .status(503)
+        .send({ error: "service unavailable: not the current owner or closing" });
+    }
+    const parsed = parseManualUsage(provider, text);
+    // Validated quota fields only: no raw text stored, no attempt row (D4).
+    upsertQuota(ctx.db, {
+      provider: parsed.provider,
+      plan: parsed.plan,
+      usedPct: parsed.usedPct,
+      sessionPct: parsed.sessionPct,
+      resetsAt: parsed.resetsAt,
+      periodStart: parsed.periodStart,
+      source: "manual",
+      fetchedAt: parsed.fetchedAt,
+      creditsUsd: parsed.creditsUsd,
+      resetsAtEstimated: parsed.resetsAtEstimated,
+    });
+    return { ok: true, provider };
   });
 
   // serve built vite assets at /assets/* (web/dist/assets/*)
@@ -220,36 +280,26 @@ export function buildApp(db: any, opts?: BuildAppOptions): FastifyInstance {
   });
 
   app.get("/", async (_req, reply) => {
-    const candidates = [
-      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist/index.html"),
-      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/index.html"),
-      path.join(process.cwd(), "web/dist/index.html"),
-      path.join(process.cwd(), "web/index.html"),
-    ];
-    for (const p of candidates) {
-      try {
-        const html = fs.readFileSync(p, "utf8");
-        return reply.type("text/html").send(html);
-      } catch {}
+    return reply.type("text/html").send(readIndexHtml());
+  });
+
+  // SPA fallback for Track C history routing (/setup): non-API/non-asset
+  // GETs that accept HTML get the app shell; explicit non-HTML accepts 404.
+  app.get("/*", async (req: any, reply) => {
+    const url = String(req.url ?? "").split("?")[0];
+    if (url.startsWith("/api/") || url.startsWith("/assets/")) {
+      return reply.status(404).send({ error: "not found" });
     }
-    return reply.type("text/html").send(webHtml ?? `<!doctype html><title>QuotaCap</title><div id=app>loading…</div>`);
+    const accept = req.headers.accept;
+    if (
+      typeof accept === "string" &&
+      !accept.includes("text/html") &&
+      !accept.includes("*/*")
+    ) {
+      return reply.status(404).send("not found");
+    }
+    return reply.type("text/html").send(readIndexHtml());
   });
 
   return app;
-}
-
-export function getLastPollAt(app?: FastifyInstance) {
-  if (app && appStates.has(app)) return appStates.get(app)!.lastPollAt;
-  // fallback: most recent state (for tests without app arg)
-  let last: string | null = null;
-  for (const s of allStates) last = s.lastPollAt;
-  return last;
-}
-export function resetRefreshState(app?: FastifyInstance) {
-  if (app && appStates.has(app)) {
-    const s = appStates.get(app)!;
-    s.lastPollAt = null; s.lastRefreshAt = 0; s.lastRefreshResult = null;
-    return;
-  }
-  for (const s of allStates) { s.lastPollAt = null; s.lastRefreshAt = 0; s.lastRefreshResult = null; }
 }

@@ -3,9 +3,9 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { VERSION } from "../version.js";
-import { buildApp } from "../http/server.js";
 import { openDb, migrate } from "../store/db.js";
 import { getDbPath, readConfig } from "../config.js";
+import { registerRuntimeCommands } from "./runtime.js";
 function ensureDbDir(){ try{ const d=path.dirname(getDbPath()); fs.mkdirSync(d, {recursive:true, mode:0o700}); try{ fs.chmodSync(d,0o700);}catch{} }catch{} }
 const program = new Command();
 program.name("quotacap").version(VERSION);
@@ -43,40 +43,14 @@ program.command("ingest").requiredOption("--provider <p>").requiredOption("--tex
   upsertQuota(db, parseManualUsage(o.provider, o.text));
   console.log("ingested");
 });
-program.command("web").option("--port <n>").action(async (o)=>{
-  ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
-  const { isDaemonRunning, startDaemon, ensureDaemonToken } = await import("../daemon.js");
-  if (!isDaemonRunning()) {
-    const started = await startDaemon();
-    if (!started.alreadyRunning) console.log("daemon started (auto)");
-  }
-  const token = ensureDaemonToken();
-  const app=buildApp(db, { token });
-  const port=o.port?parseInt(o.port): (await readConfig()).port;
-  await app.listen({port, host:"127.0.0.1"});
-  console.log(`QuotaCap at http://localhost:${port}`);
-});
 program.command("init").action(async()=>{
   const { readConfig, writeConfig } = await import("../config.js");
   const c=await readConfig(); await writeConfig(c); console.log(JSON.stringify(c,null,2));
-});
-program.command("daemon").option("--foreground","keep foreground (default: true)").action(async(o)=>{
-  const { startDaemon } = await import("../daemon.js");
-  const started = await startDaemon();
-  if (started.alreadyRunning) {
-    console.log(`daemon already running (pid ${started.alreadyRunning})`);
-    return;
-  }
-  console.log("QuotaCap daemon started" + (o.foreground !== false ? " (foreground)" : ""));
-  // keep alive until SIGINT/SIGTERM — timer is ref'd so event loop stays alive
-  process.on("SIGINT", ()=> { started.stop(); process.exit(0); });
-  process.on("SIGTERM", ()=> { started.stop(); process.exit(0); });
-  // explicitly keep process alive if interval was somehow unref'd elsewhere
-  if ((started.timer as any).ref) (started.timer as any).ref();
 });
 program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
   const mod=await import("../mcp/server.js");
   // if run with --help, commander handles it before action; this is the real server
   await mod.runMcpServer();
 });
+registerRuntimeCommands(program);
 program.parseAsync();
