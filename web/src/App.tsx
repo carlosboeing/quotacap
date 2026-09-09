@@ -12,6 +12,7 @@ import { ageLabel, firstRun, toViewModel, type ViewModel } from "./state.js";
 import { Recommendation } from "./components/Recommendation.js";
 import { SubscriptionList } from "./components/SubscriptionList.js";
 import { ResetRail } from "./components/ResetRail.js";
+import { ProviderDrawer } from "./components/ProviderDrawer.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -106,8 +107,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // Selected provider for the Task 6 detail drawer. Stored but unused until then.
-  const [, setSelectedProvider] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -188,6 +188,10 @@ function App() {
       {snapshot && (
         <ReadyView snapshot={snapshot} onSelectProvider={(id) => setSelectedProvider(id)} />
       )}
+      <ProviderDrawer
+        provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
+        onClose={() => setSelectedProvider(null)}
+      />
     </div>
   );
 }
