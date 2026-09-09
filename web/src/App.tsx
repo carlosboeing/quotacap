@@ -9,6 +9,7 @@ import {
   StateNetworkError,
 } from "./api.js";
 import { ageLabel, firstRun, toViewModel, type ViewModel } from "./state.js";
+import { Recommendation } from "./components/Recommendation.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -61,33 +62,37 @@ function HttpErrorPanel({
   );
 }
 
-/** Interim ready view. Tasks 3–5 replace these blocks with real components. */
-function ReadyView({ snapshot }: { snapshot: ViewModel }) {
-  if (firstRun(snapshot)) {
-    return (
-      <div data-testid="dashboard-root">
-        <h1>QuotaCap</h1>
-        <p data-testid="rec-prose">No quotas yet. Complete setup to take your first readings.</p>
-      </div>
-    );
-  }
+/** Interim ready view. Tasks 4–5 replace the list block with real components. */
+function ReadyView({
+  snapshot,
+  onSelectProvider,
+}: {
+  snapshot: ViewModel;
+  onSelectProvider: (id: string) => void;
+}) {
   return (
     <div data-testid="dashboard-root">
       <h1>QuotaCap</h1>
-      <p data-testid="rec-prose">
-        Switch to {snapshot.recommendation.use} next — {snapshot.recommendation.reason}
-      </p>
-      <ul>
-        {snapshot.providers.map((p) => (
-          <li key={p.id}>
-            {p.id}
-            {p.exclusionReason ? ` (${p.exclusionReason})` : ""}
-          </li>
-        ))}
-      </ul>
-      <p>
-        {snapshot.providers.length} tracked · {ageLabel(snapshot.asOf)}
-      </p>
+      <Recommendation
+        recommendation={snapshot.recommendation}
+        providers={snapshot.providers}
+        onSelectProvider={onSelectProvider}
+      />
+      {!firstRun(snapshot) && (
+        <>
+          <ul>
+            {snapshot.providers.map((p) => (
+              <li key={p.id}>
+                {p.id}
+                {p.exclusionReason ? ` (${p.exclusionReason})` : ""}
+              </li>
+            ))}
+          </ul>
+          <p>
+            {snapshot.providers.length} tracked · {ageLabel(snapshot.asOf)}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -98,6 +103,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Selected provider for the Task 6 detail drawer. Stored but unused until then.
+  const [, setSelectedProvider] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -175,7 +182,9 @@ function App() {
           </button>
         </div>
       )}
-      {snapshot && <ReadyView snapshot={snapshot} />}
+      {snapshot && (
+        <ReadyView snapshot={snapshot} onSelectProvider={(id) => setSelectedProvider(id)} />
+      )}
     </div>
   );
 }
