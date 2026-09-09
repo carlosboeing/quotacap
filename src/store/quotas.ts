@@ -46,50 +46,50 @@ export function getAllLatest(db:any){
 // alias for plan's getQuotas naming
 export const getQuotas = getAllLatest;
 export function getSnapshots(db:any){ return db.prepare(`SELECT * FROM snapshots ORDER BY day DESC`).all(); }
+interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
+
+// Readings since the last reset. A reset happened between two consecutive
+// readings when usage fell, or when the earlier reading's own resetsAt had both
+// passed by the later fetch and moved to a new boundary. Comparing stored
+// periodStart values cannot do this job: providers that estimate the reset
+// (grok with no "Resets:" line, claude with an unparsed reset) derive
+// periodStart from the poll time, so it moves on every poll and exact equality
+// would discard every earlier reading in the same cycle.
+function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
+  let start = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+    const boundaryRolled =
+      !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    if (boundaryRolled || cur.usedPct < prev.usedPct) start = i;
+  }
+  return start === 0 ? sorted : sorted.slice(start);
+}
+
 export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   // Burn is the used-pct delta over a real rolling window of poll history
-  // (up to 24h) within the current cycle window (periodStart to resetsAt).
-  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, period_start, resets_at FROM quotas`).all() as {
+  // (up to 24h) within the current cycle.
+  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`).all() as {
     provider: string;
     used_pct: number;
     fetched_at: string;
-    period_start: string | null;
     resets_at: string | null;
   }[];
 
-  // 1. Read latest row per provider (with valid fetchedAt <= now) to fix the current window
-  const latestByProvider = new Map<string, { periodStart: string | null; resetsAt: string | null; t: number }>();
+  const byProvider = new Map<string, BurnPoint[]>();
   for (const r of rows) {
     const t = new Date(r.fetched_at).getTime();
     if (Number.isNaN(t) || t > now) continue;
-    const cur = latestByProvider.get(r.provider);
-    if (!cur || t > cur.t) {
-      latestByProvider.set(r.provider, { periodStart: r.period_start, resetsAt: r.resets_at, t });
-    }
-  }
-
-  const byProvider = new Map<string, { usedPct: number; t: number }[]>();
-  for (const r of rows) {
-    const t = new Date(r.fetched_at).getTime();
-    if (Number.isNaN(t) || t > now) continue;
-    const currentWindow = latestByProvider.get(r.provider);
-    if (!currentWindow) continue;
-
-    // Cycle guard: drop points whose stored periodStart differs from the current window start
-    if (currentWindow.periodStart != null) {
-      if (r.period_start !== currentWindow.periodStart) continue;
-      const startMs = new Date(currentWindow.periodStart).getTime();
-      if (!Number.isNaN(startMs) && t < startMs) continue;
-    }
-
     const pts = byProvider.get(r.provider) ?? [];
-    pts.push({ usedPct: r.used_pct, t });
+    pts.push({ usedPct: r.used_pct, t, resetsAt: r.resets_at });
     byProvider.set(r.provider, pts);
   }
 
   const out = new Map<string, number>();
-  for (const [provider, pts] of byProvider) {
-    const sorted = pts.sort((a, b) => a.t - b.t);
+  for (const [provider, all] of byProvider) {
+    const sorted = currentCycle(all.sort((a, b) => a.t - b.t));
     const latest = sorted[sorted.length - 1];
     const cutoff = latest.t - 86400000;
     const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];

@@ -12,8 +12,8 @@ export function validateForecastProvider(
   if (typeof id !== "string" || !id) throw new Error("invalid-argument: provider required");
   const known = new Set([...ctx.registered, ...ctx.storedIds]);
   if (!known.has(id)) throw new Error(`unknown-provider ${id}`);
-  const hasReading =
-    ctx.storedIds.includes(id) || (id.startsWith("agy:") && ctx.storedIds.includes("agy"));
-  if (!hasReading) throw new Error(`missing-reading ${id}`);
+  // The agy adapter emits agy and agy:3p as independent rows, so a stored
+  // parent gives no reading for a group. Every id must have its own.
+  if (!ctx.storedIds.includes(id)) throw new Error(`missing-reading ${id}`);
   return id;
 }

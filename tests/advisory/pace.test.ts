@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
-import { getBurnRates } from "../../src/store/quotas.js";
+import { getBurnRates, upsertQuota } from "../../src/store/quotas.js";
 import { averagePace } from "../../src/advisory/engine.js";
+import { parseGrokTui } from "../../src/adapters/grok.js";
 
 const NOW = new Date("2026-09-07T06:00:00+10:00");
 
@@ -40,6 +41,16 @@ describe("current-cycle pace", () => {
   it("keeps the one-hour minimum on the window average", () => {
     expect(averagePace({ provider: "kimi", usedPct: 1, periodStart: "2026-09-07T05:30:00+10:00" } as any, NOW)).toBeNull();
     expect(averagePace({ provider: "kimi", usedPct: 60, periodStart: "2026-09-04T06:00:00+10:00" } as any, NOW)).toBeCloseTo(20, 5);
+  });
+
+  it("keeps history when the adapter estimates the reset", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const tui = (pct: number) => `Weekly limit (SuperGrok) ${pct}% used\n`;
+    upsertQuota(db, parseGrokTui(tui(20), new Date("2026-09-07T02:00:00+10:00")));
+    upsertQuota(db, parseGrokTui(tui(30), new Date("2026-09-07T06:00:00+10:00")));
+    // periodStart moves with each poll, so only a cycle guard that reads
+    // resetsAt keeps the earlier reading: 10% over 4 hours is 60%/day.
+    expect(getBurnRates(db, NOW.getTime()).get("grok")).toBeCloseTo(60, 5);
   });
 
   it("skips rows with invalid fetchedAt", () => {

@@ -8,10 +8,15 @@ describe("validate", () => {
   });
 
   it("accepts manual and group ids, separates unknown from missing", () => {
-    const ctx = { registered: ["claude", "codex", "kimi", "grok", "agy", "agy:3p", "manual"], storedIds: ["my-plan", "agy"] };
+    const ctx = { registered: ["claude", "codex", "kimi", "grok", "agy", "agy:3p", "manual"], storedIds: ["my-plan", "agy", "agy:3p"] };
     expect(validateForecastProvider("my-plan", ctx)).toBe("my-plan");
     expect(validateForecastProvider("agy:3p", ctx)).toBe("agy:3p");
     expect(() => validateForecastProvider("nope", ctx)).toThrowError(/unknown-provider/);
     expect(() => validateForecastProvider("kimi", ctx)).toThrowError(/missing-reading/);
+  });
+
+  it("does not let a stored parent stand in for a group reading", () => {
+    const ctx = { registered: ["agy", "agy:3p"], storedIds: ["agy"] };
+    expect(() => validateForecastProvider("agy:3p", ctx)).toThrowError(/missing-reading/);
   });
 });
