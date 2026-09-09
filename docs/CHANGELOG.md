@@ -2,11 +2,16 @@
 
 ## Unreleased
 
+- CLI & MCP (Track D): Terminal commands (`status`, `advise`, `ingest`) and stdio MCP server over shared projection with labeled offline fallback and fixed-clock parity (#34).
+- Dashboard (Track C): Responsive Vite+React dashboard with decision-ranked rows, pace bar, reset rail, provider drawer, and theme switching (#33).
+- Runtime (Track B): Heartbeat-locked single-instance daemon coordinator, coalesced poller, and macOS login service (#32).
+- Store & Advisory (Track A): Idempotent schema migration for session percentage, per-adapter attempt tracking, rolling pace estimation, and shared snapshot projection (#31).
 - Governance & CI: Align repository with OSS house standard. Immutable action commit SHA pinning with version comments across all workflows (`test.yml`, `release.yml`).
 - CI: Deterministic `npm ci` installation, Node compatibility floor (`22.13.0`) and current (`22`) matrix testing with `fail-fast: false`, stable aggregate gate check `required`.
 - Release: Arch-matched binary execution smoke tests to prevent runner cross-compilation crashes, artifact provenance attestations via `actions/attest-build-provenance`.
 - Supply chain: Automated weekly Dependabot configuration for GitHub Actions and npm dependencies (`.github/dependabot.yml`).
 - Community health: Added `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1), pull request template, structured GitHub issue forms, `CODEOWNERS`, and `THIRD_PARTY_NOTICES.md`.
+
 
 ## 0.0.21
 

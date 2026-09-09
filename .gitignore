@@ -17,3 +17,5 @@ dist-bin/
 
 # Build
 *.log
+test-results/
+playwright-report/

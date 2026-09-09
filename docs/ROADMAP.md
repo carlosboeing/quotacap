@@ -2,6 +2,10 @@
 
 ## Recently shipped — Unreleased
 
+* Track D — terminal CLI (`status`, `advise`, `ingest`) and stdio MCP clients with labeled offline fallback and fixed-clock parity (#34)
+* Track C — responsive React dashboard with decision-ranked provider rows, reset rail, pace bar, provider drawer, and theme switching (#33)
+* Track B — runtime coordinator, heartbeat-locked ownership, coalesced poller, and macOS login item service (#32)
+* Track A — store persistence with session percentage, attempts tracking, pacing engine, and shared snapshot projection (#31)
 * OSS house-standard alignment — immutable action SHA pinning, `npm ci`, Node 22.13/22 matrix with `required` gate, arch-matched release smoke tests, provenance attestations, Dependabot, community health files (#16, #24)
 
 ## Recently shipped — 0.0.21 — 2026-09-02
@@ -49,7 +53,6 @@
 
 ## Next
 
-* UX/UI redesign — consolidated dashboard/CLI presentation system (decision-ranked rows, pace visual, reset rail, explicit degraded states, colour tokens, terminal contract; approved design, implementation plan next)
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
