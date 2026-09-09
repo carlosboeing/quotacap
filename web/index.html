@@ -1,1 +1,17 @@
-<!doctype html><html><head><meta charset="utf-8"><title>QuotaCap</title></head><body><div id="app"></div><script type="module" src="/src/App.tsx"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>QuotaCap</title>
+<script>
+try {
+  var stored = localStorage.getItem("quotacap-theme");
+  var dark = stored === "dark" || (stored !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+} catch (e) { /* default light theme stands */ }
+</script>
+</head>
+<body><div id="app"></div><script type="module" src="/src/App.tsx"></script></body>
+</html>
