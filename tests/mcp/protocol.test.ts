@@ -111,24 +111,34 @@ describe("mcp stdio protocol", () => {
     expect(rec.result.isError).toBe(true);
     expect(rec.result.content[0].text).toMatch(/invalid-argument/);
 
+    // A successful forecast: every content entry needs the text discriminator,
+    // or a validating client rejects the result.
+    send(6, "tools/call", { name: "forecast", arguments: { provider: "kimi" } });
+    lines = await session.waitLines(6);
+    const ok = JSON.parse(lines[5]);
+    expect(ok.result.isError).toBeUndefined();
+    expect(ok.result.content).toHaveLength(1);
+    expect(ok.result.content[0].type).toBe("text");
+    expect(JSON.parse(ok.result.content[0].text).quota.provider).toBe("kimi");
+
     // Malformed input and notifications produce no stdout.
     session.sendLine("this is not json");
-    send(6, "ping");
-    lines = await session.waitLines(6);
-    expect(JSON.parse(lines[5]).id).toBe(6);
-    session.sendLine(JSON.stringify({ jsonrpc: "2.0", method: "ping" }));
     send(7, "ping");
     lines = await session.waitLines(7);
     expect(JSON.parse(lines[6]).id).toBe(7);
-
-    send(8, "unknown/method");
+    session.sendLine(JSON.stringify({ jsonrpc: "2.0", method: "ping" }));
+    send(8, "ping");
     lines = await session.waitLines(8);
-    const unknown = JSON.parse(lines[7]);
+    expect(JSON.parse(lines[7]).id).toBe(8);
+
+    send(9, "unknown/method");
+    lines = await session.waitLines(9);
+    const unknown = JSON.parse(lines[8]);
     expect(unknown.error.code).toBe(-32601);
 
     // Protocol purity: every stdout line parses with a matching id, and the
     // offline label never leaks onto stdout.
-    const seen = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+    const seen = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     for (const line of session.stdoutLines()) {
       const msg = JSON.parse(line);
       expect(msg.jsonrpc).toBe("2.0");

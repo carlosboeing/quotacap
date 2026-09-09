@@ -29,10 +29,22 @@ export interface ServiceClient {
   post(path: string, body?: unknown): Promise<any>;
 }
 
+export interface BaseClientOptions {
+  token?: string;
+  timeoutMs?: number;
+}
+
 export function createServiceClient(opts: ServiceClientOptions): ServiceClient {
   const host = opts.host ?? "127.0.0.1";
+  return createServiceClientForBase(`http://${host}:${opts.port}`, opts);
+}
+
+// For a base URL the user configured (QUOTACAP_URL). The scheme, effective
+// port, IPv6 authority and path prefix are all kept; only a trailing slash
+// goes, so `${base}${path}` never doubles it.
+export function createServiceClientForBase(baseUrl: string, opts: BaseClientOptions = {}): ServiceClient {
   const timeoutMs = opts.timeoutMs ?? 2000;
-  const base = `http://${host}:${opts.port}`;
+  const base = baseUrl.replace(/\/+$/, "");
 
   async function parse(res: Response): Promise<any> {
     const text = await res.text();

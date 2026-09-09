@@ -171,7 +171,8 @@ describe("forecast", () => {
       const res: any = await handleTool("forecast", { provider: "kimi" });
       expect(Object.keys(res)).toEqual(["content"]);
       expect(res.content).toHaveLength(1);
-      expect(Object.keys(res.content[0])).toEqual(["text"]);
+      expect(Object.keys(res.content[0])).toEqual(["type", "text"]);
+      expect(res.content[0].type).toBe("text");
       const body = JSON.parse(res.content[0].text);
       expect(body.quota.provider).toBe("kimi");
       expect(body.advisory.provider).toBe("kimi");
@@ -228,6 +229,49 @@ describe("forecast", () => {
       await expect(handleTool("forecast", { provider: "codex" })).rejects.toThrow(/missing-reading/);
       mode = "group";
       await expect(handleTool("forecast", { provider: "agy:3p" })).rejects.toThrow(/missing-reading/);
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+describe("QUOTACAP_URL is used as configured", () => {
+  it("keeps the scheme, effective port, path prefix, and IPv6 authority", async () => {
+    const seen: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: any) => {
+      seen.push(String(input));
+      return new Response(exampleStateSnapshotJson, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    for (const base of [
+      "https://quota.example.com",
+      "http://example.com/quotacap/",
+      "http://[::1]:8787",
+    ]) {
+      process.env.QUOTACAP_URL = base;
+      await handleTool("get_quotas", {});
+    }
+    expect(seen).toEqual([
+      "https://quota.example.com/api/state",
+      "http://example.com/quotacap/api/state",
+      "http://[::1]:8787/api/state",
+    ]);
+  });
+
+  it("reaches a path-prefixed service over a real socket", async () => {
+    const stub = await startStub({
+      "/quotacap/api/state": (_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.end(exampleStateSnapshotJson);
+      },
+    });
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}/quotacap`;
+    try {
+      const res: any = await handleTool("get_quotas", {});
+      expect(res.isError).toBeUndefined();
+      expect(JSON.parse(res.content[1].text)).toEqual(projectQuotasResponse(exampleStateSnapshot));
     } finally {
       await stub.close();
     }

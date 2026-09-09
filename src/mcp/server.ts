@@ -8,7 +8,7 @@ import { validateForecastProvider, validateTask } from "../advisory/validate.js"
 import { getDbPath, readConfig } from "../config.js";
 import { forecastText, stateWord } from "../format/rows.js";
 import { renderMarkdownTable, renderRecommendationSummary } from "../format/markdown.js";
-import { createServiceClient, type ServiceClient } from "../runtime/client.js";
+import { createServiceClientForBase, type ServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
 import {
   ClientError,
@@ -23,10 +23,11 @@ export const tools = [
   { name:"forecast", description:"Burn vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
 
+// QUOTACAP_URL is used as configured: scheme, authority, effective port and
+// path prefix all survive, so HTTPS and reverse-proxied services still work.
 function clientFromUrl(): ServiceClient {
-  const u = new URL(process.env.QUOTACAP_URL ?? "http://localhost:8787");
-  const host = u.hostname.includes(":") ? `[${u.hostname}]` : u.hostname;
-  return createServiceClient({ host, port: u.port ? parseInt(u.port, 10) : 8787, timeoutMs: 5000 });
+  const base = process.env.QUOTACAP_URL ?? "http://localhost:8787";
+  return createServiceClientForBase(base, { timeoutMs: 5000 });
 }
 
 async function resolveState(): Promise<{ snapshot: StateSnapshot; source: SnapshotSource }> {
@@ -97,7 +98,7 @@ export async function handleTool(name:string, args:any){
       state: stateWord(ps),
       forecast: forecastText(ps, new Date()),
     };
-    return { content: [{ text: JSON.stringify(body, null, 2) }] };
+    return { content: [{ type:"text", text: JSON.stringify(body, null, 2) }] };
   }
   throw new Error(`unknown tool ${name}`);
 }
