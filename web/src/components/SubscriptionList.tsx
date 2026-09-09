@@ -107,8 +107,8 @@ export function SubscriptionList({
   const narrow = useNarrow();
   const effective = effectiveDensity(density, narrow);
   const sorted = sortProviders(providers, sortKey, recommendation);
-  const enabled = sorted.filter((p) => p.enabled);
-  const disabled = sorted.filter((p) => !p.enabled);
+  const enabled = sorted.filter((p) => p.enabled && (p.id !== "manual" || p.quota !== null));
+  const disabled = sorted.filter((p) => !p.enabled && p.id !== "manual");
   const asOfMs = Date.parse(asOf);
   return (
     <section aria-label="Subscriptions">

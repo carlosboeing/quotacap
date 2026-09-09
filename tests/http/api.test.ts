@@ -50,7 +50,7 @@ describe("http", () => {
 
   it("GET /assets/<real-asset>.js is 200 with correct content type", async () => {
     const app = appWithDb();
-    const name = Object.keys(webAssets)[0];
+    const name = Object.keys(webAssets).find((k) => k.endsWith(".js"));
     expect(name).toBeTruthy();
     const res = await app.inject({ method: "GET", url: `/assets/${name}` });
     expect(res.statusCode).toBe(200);
