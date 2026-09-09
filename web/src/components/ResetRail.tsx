@@ -250,24 +250,43 @@ export function ResetRail({
         )}
       </div>
       <div data-testid="rail" role="img" aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}>
-        <div style={{ position: "relative", height: 8 }}>
-          <div
-            aria-hidden="true"
-            style={{ position: "absolute", left: 0, right: 0, top: 3, height: 2, background: "var(--line)" }}
-          />
+        <div aria-hidden="true" style={{ position: "relative", height: 16 }}>
           <span
-            aria-hidden="true"
-            style={{ position: "absolute", left: 0, top: -14, font: "var(--t-1)", color: "var(--accent)" }}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              font: "var(--t-1)",
+              color: "var(--accent)",
+            }}
           >
             NOW
           </span>
-          <div aria-hidden="true" style={{ display: "flex", justifyContent: "space-between" }}>
-            {labels.map((label) => (
-              <span key={label} style={{ font: "var(--t-1)" }}>
-                {label}
-              </span>
-            ))}
-          </div>
+        </div>
+        <div aria-hidden="true" style={{ position: "relative", height: 2, background: "var(--line)" }}>
+          {labels.map((_, i) => (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                left: `${(i / RAIL_DAYS) * 100}%`,
+                top: -4,
+                bottom: -4,
+                width: 1,
+                background: "var(--line)",
+              }}
+            />
+          ))}
+        </div>
+        <div
+          aria-hidden="true"
+          style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}
+        >
+          {labels.map((label) => (
+            <span key={label} style={{ font: "var(--t-1)" }}>
+              {label}
+            </span>
+          ))}
         </div>
       </div>
       <div className="rail-scroll">

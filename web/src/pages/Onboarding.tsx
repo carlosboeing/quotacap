@@ -15,6 +15,8 @@ export interface Readiness {
  */
 export function readiness(provider: ProviderView): Readiness {
   const name = displayName(provider.id);
+  // agy:3p shares the agy adapter: there is no separate CLI to install.
+  const cli = provider.id === "agy:3p" ? "Agy" : name;
   if (provider.exclusionReason === null && provider.quota) {
     const age = ageDuration(provider.ageMs);
     return { status: "Ready", detail: age ? `Last read ${age} ago.` : "Reporting." };
@@ -32,19 +34,19 @@ export function readiness(provider: ProviderView): Readiness {
   if (provider.lastAttempt?.failureCategory === "auth") {
     return {
       status: "Sign in first",
-      detail: `Sign in to the ${name} CLI, then re-poll. ${credentialNote}`,
+      detail: `Sign in to the ${cli} CLI, then re-poll. ${credentialNote}`,
     };
   }
   if (!provider.lastAttempt) {
     return {
       status: "Sign in first",
-      detail: `Install the ${name} CLI and sign in, then run the first poll. ${credentialNote}`,
+      detail: `Install the ${cli} CLI and sign in, then run the first poll. ${credentialNote}`,
     };
   }
   const failure = failureWords(provider.lastAttempt.failureCategory) ?? "Last attempt failed";
   return {
     status: "Sign in first",
-    detail: `${failure} — check the ${name} CLI, then re-poll. ${credentialNote}`,
+    detail: `${failure} — check the ${cli} CLI, then re-poll. ${credentialNote}`,
   };
 }
 
