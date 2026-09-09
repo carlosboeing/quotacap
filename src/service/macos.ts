@@ -333,18 +333,24 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
     ? fs.readFileSync(plistFile, "utf8")
     : null;
   if (existing !== null) {
-    const { label, argv: oldArgv } = parsePlistIdentity(existing);
+    const { label } = parsePlistIdentity(existing);
     if (label !== SERVICE_LABEL) {
       throw new Error(
         `refusing to overwrite foreign plist at ${plistFile} (label ${label ?? "unknown"} is not ${SERVICE_LABEL})`,
       );
     }
     const meta = readServiceMetadata(dataDir);
-    const sameArgv =
-      oldArgv !== null &&
-      oldArgv.length === argv.length &&
-      oldArgv.every((a, i) => a === argv[i]);
-    if (sameArgv && meta?.version === VERSION) {
+    // Compare the whole generated plist, not just argv: the environment block
+    // carries the provider PATH, so a provider that appeared since the last
+    // install changes it. Recorded provider paths are compared too, so status
+    // stops reporting a provider as missing after a rerun.
+    const samePlist = existing === plist;
+    const samePaths =
+      !!meta &&
+      PROVIDER_BINS.every(
+        (bin) => (meta.providerPaths?.[bin] ?? null) === providerPaths[bin],
+      );
+    if (samePlist && samePaths && meta?.version === VERSION) {
       run(["bootstrap", `gui/${uid}`, plistFile]);
       run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
       print("service already installed and up to date; ensured loaded");

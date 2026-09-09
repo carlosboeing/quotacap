@@ -82,6 +82,19 @@ export interface RuntimeContext {
   version: string;
   exec: string;
   now?: () => Date;
+  /**
+   * True while this process may still write to the database. The service
+   * supplies closing state plus claim ownership; a process that lost its
+   * claim must stop writing at once, not at its next scheduled poll.
+   */
+  canWrite?: () => boolean;
+}
+
+// Ingest writes outside the poll path, so it needs the same fence the
+// coordinator applies before a poll write.
+function writable(ctx: RuntimeContext): boolean {
+  if (ctx.coordinator.isClosing()) return false;
+  return ctx.canWrite ? ctx.canWrite() : true;
 }
 
 export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeContext {
@@ -207,6 +220,11 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       !text
     ) {
       return reply.status(400).send({ error: "invalid-argument: provider and text are required" });
+    }
+    if (!writable(ctx)) {
+      return reply
+        .status(503)
+        .send({ error: "service unavailable: not the current owner or closing" });
     }
     const parsed = parseManualUsage(provider, text);
     // Validated quota fields only: no raw text stored, no attempt row (D4).

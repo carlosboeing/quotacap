@@ -57,6 +57,7 @@ export interface Coordinator {
   stop(): void;
   getState(): CoordinatorState;
   setClosing(): void;
+  isClosing(): boolean;
 }
 
 function defaultPollFn(enabled: string[]): Promise<PollRow[]> {
@@ -275,5 +276,9 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
     closing = true;
   }
 
-  return { refresh, scheduledTick, start, stop, getState, setClosing };
+  function isClosing(): boolean {
+    return closing;
+  }
+
+  return { refresh, scheduledTick, start, stop, getState, setClosing, isClosing };
 }

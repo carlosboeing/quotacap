@@ -133,59 +133,74 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
     return fail(e);
   });
 
-  // 3. Storage.
-  let db: any;
+  // Every step after the claim unwinds through one path, so a throw anywhere
+  // in startup releases the claim and closes the database instead of leaving
+  // a live claim behind for a caller that catches the rejection.
+  let db: any = null;
+  let app: ReturnType<typeof buildApp> | null = null;
+  const unwind = async (): Promise<void> => {
+    if (app) {
+      try {
+        await app.close();
+      } catch {}
+    }
+    if (db) {
+      try {
+        db.close();
+      } catch {}
+    }
+    claim.release();
+    restoreLog();
+  };
+  const failStartup = async (e: unknown): Promise<never> => {
+    await unwind();
+    return fail(e);
+  };
+
+  let coordinator!: Coordinator;
+  let actualPort = port;
   try {
+    // 3. Storage.
     db = openDb(path.join(dataDir, "quotacap.db"));
     migrate(db);
+
+    // Pin the claude binary: explicit resolver first, then the install-time
+    // recorded path from service metadata, then live PATH resolution.
+    try {
+      const recorded = readServiceMetadata(dataDir)?.providerPaths?.claude;
+      const pinned =
+        opts?.resolveClaude?.() ?? recorded ?? resolveClaudeExecPath();
+      if (pinned) claudeAdapter.execPath = pinned;
+    } catch {}
+
+    // 4. Token.
+    const token = ensureToken(path.join(dataDir, "token"));
+
+    // 5. Coordinator + HTTP on the runtime context.
+    coordinator = createCoordinator({
+      db,
+      enabledProviders: config.enabledProviders,
+      ownershipVerify: () => claim.verify(),
+    });
+    app = buildApp({
+      db,
+      token,
+      coordinator,
+      enabledProviders: config.enabledProviders,
+      version: VERSION,
+      exec: process.execPath,
+      canWrite: () => claim.verify(),
+    });
+
+    // 6. Bind; unwind on failure without polling.
+    await app.listen({ port, host: "127.0.0.1" });
+    const bound = app.server.address();
+    actualPort = typeof bound === "object" && bound ? bound.port : port;
   } catch (e) {
-    claim.release();
-    restoreLog();
-    fail(e);
+    await failStartup(e);
     throw e;
   }
-
-  // Pin the claude binary: explicit resolver first, then the install-time
-  // recorded path from service metadata, then live PATH resolution.
-  try {
-    const recorded = readServiceMetadata(dataDir)?.providerPaths?.claude;
-    const pinned =
-      opts?.resolveClaude?.() ?? recorded ?? resolveClaudeExecPath();
-    if (pinned) claudeAdapter.execPath = pinned;
-  } catch {}
-
-  // 4. Token.
-  const token = ensureToken(path.join(dataDir, "token"));
-
-  // 5. Coordinator + HTTP on the runtime context.
-  const coordinator = createCoordinator({
-    db,
-    enabledProviders: config.enabledProviders,
-    ownershipVerify: () => claim.verify(),
-  });
-  const app = buildApp({
-    db,
-    token,
-    coordinator,
-    enabledProviders: config.enabledProviders,
-    version: VERSION,
-    exec: process.execPath,
-  });
-
-  // 6. Bind; unwind on failure without polling.
-  await app.listen({ port, host: "127.0.0.1" }).catch(async (e) => {
-    try {
-      await app.close();
-    } catch {}
-    try {
-      db.close();
-    } catch {}
-    claim.release();
-    restoreLog();
-    fail(e);
-  });
-  const addr = app.server.address();
-  const actualPort = typeof addr === "object" && addr ? addr.port : port;
+  const listening = app!;
 
   // Legacy pidfile: best-effort removal on successful start.
   try {
@@ -219,7 +234,7 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       await new Promise((r) => setTimeout(r, 50));
     }
     try {
-      await app.close();
+      await listening.close();
     } catch {}
     try {
       db.close();

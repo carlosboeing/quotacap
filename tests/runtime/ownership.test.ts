@@ -151,6 +151,45 @@ describe("ownership claim", () => {
     expect(dead.verify()).toBe(false);
   }, 15000);
 
+  it("three processes contending for one stale claim: exactly one wins", async () => {
+    const dir = mkHome();
+    const dead = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
+    claims.push(dead);
+    fs.writeFileSync(
+      lockFile(dir),
+      JSON.stringify({
+        ...dead.info,
+        lastBeat: new Date(Date.now() - 120_000).toISOString(),
+      }) + "\n",
+    );
+    const args = [
+      "--dir",
+      dir,
+      "--hold-ms",
+      "3000",
+      "--stale-ms",
+      "2000",
+      "--grace-ms",
+      "200",
+    ];
+    const results = await Promise.all([
+      runHolder(args),
+      runHolder(args),
+      runHolder(args),
+    ]);
+    const held = results.filter((r) => r.code === 0 && r.stdout.includes("HELD"));
+    const contended = results.filter(
+      (r) => r.code === 1 && r.stdout.includes("CONTENDED:"),
+    );
+    if (held.length !== 1 || contended.length !== 2) {
+      throw new Error(
+        `stale contention failed: ${results
+          .map((r) => `code=${r.code} ${JSON.stringify(r.stdout)} ${JSON.stringify(r.stderr)}`)
+          .join(" | ")}`,
+      );
+    }
+  }, 20000);
+
   it("(e) release by a non-owner leaves the file", async () => {
     const dir = mkHome();
     const claim = await acquireClaim(dir, { beatIntervalMs: 3600_000 });

@@ -211,6 +211,37 @@ describe("http runtime context", () => {
     expect(getAttempt(db, "my-manual")).toBeNull();
   });
 
+  it("POST /api/ingest is 503 after ownership loss and while closing", async () => {
+    const db = buildFixtureDb();
+    let owner = true;
+    const coordinator = createCoordinator({
+      db,
+      enabledProviders: [],
+      pollFn: async () => [],
+    });
+    const app = buildApp(ctxWith(db, { coordinator, canWrite: () => owner }));
+    const ingest = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/ingest",
+        headers: { "x-quotacap-token": TOKEN },
+        payload: { provider: "fenced", text: "Weekly limit 16% used resets in 3d" },
+      });
+
+    // Ownership lost: refuse before any write, not at the next poll.
+    owner = false;
+    const lost = await ingest();
+    expect(lost.statusCode).toBe(503);
+    expect(getLatestByProvider(db, "fenced")).toBeUndefined();
+
+    // Closing: the shutdown wait refuses writes too.
+    owner = true;
+    coordinator.setClosing();
+    const closing = await ingest();
+    expect(closing.statusCode).toBe(503);
+    expect(getLatestByProvider(db, "fenced")).toBeUndefined();
+  });
+
   it("(f) GET /health carries additive identity and readiness keys", async () => {
     const db = buildFixtureDb();
     const app = buildApp(ctxWith(db));

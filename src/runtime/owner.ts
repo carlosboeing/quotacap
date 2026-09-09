@@ -45,6 +45,23 @@ export function lockPath(dataDir: string): string {
   return path.join(dataDir, "service.lock");
 }
 
+// Stale recovery runs under this mutex, so read-verify-remove-create is one
+// critical section across processes. Without it two processes can both read
+// the same stale claim and the slower one unlinks the winner's fresh lock.
+function takeoverPath(dataDir: string): string {
+  return path.join(dataDir, "service.lock.takeover");
+}
+
+function inodeOf(target: string | number): number | null {
+  try {
+    const st =
+      typeof target === "number" ? fs.fstatSync(target) : fs.statSync(target);
+    return st.ino;
+  } catch {
+    return null;
+  }
+}
+
 export function readClaim(dataDir: string): ClaimInfo | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(lockPath(dataDir), "utf8"));
@@ -66,51 +83,110 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// The heartbeat writes through the descriptor opened when the lock was
+// created, never by path. A process that lost the lock therefore writes to
+// the unlinked inode it still owns and can never overwrite the new holder's
+// file, which a separate read-then-write-by-path could do.
 function startHeartbeat(
   file: string,
+  fd: number,
   mine: ClaimInfo,
   beatIntervalMs: number,
 ): Claim {
   const dataDir = path.dirname(file);
+  const myInode = inodeOf(fd);
   let timer: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
   let lost = false;
-  const beat = () => {
+
+  const stillMine = (): boolean => {
+    if (lost) return false;
     const current = readClaim(dataDir);
-    if (!current || current.nonce !== mine.nonce) {
+    if (!current || current.nonce !== mine.nonce) return false;
+    // A replaced lock file is a different inode even with a copied nonce.
+    if (myInode !== null && inodeOf(file) !== myInode) return false;
+    return true;
+  };
+
+  const stopTimer = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  };
+
+  const beat = () => {
+    if (!stillMine()) {
       // Stolen or removed: stop beating; verify() reports the loss.
       lost = true;
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
+      stopTimer();
       return;
     }
     mine.lastBeat = new Date().toISOString();
+    const line = `${JSON.stringify(mine)}\n`;
     try {
-      fs.writeFileSync(file, JSON.stringify(mine) + "\n", { encoding: "utf8" });
+      fs.ftruncateSync(fd, 0);
+      fs.writeSync(fd, line, 0, "utf8");
     } catch {}
   };
   timer = setInterval(beat, beatIntervalMs);
   return {
     info: mine,
     verify() {
-      if (lost) return false;
-      const current = readClaim(dataDir);
-      return !!current && current.nonce === mine.nonce;
+      return stillMine();
     },
     release() {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
+      stopTimer();
+      const mustUnlink = stillMine();
+      if (!closed) {
+        closed = true;
+        try {
+          fs.closeSync(fd);
+        } catch {}
       }
-      const current = readClaim(dataDir);
-      if (current && current.nonce === mine.nonce) {
+      if (mustUnlink) {
         try {
           fs.rmSync(file, { force: true });
         } catch {}
       }
     },
   };
+}
+
+// Best-effort mutex over stale recovery. A holder that dies leaves the file
+// behind, so an entry older than staleMs is removed and retried.
+function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null {
+  const file = takeoverPath(dataDir);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = fs.openSync(
+        file,
+        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+        0o644,
+      );
+      try {
+        fs.writeSync(fd, `${process.pid} ${new Date().toISOString()}\n`);
+      } finally {
+        fs.closeSync(fd);
+      }
+      return () => {
+        try {
+          fs.rmSync(file, { force: true });
+        } catch {}
+      };
+    } catch (err: any) {
+      if (err.code !== "EEXIST") throw err;
+    }
+    let age = Infinity;
+    try {
+      age = Date.now() - fs.statSync(file).mtimeMs;
+    } catch {}
+    if (age < staleMs) return null;
+    try {
+      fs.rmSync(file, { force: true });
+    } catch {}
+  }
+  return null;
 }
 
 export async function acquireClaim(
@@ -140,44 +216,75 @@ export async function acquireClaim(
     lastBeat: startedAt,
   };
 
-  for (let round = 0; round < rounds; round++) {
+  const create = (): number | null => {
     try {
-      const fd = fs.openSync(
+      return fs.openSync(
         file,
         fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
         0o644,
       );
-      try {
-        fs.writeSync(fd, JSON.stringify(mine) + "\n");
-      } finally {
-        fs.closeSync(fd);
-      }
-      return startHeartbeat(file, mine, beatIntervalMs);
     } catch (err: any) {
       if (err.code !== "EEXIST") throw err;
+      return null;
     }
+  };
+  // A failed first write leaves no lock file behind for anyone to wait out.
+  const claimWith = (fd: number): Claim => {
+    try {
+      mine.lastBeat = new Date().toISOString();
+      fs.writeSync(fd, `${JSON.stringify(mine)}\n`, 0, "utf8");
+    } catch (err) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+      try {
+        fs.rmSync(file, { force: true });
+      } catch {}
+      throw err;
+    }
+    return startHeartbeat(file, fd, mine, beatIntervalMs);
+  };
+
+  for (let round = 0; round < rounds; round++) {
+    const fresh = create();
+    if (fresh !== null) return claimWith(fresh);
 
     const holder = readClaim(dataDir);
     const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
     if (holder && age < staleMs) {
       throw new AlreadyRunningError(holder);
     }
-    // Stale or unreadable: grace wait, re-read, only then unlink-and-retry.
-    // The re-read protects an owner mid-beat whose file we caught half-written.
-    await delay(graceMs);
-    const recheck = readClaim(dataDir);
-    const reAge = recheck
-      ? Date.now() - new Date(recheck.lastBeat).getTime()
-      : Infinity;
-    if (recheck && reAge < staleMs) {
-      throw new AlreadyRunningError(recheck);
+
+    // Stale or unreadable. Take the recovery mutex so the grace wait, the
+    // re-read, the unlink and the create are one critical section: a
+    // contender must wait for it and then sees this process's fresh claim.
+    const releaseTakeover = acquireTakeover(dataDir, staleMs);
+    if (releaseTakeover === null) {
+      // Another process is recovering. Let it finish, then retry.
+      await delay(graceMs);
+      continue;
     }
     try {
-      fs.rmSync(file, { force: true });
-    } catch (err: any) {
-      if (err.code !== "ENOENT") throw err;
+      // The re-read protects an owner mid-beat whose file we caught
+      // half-written, and an owner that started while we queued here.
+      await delay(graceMs);
+      const recheck = readClaim(dataDir);
+      const reAge = recheck
+        ? Date.now() - new Date(recheck.lastBeat).getTime()
+        : Infinity;
+      if (recheck && reAge < staleMs) {
+        throw new AlreadyRunningError(recheck);
+      }
+      try {
+        fs.rmSync(file, { force: true });
+      } catch (err: any) {
+        if (err.code !== "ENOENT") throw err;
+      }
+      const stolen = create();
+      if (stolen !== null) return claimWith(stolen);
+    } finally {
+      releaseTakeover();
     }
-    mine.lastBeat = new Date().toISOString();
   }
   throw new AlreadyRunningError(readClaim(dataDir));
 }

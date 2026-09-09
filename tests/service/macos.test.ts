@@ -258,6 +258,37 @@ describe("macos login service", () => {
     expect(fs.readFileSync(plistFile, "utf8")).toBe(plistBefore);
   });
 
+  it("reinstall after a provider appears refreshes the plist PATH and metadata", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");
+    const rec = recorder();
+    // First install: codex is missing.
+    await install(
+      depsFor(home, rec.run, {
+        which: (bin: string) => (bin === "codex" ? null : `/opt/bin/${bin}`),
+      }),
+    );
+    expect(readServiceMetadata(dataDir)?.providerPaths.codex).toBeNull();
+    expect(fs.readFileSync(plistFile, "utf8")).not.toContain("/new/bin");
+
+    // codex installed since, same argv and same version: still a rewrite.
+    rec.calls.length = 0;
+    await install(
+      depsFor(home, rec.run, {
+        which: (bin: string) =>
+          bin === "codex" ? "/new/bin/codex" : `/opt/bin/${bin}`,
+      }),
+    );
+    expect(readServiceMetadata(dataDir)?.providerPaths.codex).toBe("/new/bin/codex");
+    expect(fs.readFileSync(plistFile, "utf8")).toContain("/new/bin");
+    expect(rec.calls).toEqual([
+      ["bootout", "gui/501/quotacap"],
+      ["bootstrap", "gui/501", plistFile],
+      ["enable", "gui/501/quotacap"],
+    ]);
+  });
+
   it("(f) foreign plist at the path is refused", async () => {
     const home = mkHome();
     const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");

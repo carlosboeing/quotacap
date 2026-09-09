@@ -78,6 +78,24 @@ describe("daemon single-instance", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("releases the claim when token creation fails, so a retry starts at once", async () => {
+    isolatedHome();
+    const lockFile = path.join(dataDir(), "service.lock");
+    // A directory at the token path makes ensureToken throw mid-startup.
+    fs.mkdirSync(path.join(dataDir(), "token"), { recursive: true });
+    const mockExit = vi.fn();
+    await expect(
+      startDaemon({ port: 0, signals: false, exit: mockExit }),
+    ).rejects.toThrow();
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(fs.existsSync(lockFile)).toBe(false);
+
+    // Immediate reacquisition proves the claim was released, not leaked.
+    const retry = await acquireClaim(dataDir(), { staleMs: 500, graceMs: 50 });
+    claims.push(retry);
+    expect(retry.verify()).toBe(true);
+  });
+
   it("steals a stale claim after grace", async () => {
     isolatedHome();
     const lockFile = path.join(dataDir(), "service.lock");
