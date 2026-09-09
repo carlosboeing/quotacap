@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -82,4 +83,60 @@ export async function readServiceConfig(p?: string): Promise<Config> {
 export async function writeConfig(c: Config, p?: string): Promise<void> {
   await fs.mkdir(path.dirname(getConfigPath(p)), { recursive: true });
   await fs.writeFile(getConfigPath(p), JSON.stringify(c, null, 2));
+}
+
+// Private service metadata: install identity plus resolved provider paths
+// only — never tokens, secrets, or environment dumps.
+export interface ServiceMetadata {
+  version: string;
+  exec: string;
+  entry?: string;
+  providerPaths: Record<string, string | null>;
+  installedAt: string;
+}
+
+export function serviceMetadataPath(dataDir = path.dirname(getDbPath())): string {
+  return path.join(dataDir, "service.json");
+}
+
+export function writeServiceMetadata(
+  m: ServiceMetadata,
+  dataDir = path.dirname(getDbPath()),
+): void {
+  const file = serviceMetadataPath(dataDir);
+  try {
+    fsSync.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    try {
+      fsSync.chmodSync(path.dirname(file), 0o700);
+    } catch {}
+  } catch {}
+  fsSync.writeFileSync(file, JSON.stringify(m, null, 2), {
+    mode: 0o600,
+    encoding: "utf8",
+  });
+  try {
+    fsSync.chmodSync(file, 0o600);
+  } catch {}
+}
+
+export function readServiceMetadata(
+  dataDir = path.dirname(getDbPath()),
+): ServiceMetadata | null {
+  try {
+    const parsed = JSON.parse(fsSync.readFileSync(serviceMetadataPath(dataDir), "utf8"));
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof parsed.version !== "string" ||
+      typeof parsed.exec !== "string" ||
+      typeof parsed.providerPaths !== "object" ||
+      parsed.providerPaths === null ||
+      typeof parsed.installedAt !== "string"
+    ) {
+      return null;
+    }
+    return parsed as ServiceMetadata;
+  } catch {
+    return null;
+  }
 }
