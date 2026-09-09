@@ -40,11 +40,22 @@ export function liveChildCount(): number {
   return tracked.size;
 }
 
-export function killAll(signal: NodeJS.Signals = "SIGTERM"): void {
+export function killAll(signal: NodeJS.Signals = "SIGTERM", escalateMs = 1000): void {
   for (const entry of [...tracked]) {
     try {
       entry.kill(signal);
     } catch {}
+  }
+  if (escalateMs > 0) {
+    // Survivors (still registered = still alive) get SIGKILL.
+    const t = setTimeout(() => {
+      for (const entry of [...tracked]) {
+        try {
+          entry.kill("SIGKILL");
+        } catch {}
+      }
+    }, escalateMs);
+    if (typeof (t as any).unref === "function") (t as any).unref();
   }
 }
 

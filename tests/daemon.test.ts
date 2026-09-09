@@ -1,126 +1,136 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { isDaemonRunning, startDaemon, resolveClaudeExecPath } from "../src/daemon.js";
+import {
+  isDaemonRunning,
+  startDaemon,
+  resolveClaudeExecPath,
+} from "../src/daemon.js";
+import type { ServiceHandle } from "../src/daemon.js";
+import { acquireClaim, type Claim } from "../src/runtime/owner.js";
+import { AlreadyRunningError } from "../src/runtime/owner.js";
 import { claudeAdapter } from "../src/adapters/claude.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-const exec = promisify(execFile);
 
-const oldHome = process.env.HOME;
 const oldQcHome = process.env.QUOTACAP_HOME;
 let home: string;
+const handles: ServiceHandle[] = [];
+const claims: Claim[] = [];
 
 function isolatedHome() {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-daemon-"));
   process.env.QUOTACAP_HOME = home;
+  fs.mkdirSync(path.join(home, ".quotacap"), { recursive: true });
+  // Manual-only: the async initial poll records `skipped` without children.
+  fs.writeFileSync(
+    path.join(home, ".quotacap", "config.json"),
+    JSON.stringify({ pollMinutes: 60, enabledProviders: ["manual"] }),
+  );
 }
 
-afterEach(() => {
-  process.env.HOME = oldHome;
+function dataDir(): string {
+  return path.join(home, ".quotacap");
+}
+
+afterEach(async () => {
+  for (const h of handles.splice(0)) {
+    try {
+      await h.stop();
+    } catch {}
+  }
+  for (const c of claims.splice(0)) {
+    try {
+      c.release();
+    } catch {}
+  }
   process.env.QUOTACAP_HOME = oldQcHome;
   claudeAdapter.execPath = "claude";
   if (home) fs.rmSync(home, { recursive: true, force: true });
 });
 
 describe("daemon single-instance", () => {
-  it("writes a pidfile and cleans up on stop", async () => {
+  it("writes a claim and token, and cleans up on stop", async () => {
     isolatedHome();
-    const pidFile = path.join(home, ".quotacap", "daemon.pid");
-    const tokenFile = path.join(home, ".quotacap", "token");
-    const first = await startDaemon();
-    expect(fs.existsSync(pidFile)).toBe(true);
-    expect(parseInt(fs.readFileSync(pidFile, "utf8"), 10)).toBe(process.pid);
+    const lockFile = path.join(dataDir(), "service.lock");
+    const tokenFile = path.join(dataDir(), "token");
+    const started = await startDaemon({ port: 0, signals: false });
+    handles.push(started);
+    expect(fs.existsSync(lockFile)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(lockFile, "utf8")).pid).toBe(process.pid);
     expect(fs.existsSync(tokenFile)).toBe(true);
     const token = fs.readFileSync(tokenFile, "utf8").trim();
     expect(token.length).toBeGreaterThan(0);
-    const st = fs.statSync(tokenFile);
-    expect(st.mode & 0o777).toBe(0o600);
-    first.stop();
-    expect(fs.existsSync(pidFile)).toBe(false);
+    expect(fs.statSync(tokenFile).mode & 0o777).toBe(0o600);
+    expect(isDaemonRunning()).toBe(true);
+    await started.stop();
+    expect(fs.existsSync(lockFile)).toBe(false);
+    expect(isDaemonRunning()).toBe(false);
   });
-
-  it("refuses a second instance when a real daemon holds the pidfile and exits non-zero", async () => {
-    isolatedHome();
-    const env = { ...process.env, QUOTACAP_HOME: home };
-    const first = spawn("node", ["dist/cli/index.js", "daemon"], { env, stdio: "ignore" });
-    try {
-      await new Promise((r) => setTimeout(r, 1500));
-      let exitCode: number | null = null;
-      let stderrOutput = "";
-      try {
-        await exec("node", ["dist/cli/index.js", "daemon"], { env });
-      } catch (err: any) {
-        exitCode = err.code;
-        stderrOutput = err.stderr || "";
-      }
-      expect(exitCode).toBe(1);
-      expect(stderrOutput).toMatch(/already running/);
-      expect(fs.existsSync(path.join(home, ".quotacap", "daemon.pid"))).toBe(true);
-    } finally {
-      first.kill("SIGINT");
-      await new Promise((r) => first.on("exit", r));
-    }
-  }, 15000);
 
   it("calls exit(1) when a second concurrent start is attempted in-process", async () => {
     isolatedHome();
-    const first = await startDaemon();
+    const first = await startDaemon({ port: 0, signals: false });
+    handles.push(first);
     const mockExit = vi.fn();
-    try {
-      const second = await startDaemon({ exit: mockExit });
-      expect(mockExit).toHaveBeenCalledWith(1);
-      expect(second.alreadyRunning).toBeDefined();
-    } finally {
-      first.stop();
-    }
+    await expect(
+      startDaemon({ port: 0, signals: false, exit: mockExit }),
+    ).rejects.toBeInstanceOf(AlreadyRunningError);
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("steals a stale pidfile when the recorded pid is dead", async () => {
+  it("steals a stale claim after grace", async () => {
     isolatedHome();
-    const pidFile = path.join(home, ".quotacap", "daemon.pid");
-    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
-    fs.writeFileSync(pidFile, "999999\n");
-    expect(fs.existsSync(pidFile)).toBe(true);
+    const lockFile = path.join(dataDir(), "service.lock");
+    const dead = await acquireClaim(dataDir(), { beatIntervalMs: 3600_000 });
+    claims.push(dead);
+    const backdated = {
+      ...dead.info,
+      lastBeat: new Date(Date.now() - 120_000).toISOString(),
+    };
+    fs.writeFileSync(lockFile, JSON.stringify(backdated) + "\n");
 
-    const daemon = await startDaemon();
-    try {
-      expect(daemon.alreadyRunning).toBeUndefined();
-      expect(fs.existsSync(pidFile)).toBe(true);
-      expect(parseInt(fs.readFileSync(pidFile, "utf8"), 10)).toBe(process.pid);
-    } finally {
-      daemon.stop();
-    }
-    expect(fs.existsSync(pidFile)).toBe(false);
+    const daemon = await startDaemon({
+      port: 0,
+      signals: false,
+      claim: { staleMs: 500, graceMs: 100 },
+    });
+    handles.push(daemon);
+    expect(dead.verify()).toBe(false);
+    expect(isDaemonRunning()).toBe(true);
+    await daemon.stop();
+    expect(fs.existsSync(lockFile)).toBe(false);
   });
 
-  it("treats a dead pidfile as not running", () => {
-    isolatedHome();
-    const pidFile = path.join(home, ".quotacap", "daemon.pid");
-    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
-    fs.writeFileSync(pidFile, "999999");
-    expect(isDaemonRunning(pidFile)).toBe(false);
-  });
+  // The recycled-pid case is gone with the pidfile: ownership is a heartbeat
+  // lockfile whose nonce (not any PID) decides, so a recycled pid can never
+  // be mistaken for a running daemon. No PID-liveness checks exist anymore.
 
-  it("does not claim a live non-quotacap pid (recycled pid protection)", () => {
+  it("treats a stale claim as not running", async () => {
     isolatedHome();
-    const pidFile = path.join(home, ".quotacap", "daemon.pid");
-    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
-    fs.writeFileSync(pidFile, String(process.pid));
-    expect(isDaemonRunning(pidFile)).toBe(false);
+    const dead = await acquireClaim(dataDir(), { beatIntervalMs: 3600_000 });
+    claims.push(dead);
+    const backdated = {
+      ...dead.info,
+      lastBeat: new Date(Date.now() - 120_000).toISOString(),
+    };
+    fs.writeFileSync(
+      path.join(dataDir(), "service.lock"),
+      JSON.stringify(backdated) + "\n",
+    );
+    expect(isDaemonRunning()).toBe(false);
   });
 
   it("pins the absolute path of the claude binary into the adapter via injectable resolver", async () => {
     isolatedHome();
     const customBin = "/pinned/test/claude";
-    const daemon = await startDaemon({ resolveClaude: () => customBin });
-    try {
-      expect(claudeAdapter.execPath).toBe(customBin);
-    } finally {
-      daemon.stop();
-    }
+    const daemon = await startDaemon({
+      port: 0,
+      signals: false,
+      resolveClaude: () => customBin,
+    });
+    handles.push(daemon);
+    expect(claudeAdapter.execPath).toBe(customBin);
+    await daemon.stop();
   });
 
   it("resolves claude executable path with default resolver", () => {

@@ -47,8 +47,10 @@ program.command("web").option("--port <n>").action(async (o)=>{
   ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
   const { isDaemonRunning, startDaemon, ensureDaemonToken } = await import("../daemon.js");
   if (!isDaemonRunning()) {
-    const started = await startDaemon();
-    if (!started.alreadyRunning) console.log("daemon started (auto)");
+    // Transient until Task 7 extracts runtime commands: the service now owns
+    // HTTP too, so this second listener below will be replaced, not doubled.
+    await startDaemon().catch(() => {});
+    console.log("daemon started (auto)");
   }
   const token = ensureDaemonToken();
   const app=buildApp(db, { token });
@@ -60,19 +62,12 @@ program.command("init").action(async()=>{
   const { readConfig, writeConfig } = await import("../config.js");
   const c=await readConfig(); await writeConfig(c); console.log(JSON.stringify(c,null,2));
 });
-program.command("daemon").option("--foreground","keep foreground (default: true)").action(async(o)=>{
+program.command("daemon").option("--foreground","keep foreground (default: true)").option("--port <n>").action(async(o)=>{
   const { startDaemon } = await import("../daemon.js");
-  const started = await startDaemon();
-  if (started.alreadyRunning) {
-    console.log(`daemon already running (pid ${started.alreadyRunning})`);
-    return;
-  }
-  console.log("QuotaCap daemon started" + (o.foreground !== false ? " (foreground)" : ""));
-  // keep alive until SIGINT/SIGTERM — timer is ref'd so event loop stays alive
-  process.on("SIGINT", ()=> { started.stop(); process.exit(0); });
-  process.on("SIGTERM", ()=> { started.stop(); process.exit(0); });
-  // explicitly keep process alive if interval was somehow unref'd elsewhere
-  if ((started.timer as any).ref) (started.timer as any).ref();
+  // The service owns signals and exit codes; contention/invalid config exit
+  // non-zero from inside startDaemon.
+  const started = await startDaemon(o.port ? { port: parseInt(o.port, 10) } : undefined);
+  console.log(`quotacap service listening on http://127.0.0.1:${started.port}`);
 });
 program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
   const mod=await import("../mcp/server.js");

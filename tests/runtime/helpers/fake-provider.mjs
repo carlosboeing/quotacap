@@ -17,6 +17,9 @@ const delayMs = parseInt(arg("delay-ms") ?? process.env.QC_FAKE_DELAY_MS ?? "0",
 const emit = arg("emit") ?? process.env.QC_FAKE_EMIT ?? "";
 const exitCode = parseInt(arg("exit-code") ?? process.env.QC_FAKE_EXIT ?? "0", 10);
 
+if (process.env.QC_FAKE_IGNORE_TERM === "1") {
+  process.on("SIGTERM", () => {});
+}
 if (pidfile) fs.writeFileSync(pidfile, String(process.pid));
 if (readyMark) fs.writeFileSync(readyMark, "ready\n");
 
