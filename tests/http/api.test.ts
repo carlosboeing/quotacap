@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildApp } from "../../src/http/server.js";
+import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 import { webAssets } from "../../src/webAssets.js";
@@ -7,14 +7,14 @@ import { webAssets } from "../../src/webAssets.js";
 function appWithDb() {
   const db = openDb(":memory:");
   migrate(db);
-  return buildApp(db);
+  return buildApp(testCtx(db));
 }
 
 describe("http", () => {
   it("GET /api/quotas returns latest", async () => {
     const db = openDb(":memory:"); migrate(db);
     upsertQuota(db,{provider:"claude",plan:"max",usedPct:25,resetsAt:"2026-09-03T21:00:00+10:00",periodStart:"2026-08-26T00:00:00Z",raw:"x",source:"cli",fetchedAt:new Date().toISOString()});
-    const app = buildApp(db);
+    const app = buildApp(testCtx(db));
     const res = await app.inject({method:"GET",url:"/api/quotas"});
     expect(res.statusCode).toBe(200);
   });
@@ -23,7 +23,7 @@ describe("http", () => {
     const db = openDb(":memory:"); migrate(db);
     const now = new Date().toISOString();
     upsertQuota(db,{provider:"grok",plan:"SuperGrok",usedPct:30,resetsAt:"2026-09-07T00:22:00Z",periodStart:"2026-08-31T00:22:00Z",source:"tui",fetchedAt:now,creditsUsd:4.85, raw:"secret" } as any);
-    const app = buildApp(db);
+    const app = buildApp(testCtx(db));
     const res = await app.inject({method:"GET",url:"/api/quotas"});
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
@@ -183,7 +183,7 @@ describe("http origin allowlist", () => {
 describe("http token auth and mutating routes", () => {
   it("GET /api/token returns shared secret token", async () => {
     const db = openDb(":memory:"); migrate(db);
-    const app = buildApp(db, { token: "custom-secret-token" });
+    const app = buildApp(testCtx(db, { token: "custom-secret-token" }));
     const res = await app.inject({ method: "GET", url: "/api/token" });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
@@ -209,7 +209,7 @@ describe("http token auth and mutating routes", () => {
 
   it("POST with invalid token header is 401", async () => {
     const db = openDb(":memory:"); migrate(db);
-    const app = buildApp(db, { token: "correct-token" });
+    const app = buildApp(testCtx(db, { token: "correct-token" }));
     const res = await app.inject({
       method: "POST",
       url: "/api/refresh",
@@ -220,7 +220,7 @@ describe("http token auth and mutating routes", () => {
 
   it("Cross-origin POST with a foreign Origin is 403", async () => {
     const db = openDb(":memory:"); migrate(db);
-    const app = buildApp(db, { token: "correct-token" });
+    const app = buildApp(testCtx(db, { token: "correct-token" }));
     const res = await app.inject({
       method: "POST",
       url: "/api/refresh",
@@ -235,7 +235,7 @@ describe("http token auth and mutating routes", () => {
 
   it("POST with the correct header is 200 and debounced", async () => {
     const db = openDb(":memory:"); migrate(db);
-    const app = buildApp(db, { token: "correct-token" });
+    const app = buildApp(testCtx(db, { token: "correct-token" }));
     const res1 = await app.inject({
       method: "POST",
       url: "/api/refresh",

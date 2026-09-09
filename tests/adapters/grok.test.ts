@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseGrokTui, grokAdapter } from "../../src/adapters/grok.js";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
-import { buildApp } from "../../src/http/server.js";
+import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 
@@ -240,7 +240,7 @@ setInterval(()=>{},1000);
     const txt = grokFixture({ usedPct: 26, reset: "Resets: September 7, 10:22" });
     const q = parseGrokTui(txt, now);
     upsertQuota(db, q);
-    const app = buildApp(db);
+    const app = buildApp(testCtx(db));
     const res = await app.inject({ method: "GET", url: "/api/quotas" });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);

@@ -53,7 +53,8 @@ program.command("web").option("--port <n>").action(async (o)=>{
     console.log("daemon started (auto)");
   }
   const token = ensureDaemonToken();
-  const app=buildApp(db, { token });
+  const { createCoordinator } = await import("../runtime/poll.js");
+  const app=buildApp({ db, token, coordinator: createCoordinator({ db, enabledProviders: [] }), enabledProviders: [], version: VERSION, exec: process.execPath });
   const port=o.port?parseInt(o.port): (await readConfig()).port;
   await app.listen({port, host:"127.0.0.1"});
   console.log(`QuotaCap at http://localhost:${port}`);

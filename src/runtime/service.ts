@@ -18,6 +18,7 @@ import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
 import { getDbPath, readServiceConfig, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
+import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
 
 export function resolveClaudeExecPath(): string | undefined {
@@ -150,14 +151,20 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
   // 4. Token.
   const token = ensureToken(path.join(dataDir, "token"));
 
-  // 5. Coordinator + HTTP. The ctx assembled here is Task 5's buildApp(ctx)
-  // shape; until Task 5 rewires the signature, adapt at the boundary.
+  // 5. Coordinator + HTTP on the runtime context.
   const coordinator = createCoordinator({
     db,
     enabledProviders: config.enabledProviders,
     ownershipVerify: () => claim.verify(),
   });
-  const app = buildApp(db, { token });
+  const app = buildApp({
+    db,
+    token,
+    coordinator,
+    enabledProviders: config.enabledProviders,
+    version: VERSION,
+    exec: process.execPath,
+  });
 
   // 6. Bind; unwind on failure without polling.
   await app.listen({ port, host: "127.0.0.1" }).catch(async (e) => {
