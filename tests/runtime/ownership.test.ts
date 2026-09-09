@@ -239,6 +239,70 @@ describe("ownership claim", () => {
     expect(readClaim(dir)?.nonce).toBe(recovery.info.nonce);
   }, 15000);
 
+  it("paused recovery past staleMs does not let a contender steal the claim", async () => {
+    const dir = mkHome();
+    const old = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
+    claims.push(old);
+    fs.writeFileSync(
+      lockFile(dir),
+      JSON.stringify({
+        ...old.info,
+        lastBeat: new Date(Date.now() - 120_000).toISOString(),
+      }) + "\n",
+    );
+    const staleMs = 200;
+    let contender: Promise<RunResult> | undefined;
+    const recovery = await acquireClaim(dir, {
+      staleMs,
+      graceMs: 10,
+      rounds: 1,
+      hooks: {
+        beforeStaleUnlink: async () => {
+          contender = runHolder([
+            "--dir",
+            dir,
+            "--hold-ms",
+            "500",
+            "--stale-ms",
+            String(staleMs),
+            "--grace-ms",
+            "50",
+          ]);
+          // Remain in the critical section longer than staleMs. Age-based
+          // steal would drop the mutex here; the child would install a
+          // claim that this process then unlinks.
+          await new Promise((r) => setTimeout(r, staleMs + 150));
+        },
+      },
+    });
+    claims.push(recovery);
+    expect(recovery.verify()).toBe(true);
+    expect(contender).toBeDefined();
+    const child = await contender!;
+    if (child.code !== 1 || !child.stdout.includes("CONTENDED:")) {
+      throw new Error(
+        `contender stole paused recovery: code=${child.code} ${JSON.stringify(child.stdout)} ${JSON.stringify(child.stderr)}`,
+      );
+    }
+    expect(readClaim(dir)?.nonce).toBe(recovery.info.nonce);
+  }, 15000);
+
+  it("a leftover takeover file from a dead pid does not block acquire", async () => {
+    const dir = mkHome();
+    let dead = 1 << 22;
+    for (; dead > 10; dead--) {
+      try {
+        process.kill(dead, 0);
+      } catch (e: any) {
+        if (e.code === "ESRCH") break;
+      }
+    }
+    fs.writeFileSync(path.join(dir, "service.lock.takeover"), `${dead}\n`);
+    const claim = await acquireClaim(dir, { staleMs: 1000, graceMs: 10 });
+    claims.push(claim);
+    expect(claim.verify()).toBe(true);
+  });
+
   it("(e) release by a non-owner leaves the file", async () => {
     const dir = mkHome();
     const claim = await acquireClaim(dir, { beatIntervalMs: 3600_000 });

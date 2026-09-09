@@ -1,6 +1,9 @@
 // Heartbeat-lock ownership of the data directory (decision D1).
 // Pure fs + crypto: no sqlite import, so this module loads identically
-// under Node and Bun. PID is diagnostics only, never proof of liveness.
+// under Node and Bun. The claim file's PID is diagnostics only; lastBeat
+// is liveness. The takeover mutex file's PID is liveness of that short
+// critical section: steal it only when the writer is dead, never because
+// the file is old.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,9 +25,9 @@ export interface AcquireOptions {
   rounds?: number;
   /**
    * Test seam. `beforeStaleUnlink` is awaited after the identity check and
-   * before the unlink, so a test can drive release+create in that window.
-   * Creation, release and recovery share the takeover mutex, so a real
-   * contender cannot install a new lock there; the hook exists to prove it.
+   * before the unlink, so a test can drive release+create in that window
+   * or hold the mutex past staleMs. Creation, release and recovery share
+   * the takeover mutex; a live holder (including a paused one) keeps it.
    */
   hooks?: { beforeStaleUnlink?: () => void | Promise<void> };
 }
@@ -54,9 +57,10 @@ export function lockPath(dataDir: string): string {
 
 // Creation, release and stale recovery share this mutex, so the unlink of a
 // stale claim cannot land on a lock that another process just created.
-// Without it two processes can both read the same stale claim and the slower
-// one unlinks the winner's fresh lock. A holder that dies leaves the file
-// behind, so an entry older than staleMs is removed and retried.
+// Ownership is the creating process, not mtime: a live holder that pauses
+// past staleMs (debugger, SIGSTOP, machine sleep) must still exclude
+// stealers. A holder that dies leaves the file behind; the next acquirer
+// removes it only when that pid is gone.
 function takeoverPath(dataDir: string): string {
   return path.join(dataDir, "service.lock.takeover");
 }
@@ -159,8 +163,8 @@ function startHeartbeat(
         } catch {}
       }
       if (mustUnlink) {
-        const unlock = acquireTakeover(dataDir, staleMs);
-        if (unlock) {
+        const takeover = acquireTakeover(dataDir, staleMs);
+        if (takeover) {
           try {
             if (stillMine()) {
               try {
@@ -168,7 +172,7 @@ function startHeartbeat(
               } catch {}
             }
           } finally {
-            unlock();
+            takeover.unlock();
           }
         }
       }
@@ -176,10 +180,36 @@ function startHeartbeat(
   };
 }
 
-function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null {
+interface TakeoverLock {
+  unlock(): void;
+  owns(): boolean;
+}
+
+function pidIsAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    if (err.code === "ESRCH") return false;
+    // EPERM: the process exists but we cannot signal it.
+    return true;
+  }
+}
+
+function takeoverPid(file: string): number | null {
+  try {
+    const n = parseInt(fs.readFileSync(file, "utf8"), 10);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function acquireTakeover(dataDir: string, staleMs: number): TakeoverLock | null {
   const file = takeoverPath(dataDir);
   if (heldTakeovers.has(file)) {
-    return () => {};
+    return { unlock() {}, owns: () => true };
   }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -188,17 +218,35 @@ function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null 
         fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
         0o644,
       );
+      let ino: number;
       try {
-        fs.writeSync(fd, `${process.pid} ${new Date().toISOString()}\n`);
-      } finally {
-        fs.closeSync(fd);
-      }
-      heldTakeovers.add(file);
-      return () => {
-        heldTakeovers.delete(file);
+        fs.writeSync(fd, `${process.pid}\n`);
+        ino = fs.fstatSync(fd).ino;
+      } catch (err) {
+        try {
+          fs.closeSync(fd);
+        } catch {}
         try {
           fs.rmSync(file, { force: true });
         } catch {}
+        throw err;
+      }
+      try {
+        fs.closeSync(fd);
+      } catch {}
+      heldTakeovers.add(file);
+      return {
+        unlock() {
+          heldTakeovers.delete(file);
+          try {
+            if (inodeOf(file) === ino) {
+              fs.rmSync(file, { force: true });
+            }
+          } catch {}
+        },
+        owns() {
+          return inodeOf(file) === ino;
+        },
       };
     } catch (err: any) {
       if (err.code !== "EEXIST") throw err;
@@ -210,7 +258,12 @@ function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null 
       observedIno = st.ino;
       age = Date.now() - st.mtimeMs;
     } catch {}
-    if (age < staleMs) return null;
+    const pid = takeoverPid(file);
+    // A live writer keeps the mutex even when the file is older than
+    // staleMs. Age only recovers a crash between create and write, where
+    // there is no pid to probe.
+    const writerGone = pid !== null ? !pidIsAlive(pid) : age >= staleMs;
+    if (!writerGone) return null;
     // Remove the entry examined above and no other. A process that took the
     // mutex between the stat and this unlink wrote a different inode, and
     // removing by path alone would drop its mutex while it still holds it.
@@ -293,10 +346,10 @@ export async function acquireClaim(
     // Wait for the mutex without burning a round: a live owner finishes
     // acquire in microseconds, and a recovery that holds it through grace
     // still refreshes the claim we will see on the next try.
-    let releaseTakeover: (() => void) | null = null;
+    let takeover: TakeoverLock | null = null;
     for (;;) {
-      releaseTakeover = acquireTakeover(dataDir, staleMs);
-      if (releaseTakeover !== null) break;
+      takeover = acquireTakeover(dataDir, staleMs);
+      if (takeover !== null) break;
       const holder = readClaim(dataDir);
       const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
       if (holder && age < staleMs) {
@@ -304,7 +357,8 @@ export async function acquireClaim(
       }
       await delay(Math.min(50, graceMs));
     }
-    const unlock = releaseTakeover;
+    if (!takeover) throw new AlreadyRunningError(readClaim(dataDir));
+    const { unlock, owns } = takeover;
     try {
       const fresh = create();
       if (fresh !== null) return claimWith(fresh);
@@ -319,7 +373,9 @@ export async function acquireClaim(
       // one critical section: a contender must wait for the mutex and then
       // sees this process's fresh claim. Release takes the same mutex, so
       // the old owner cannot unlink between the identity check and this
-      // unlink and open a hole for a third process to create into.
+      // unlink and open a hole for a third process to create into. A live
+      // holder that pauses past staleMs still owns the mutex, so resume
+      // cannot unlink a claim another process created in that gap.
       await delay(graceMs);
       const recheck = readClaim(dataDir);
       const reAge = recheck
@@ -341,6 +397,7 @@ export async function acquireClaim(
       if (opts?.hooks?.beforeStaleUnlink) {
         await opts.hooks.beforeStaleUnlink();
       }
+      if (!owns()) continue;
       try {
         fs.rmSync(file, { force: true });
       } catch (err: any) {
