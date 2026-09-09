@@ -16,7 +16,9 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   if (Number.isNaN(start)) return null;
   const elapsedDays = (now.getTime() - start) / DAY_MS;
   if (elapsedDays < 1 / 24) return null; // under an hour in: not yet meaningful
-  return Math.max(0, q.usedPct / elapsedDays);
+  const pace = q.usedPct / elapsedDays;
+  if (!Number.isFinite(pace)) return null;
+  return Math.max(0, pace);
 }
 
 export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), paceSourceOrMeasured:PaceSource|boolean="unknown"): Advisory {
