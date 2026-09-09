@@ -5,16 +5,26 @@ import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 
 describe("mcp get_quotas", () => {
-  it("renders the shared table for quota status", async () => {
+  it("renders the shared markdown table for quota status", async () => {
     const db = openDb(":memory:"); migrate(db);
-    upsertQuota(db, {provider:"claude",plan:"max",usedPct:40,resetsAt:"2026-09-03T21:00:00+10:00",periodStart:"2026-08-26T00:00:00Z",raw:"x",source:"cli" as const,fetchedAt:new Date().toISOString()});
+    upsertQuota(db, {provider:"claude",plan:"max",usedPct:40,resetsAt:"2026-09-03T21:00:00+10:00",periodStart:"2026-08-26T00:00:00Z",source:"cli" as const,fetchedAt:new Date().toISOString()});
     const app = buildApp(testCtx(db));
     const addr = await app.listen({ port: 0, host: "127.0.0.1" });
     process.env.QUOTACAP_URL = addr;
     try {
       const res: any = await handleTool("get_quotas", {});
-      expect(res.content[0].text).toMatch(/\| Provider \| Used \| Left \| Resets \| Days left \|/);
-      expect(res.content[0].text).toMatch(/\| claude \| 40% \| 60% \|/);
+      expect(res.isError).toBeUndefined();
+      expect(res.content[0].text).toBe(
+        [
+          "| Provider | Used | Elapsed | Resets | State | Forecast |",
+          "|---|---|---|---|---|---|",
+          "| claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
+        ].join("\n"),
+      );
+      const rows = JSON.parse(res.content[1].text);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].provider).toBe("claude");
+      expect(rows[0].exclusionReason).toBe("reset-passed");
     } finally {
       delete process.env.QUOTACAP_URL;
       await app.close();
@@ -35,6 +45,9 @@ describe("mcp get_quotas", () => {
       const parsed = JSON.parse(jsonText);
       expect(parsed[0].creditsUsd).toBe(4.85);
       expect(parsed[0].raw).toBeUndefined();
+      for (const k of ["stale", "ageMs", "evidence", "exclusionReason"]) {
+        expect(k in parsed[0]).toBe(true);
+      }
     } finally {
       delete process.env.QUOTACAP_URL;
       await app.close();

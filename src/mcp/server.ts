@@ -1,40 +1,103 @@
-import { renderQuotasTable } from "../format/table.js";
+import { adapters } from "../adapters/index.js";
+import {
+  projectQuotasResponse,
+  projectRecommendationResponse,
+} from "../advisory/snapshot.js";
+import type { StateSnapshot } from "../advisory/types.js";
+import { validateForecastProvider, validateTask } from "../advisory/validate.js";
+import { getDbPath, readConfig } from "../config.js";
+import { forecastText, stateWord } from "../format/rows.js";
+import { renderMarkdownTable, renderRecommendationSummary } from "../format/markdown.js";
+import { createServiceClient, type ServiceClient } from "../runtime/client.js";
+import { VERSION } from "../version.js";
+import {
+  ClientError,
+  OFFLINE_LABEL,
+  resolveSnapshot,
+  type SnapshotSource,
+} from "../cli/snapshot-source.js";
 
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
-  { name:"get_recommendation", description:"Which provider to use next", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
+  { name:"get_recommendation", description:"Which provider to use next (same advice for every task)", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
   { name:"forecast", description:"Burn vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
-async function fetchJson(path:string){
-  const base = process.env.QUOTACAP_URL ?? "http://localhost:8787";
+
+function clientFromUrl(): ServiceClient {
+  const u = new URL(process.env.QUOTACAP_URL ?? "http://localhost:8787");
+  const host = u.hostname.includes(":") ? `[${u.hostname}]` : u.hostname;
+  return createServiceClient({ host, port: u.port ? parseInt(u.port, 10) : 8787, timeoutMs: 5000 });
+}
+
+async function resolveState(): Promise<{ snapshot: StateSnapshot; source: SnapshotSource }> {
+  const cfg = await readConfig();
   try {
-    const r = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) });
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  } catch (e:any) {
-    // any transport failure (node or bun wording) is a daemon-down situation
-    throw new Error(`daemon not running, run quotacap web — ${e?.message ?? String(e)}`);
+    return await resolveSnapshot({
+      client: clientFromUrl(),
+      dbPath: getDbPath(),
+      enabledProviders: cfg.enabledProviders,
+      now: new Date(),
+    });
+  } catch (e) {
+    if (e instanceof ClientError && e.kind === "no-data") {
+      throw new Error("service-unavailable: no stored readings and the service is unreachable - start it (quotacap web)");
+    }
+    throw e;
   }
 }
+
+function rejectMissingProvider(args: any): void {
+  try {
+    validateForecastProvider(args?.provider, { registered: [], storedIds: [] });
+  } catch (e: any) {
+    // Only the missing-argument case is context-free; unknown-provider and
+    // missing-reading need the snapshot, so they resolve first below.
+    if (String(e?.message ?? "").startsWith("invalid-argument")) throw e;
+  }
+}
+
 export async function handleTool(name:string, args:any){
   if(name==="get_quotas") {
-    const [quotas, rec] = await Promise.all([fetchJson("/api/quotas"), fetchJson("/api/recommendation")]);
-    const table = renderQuotasTable(quotas, rec?.advisories ?? []);
-    const json = JSON.stringify(quotas, null, 2);
-    return { content: [{ type:"text", text: table }, { type:"text", text: json }] };
+    const { snapshot, source } = await resolveState();
+    if (source === "offline") console.error(OFFLINE_LABEL);
+    const now = new Date();
+    return {
+      content: [
+        { type:"text", text: renderMarkdownTable(snapshot, now) },
+        { type:"text", text: JSON.stringify(projectQuotasResponse(snapshot), null, 2) },
+      ],
+    };
   }
   if(name==="get_recommendation") {
-    const rec = await fetchJson(`/api/recommendation?task=${args?.task??"any"}`);
-    const table = renderQuotasTable(rec.alternatives ?? [], rec.advisories ?? []);
-    const json = JSON.stringify(rec, null, 2);
-    return { content: [{ type:"text", text: table }, { type:"text", text: json }] };
+    const task = validateTask(args?.task ?? "any");
+    const { snapshot, source } = await resolveState();
+    if (source === "offline") console.error(OFFLINE_LABEL);
+    return {
+      content: [
+        { type:"text", text: renderRecommendationSummary(snapshot) },
+        { type:"text", text: JSON.stringify(projectRecommendationResponse(snapshot, task), null, 2) },
+      ],
+    };
   }
   if(name==="forecast") {
-    if(!args?.provider) throw new Error("provider required");
-    const [quotas, rec] = await Promise.all([fetchJson("/api/quotas"), fetchJson(`/api/recommendation`)]);
-    const q = quotas.find((x:any)=> x.provider===args.provider);
-    if (!q) throw new Error(`unknown provider ${args.provider}`);
-    return { quota:q, advisory: rec.advisories?.find((a:any)=>a.provider===args.provider) };
+    rejectMissingProvider(args);
+    const { snapshot, source } = await resolveState();
+    if (source === "offline") console.error(OFFLINE_LABEL);
+    const storedIds = snapshot.providers.filter((p) => p.quota !== null).map((p) => p.id);
+    const id = validateForecastProvider(args?.provider, {
+      registered: [...Object.keys(adapters), "agy:3p"],
+      storedIds,
+    });
+    const ps = snapshot.providers.find((p) => p.id === id)!;
+    const body = {
+      quota: ps.quota,
+      advisory: ps.advisory,
+      evidence: ps.evidence,
+      exclusionReason: ps.exclusionReason,
+      state: stateWord(ps),
+      forecast: forecastText(ps, new Date()),
+    };
+    return { content: [{ text: JSON.stringify(body, null, 2) }] };
   }
   throw new Error(`unknown tool ${name}`);
 }
@@ -58,7 +121,7 @@ export async function runMcpServer(){
     const isNotification = id === undefined;
     try {
       if (method==="initialize") {
-        if (!isNotification) respond(id, { protocolVersion:"2024-11-05", capabilities:{ tools:{} }, serverInfo:{ name:"quotacap", version:"0.0.1" } });
+        if (!isNotification) respond(id, { protocolVersion:"2024-11-05", capabilities:{ tools:{} }, serverInfo:{ name:"quotacap", version:VERSION } });
       } else if (method==="notifications/initialized") {
         // no-op
       } else if (method==="tools/list") {
