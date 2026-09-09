@@ -48,16 +48,45 @@ export const getQuotas = getAllLatest;
 export function getSnapshots(db:any){ return db.prepare(`SELECT * FROM snapshots ORDER BY day DESC`).all(); }
 export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   // Burn is the used-pct delta over a real rolling window of poll history
-  // (up to 24h), so calendar-day boundaries and poll timing cannot skew it.
-  const rows = db.prepare(`SELECT provider, used_pct, fetched_at FROM quotas`).all() as {provider:string; used_pct:number; fetched_at:string}[];
-  const byProvider = new Map<string, {usedPct:number; t:number}[]>();
+  // (up to 24h) within the current cycle window (periodStart to resetsAt).
+  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, period_start, resets_at FROM quotas`).all() as {
+    provider: string;
+    used_pct: number;
+    fetched_at: string;
+    period_start: string | null;
+    resets_at: string | null;
+  }[];
+
+  // 1. Read latest row per provider (with valid fetchedAt <= now) to fix the current window
+  const latestByProvider = new Map<string, { periodStart: string | null; resetsAt: string | null; t: number }>();
   for (const r of rows) {
     const t = new Date(r.fetched_at).getTime();
-    if (Number.isNaN(t)) continue;
+    if (Number.isNaN(t) || t > now) continue;
+    const cur = latestByProvider.get(r.provider);
+    if (!cur || t > cur.t) {
+      latestByProvider.set(r.provider, { periodStart: r.period_start, resetsAt: r.resets_at, t });
+    }
+  }
+
+  const byProvider = new Map<string, { usedPct: number; t: number }[]>();
+  for (const r of rows) {
+    const t = new Date(r.fetched_at).getTime();
+    if (Number.isNaN(t) || t > now) continue;
+    const currentWindow = latestByProvider.get(r.provider);
+    if (!currentWindow) continue;
+
+    // Cycle guard: drop points whose stored periodStart differs from the current window start
+    if (currentWindow.periodStart != null) {
+      if (r.period_start !== currentWindow.periodStart) continue;
+      const startMs = new Date(currentWindow.periodStart).getTime();
+      if (!Number.isNaN(startMs) && t < startMs) continue;
+    }
+
     const pts = byProvider.get(r.provider) ?? [];
     pts.push({ usedPct: r.used_pct, t });
     byProvider.set(r.provider, pts);
   }
+
   const out = new Map<string, number>();
   for (const [provider, pts] of byProvider) {
     const sorted = pts.sort((a, b) => a.t - b.t);
@@ -67,7 +96,7 @@ export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
     const days = (latest.t - windowStart.t) / 86400000;
     if (sorted.length < 2 || days < 1 / 24) continue;
     const burn = (latest.usedPct - windowStart.usedPct) / days;
-    if (burn >= 0) out.set(provider, burn);
+    if (burn >= 0 && Number.isFinite(burn)) out.set(provider, burn);
   }
   return out;
 }
