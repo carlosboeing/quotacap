@@ -11,6 +11,7 @@ import {
 import { ageLabel, firstRun, toViewModel, type ViewModel } from "./state.js";
 import { Recommendation } from "./components/Recommendation.js";
 import { SubscriptionList } from "./components/SubscriptionList.js";
+import { ResetRail } from "./components/ResetRail.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -63,7 +64,7 @@ function HttpErrorPanel({
   );
 }
 
-/** Interim ready view. Task 5 adds the reset rail above the list. */
+/** Interim ready view. Task 9 replaces the placeholder header. */
 function ReadyView({
   snapshot,
   onSelectProvider,
@@ -81,12 +82,19 @@ function ReadyView({
         onSelectProvider={onSelectProvider}
       />
       {!firstRun(snapshot) && (
-        <SubscriptionList
-          providers={snapshot.providers}
-          recommendation={snapshot.recommendation}
-          asOf={snapshot.asOf}
-          onSelectProvider={onSelectProvider}
-        />
+        <>
+          <ResetRail
+            providers={snapshot.providers}
+            asOf={snapshot.asOf}
+            onSelectProvider={onSelectProvider}
+          />
+          <SubscriptionList
+            providers={snapshot.providers}
+            recommendation={snapshot.recommendation}
+            asOf={snapshot.asOf}
+            onSelectProvider={onSelectProvider}
+          />
+        </>
       )}
     </div>
   );
