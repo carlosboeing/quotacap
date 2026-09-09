@@ -185,6 +185,7 @@ function App() {
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
       <Header
         runtime={snapshot?.runtime ?? null}
+        unreachable={error?.kind === "service-unavailable"}
         refreshing={refreshing}
         onRefresh={() => void refresh()}
         onSettings={() => setSettingsOpen(true)}

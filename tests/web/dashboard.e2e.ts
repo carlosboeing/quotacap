@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { startStub, type StubHandle, type StubOptions } from "./stub-server.js";
+import { hatchGradient } from "../../web/src/components/PaceBar.js";
 import {
   exampleStateSnapshotJson,
   staleStateSnapshotJson,
@@ -68,6 +69,13 @@ async function themedPage(browser: Browser, theme: Theme, width: number, height 
   });
   const page = await context.newPage();
   return { context, page };
+}
+
+function focusInside(page: Page, testId: string): Promise<boolean> {
+  return page.evaluate((id) => {
+    const dialog = document.querySelector(`[data-testid="${id}"]`);
+    return !!dialog && dialog.contains(document.activeElement);
+  }, testId);
 }
 
 async function expectNoPageOverflow(page: Page) {
@@ -263,6 +271,9 @@ test("provider drawer traps focus, closes on esc and scrim, and returns focus", 
       await expect(drawer).toBeVisible();
       await expect(drawer).toContainText("Window avg");
       await shot(page, `provider-drawer-1440-${theme}.png`);
+      // A reverse tab from the freshly focused dialog container stays inside.
+      await page.keyboard.press("Shift+Tab");
+      expect(await focusInside(page, "provider-drawer")).toBe(true);
       // Focus stays inside while tabbing.
       for (let i = 0; i < 30; i++) {
         await page.keyboard.press("Tab");
@@ -287,6 +298,35 @@ test("provider drawer traps focus, closes on esc and scrim, and returns focus", 
     } finally {
       await context.close();
     }
+  }
+});
+
+test("settings drawer holds focus on an immediate reverse tab", async ({ page }) => {
+  const stub = await stubFor(exampleState());
+  await page.goto(stub.url);
+  await page.getByTestId("settings-button").click();
+  await expect(page.getByTestId("settings-drawer")).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  expect(await focusInside(page, "settings-drawer")).toBe(true);
+});
+
+test("the projected-unused hatch paints a gradient the browser accepts", async ({ page }) => {
+  const stub = await stubFor(exampleState());
+  await page.goto(stub.url);
+  // A CSS variable with an alpha suffix parses to nothing, so the browser
+  // would report background-image: none and the hatch would never show.
+  const painted = await page.evaluate((gradient) => {
+    const probe = document.createElement("div");
+    probe.style.background = gradient;
+    document.body.append(probe);
+    const image = getComputedStyle(probe).backgroundImage;
+    probe.remove();
+    return image;
+  }, hatchGradient("Behind pace"));
+  expect(painted).not.toBe("none");
+  expect(painted).toContain("gradient");
+  for (const hatch of await page.getByTestId("pace-hatch").all()) {
+    await expect(hatch).toHaveCSS("background-image", /gradient/);
   }
 });
 

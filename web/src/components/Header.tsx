@@ -43,16 +43,16 @@ function servingHost(): string {
   }
 }
 
-function pillText(pill: PillState, runtime: RuntimeView): string {
+function pillText(pill: PillState, runtime: RuntimeView | null): string {
   switch (pill) {
     case "live":
       return `Daemon active ${servingHost()}`;
     case "polling":
-      return runtime.polling === "cooldown" ? "Cooling down" : "Polling";
+      return runtime?.polling === "cooldown" ? "Cooling down" : "Polling";
     case "unreachable":
       return "Daemon unreachable";
     case "not-ready":
-      return runtime.version === "" ? "Version unknown" : "Daemon not ready";
+      return runtime?.version === "" ? "Version unknown" : "Daemon not ready";
   }
 }
 
@@ -61,13 +61,18 @@ export function Header({
   refreshing,
   onRefresh,
   onSettings,
+  unreachable = false,
 }: {
   runtime: RuntimeView | null;
   refreshing: boolean;
   onRefresh: () => void;
   onSettings: () => void;
+  /** The last request to the daemon failed at the network level. */
+  unreachable?: boolean;
 }) {
-  const pill = runtime ? pillFor(runtime) : null;
+  // A failed request outranks the snapshot: the stored runtime fields describe
+  // the last answer, not the current one.
+  const pill = unreachable ? "unreachable" : runtime ? pillFor(runtime) : null;
   return (
     <header
       style={{
@@ -79,12 +84,16 @@ export function Header({
       }}
     >
       <div style={{ font: "var(--t-5)", flexGrow: 1 }}>QuotaCap</div>
-      {runtime && pill ? (
+      {pill ? (
         <span
           data-testid="pill"
           data-state={pill}
           role="status"
-          title={`available: ${runtime.available}; ready: ${runtime.ready}; polling: ${runtime.polling}; version: ${runtime.version}`}
+          title={
+            runtime
+              ? `available: ${runtime.available}; ready: ${runtime.ready}; polling: ${runtime.polling}; version: ${runtime.version}`
+              : "no snapshot yet"
+          }
           style={{ font: "var(--t-2)", color: pillColor(pill), whiteSpace: "nowrap" }}
         >
           <span aria-hidden="true">● </span>

@@ -149,7 +149,11 @@ export function ProviderDrawer({
       if (list.length === 0) return;
       const first = list[0];
       const last = list[list.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
+      // The dialog container holds focus on open, so a reverse tab from it
+      // would otherwise leave the drawer for the page behind.
+      const atStart =
+        document.activeElement === first || document.activeElement === dialogRef.current;
+      if (e.shiftKey && atStart) {
         e.preventDefault();
         last.focus();
       } else if (!e.shiftKey && document.activeElement === last) {

@@ -131,6 +131,16 @@ export function badgeColor(badge: PaceBadge): string {
   }
 }
 
+/**
+ * Hatch fill for the projected-unused span. The badge colours are CSS custom
+ * properties, so an alpha suffix would not parse: color-mix applies the
+ * transparency instead.
+ */
+export function hatchGradient(badge: PaceBadge): string {
+  const tint = `color-mix(in srgb, ${badgeColor(badge)} 33%, transparent)`;
+  return `repeating-linear-gradient(45deg, transparent 0 3px, ${tint} 3px 5px)`;
+}
+
 export function Badge({ provider }: { provider: ProviderView }) {
   const badge = paceBadge(provider);
   const detail = exclusionDetail(provider.exclusionReason);
@@ -191,13 +201,14 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
         {showHatch && (
           <div
             aria-hidden="true"
+            data-testid="pace-hatch"
             style={{
               position: "absolute",
               left: `${projectedPct}%`,
               top: 0,
               bottom: 0,
               right: 0,
-              background: `repeating-linear-gradient(45deg, transparent 0 3px, ${badgeColor(badge)}55 3px 5px)`,
+              background: hatchGradient(badge),
             }}
           />
         )}
