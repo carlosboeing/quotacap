@@ -3,7 +3,24 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const BUN_SQLITE = "bun:sqlite";
+
+function seedTakeoverDb(dir: string): void {
+  const file = path.join(dir, "service.lock.takeover");
+  let Database: new (path: string) => { exec(sql: string): unknown; close(): unknown };
+  try {
+    Database = require("node:sqlite").DatabaseSync;
+  } catch {
+    Database = require(BUN_SQLITE).Database;
+  }
+  const db = new Database(file);
+  db.exec("PRAGMA user_version = 1");
+  db.close();
+}
 import {
   acquireClaim,
   readClaim,
@@ -287,21 +304,51 @@ describe("ownership claim", () => {
     expect(readClaim(dir)?.nonce).toBe(recovery.info.nonce);
   }, 15000);
 
-  it("a leftover takeover file from a dead pid does not block acquire", async () => {
+  it("a leftover takeover file from a dead process does not block acquire", async () => {
     const dir = mkHome();
-    let dead = 1 << 22;
-    for (; dead > 10; dead--) {
-      try {
-        process.kill(dead, 0);
-      } catch (e: any) {
-        if (e.code === "ESRCH") break;
-      }
-    }
-    fs.writeFileSync(path.join(dir, "service.lock.takeover"), `${dead}\n`);
+    // Crash after creating the sidecar: the file remains, the fcntl lock does not.
+    seedTakeoverDb(dir);
     const claim = await acquireClaim(dir, { staleMs: 1000, graceMs: 10 });
     claims.push(claim);
     expect(claim.verify()).toBe(true);
   });
+
+  it("two processes recovering a leftover takeover file: exactly one claim", async () => {
+    const dir = mkHome();
+    seedTakeoverDb(dir);
+    const dead = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
+    claims.push(dead);
+    fs.writeFileSync(
+      lockFile(dir),
+      JSON.stringify({
+        ...dead.info,
+        lastBeat: new Date(Date.now() - 120_000).toISOString(),
+      }) + "\n",
+    );
+    const args = [
+      "--dir",
+      dir,
+      "--hold-ms",
+      "2000",
+      "--stale-ms",
+      "1000",
+      "--grace-ms",
+      "50",
+    ];
+    const results = await Promise.all([runHolder(args), runHolder(args)]);
+    const held = results.filter((r) => r.code === 0 && r.stdout.includes("HELD"));
+    const contended = results.filter(
+      (r) => r.code === 1 && r.stdout.includes("CONTENDED:"),
+    );
+    if (held.length !== 1 || contended.length !== 1) {
+      throw new Error(
+        `leftover takeover contention failed: ${results
+          .map((r) => `code=${r.code} ${JSON.stringify(r.stdout)} ${JSON.stringify(r.stderr)}`)
+          .join(" | ")}`,
+      );
+    }
+    expect(dead.verify()).toBe(false);
+  }, 20000);
 
   it("(e) release by a non-owner leaves the file", async () => {
     const dir = mkHome();

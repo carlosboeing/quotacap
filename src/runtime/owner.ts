@@ -1,13 +1,18 @@
 // Heartbeat-lock ownership of the data directory (decision D1).
-// Pure fs + crypto: no sqlite import, so this module loads identically
-// under Node and Bun. The claim file's PID is diagnostics only; lastBeat
-// is liveness. The takeover mutex file's PID is liveness of that short
-// critical section: steal it only when the writer is dead, never because
-// the file is old.
+// The claim file is still pure fs + crypto so readClaim loads identically
+// under Node and Bun. The takeover mutex is a sqlite exclusive transaction
+// on a sidecar file: kernel fcntl exclusion, released when the connection
+// (or the process) dies. Path-based O_EXCL plus unlink cannot do that —
+// two recoverers can both validate a dead inode and the later unlink
+// deletes the winner's new mutex.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { VERSION } from "../version.js";
+
+const nodeRequire = createRequire(import.meta.url);
+const BUN_SQLITE = "bun:sqlite";
 
 export interface ClaimInfo {
   nonce: string;
@@ -57,12 +62,71 @@ export function lockPath(dataDir: string): string {
 
 // Creation, release and stale recovery share this mutex, so the unlink of a
 // stale claim cannot land on a lock that another process just created.
-// Ownership is the creating process, not mtime: a live holder that pauses
-// past staleMs (debugger, SIGSTOP, machine sleep) must still exclude
-// stealers. A holder that dies leaves the file behind; the next acquirer
-// removes it only when that pid is gone.
+// Exclusion is a sqlite exclusive transaction (fcntl), not the file's
+// existence: a live holder that pauses past staleMs still holds the kernel
+// lock, and a dead holder releases it without anyone unlinking the file.
 function takeoverPath(dataDir: string): string {
   return path.join(dataDir, "service.lock.takeover");
+}
+
+interface SqliteConn {
+  exec(sql: string): unknown;
+  close(): unknown;
+}
+
+function openSqlite(file: string): SqliteConn {
+  let Ctor: new (path: string, opts?: { timeout?: number }) => SqliteConn;
+  try {
+    Ctor = nodeRequire("node:sqlite").DatabaseSync;
+  } catch {
+    Ctor = nodeRequire(BUN_SQLITE).Database;
+  }
+  try {
+    return new Ctor(file, { timeout: 0 });
+  } catch {
+    return new Ctor(file);
+  }
+}
+
+function sqliteLocked(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  const msg = e?.message ?? "";
+  return (
+    /database is locked/i.test(msg) ||
+    /SQLITE_BUSY/i.test(msg) ||
+    e?.code === "SQLITE_BUSY"
+  );
+}
+
+// Create the sidecar once with a unique tmp + hardlink so two processes
+// racing an empty directory cannot both initialize a half-written file.
+function ensureTakeoverDb(file: string): void {
+  try {
+    if (fs.statSync(file).size > 0) return;
+  } catch {}
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+  try {
+    const db = openSqlite(tmp);
+    try {
+      db.exec("PRAGMA user_version = 1");
+    } finally {
+      try {
+        db.close();
+      } catch {}
+    }
+    try {
+      fs.linkSync(tmp, file);
+      try {
+        fs.chmodSync(file, 0o600);
+      } catch {}
+    } catch (err: any) {
+      if (err.code !== "EEXIST") throw err;
+    }
+  } finally {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {}
+  }
 }
 
 // Same-process reentry: claimWith's failed verify calls release() while
@@ -109,7 +173,6 @@ function startHeartbeat(
   fd: number,
   mine: ClaimInfo,
   beatIntervalMs: number,
-  staleMs: number,
 ): Claim {
   const dataDir = path.dirname(file);
   const myInode = inodeOf(fd);
@@ -163,7 +226,7 @@ function startHeartbeat(
         } catch {}
       }
       if (mustUnlink) {
-        const takeover = acquireTakeover(dataDir, staleMs);
+        const takeover = acquireTakeover(dataDir);
         if (takeover) {
           try {
             if (stillMine()) {
@@ -185,96 +248,43 @@ interface TakeoverLock {
   owns(): boolean;
 }
 
-function pidIsAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err: any) {
-    if (err.code === "ESRCH") return false;
-    // EPERM: the process exists but we cannot signal it.
-    return true;
-  }
-}
-
-function takeoverPid(file: string): number | null {
-  try {
-    const n = parseInt(fs.readFileSync(file, "utf8"), 10);
-    return Number.isInteger(n) && n > 0 ? n : null;
-  } catch {
-    return null;
-  }
-}
-
-function acquireTakeover(dataDir: string, staleMs: number): TakeoverLock | null {
+function acquireTakeover(dataDir: string): TakeoverLock | null {
   const file = takeoverPath(dataDir);
   if (heldTakeovers.has(file)) {
     return { unlock() {}, owns: () => true };
   }
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let db: SqliteConn | undefined;
+  try {
+    ensureTakeoverDb(file);
+    db = openSqlite(file);
+    db.exec("BEGIN EXCLUSIVE");
+  } catch (err) {
     try {
-      const fd = fs.openSync(
-        file,
-        fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
-        0o644,
-      );
-      let ino: number;
-      try {
-        fs.writeSync(fd, `${process.pid}\n`);
-        ino = fs.fstatSync(fd).ino;
-      } catch (err) {
-        try {
-          fs.closeSync(fd);
-        } catch {}
-        try {
-          fs.rmSync(file, { force: true });
-        } catch {}
-        throw err;
-      }
-      try {
-        fs.closeSync(fd);
-      } catch {}
-      heldTakeovers.add(file);
-      return {
-        unlock() {
-          heldTakeovers.delete(file);
-          try {
-            if (inodeOf(file) === ino) {
-              fs.rmSync(file, { force: true });
-            }
-          } catch {}
-        },
-        owns() {
-          return inodeOf(file) === ino;
-        },
-      };
-    } catch (err: any) {
-      if (err.code !== "EEXIST") throw err;
-    }
-    let observedIno: number | null = null;
-    let age = Infinity;
-    try {
-      const st = fs.statSync(file);
-      observedIno = st.ino;
-      age = Date.now() - st.mtimeMs;
+      db?.close();
     } catch {}
-    const pid = takeoverPid(file);
-    // A live writer keeps the mutex even when the file is older than
-    // staleMs. Age only recovers a crash between create and write, where
-    // there is no pid to probe.
-    const writerGone = pid !== null ? !pidIsAlive(pid) : age >= staleMs;
-    if (!writerGone) return null;
-    // Remove the entry examined above and no other. A process that took the
-    // mutex between the stat and this unlink wrote a different inode, and
-    // removing by path alone would drop its mutex while it still holds it.
-    try {
-      if (observedIno !== null && fs.statSync(file).ino !== observedIno) {
-        return null;
-      }
-      fs.rmSync(file, { force: true });
-    } catch {}
+    if (sqliteLocked(err)) return null;
+    throw err;
   }
-  return null;
+  if (!db) return null;
+  const conn = db;
+  heldTakeovers.add(file);
+  let released = false;
+  return {
+    unlock() {
+      if (released) return;
+      released = true;
+      heldTakeovers.delete(file);
+      try {
+        conn.exec("ROLLBACK");
+      } catch {}
+      try {
+        conn.close();
+      } catch {}
+    },
+    owns() {
+      return !released && heldTakeovers.has(file);
+    },
+  };
 }
 
 export async function acquireClaim(
@@ -330,7 +340,7 @@ export async function acquireClaim(
       } catch {}
       throw err;
     }
-    const claim = startHeartbeat(file, fd, mine, beatIntervalMs, staleMs);
+    const claim = startHeartbeat(file, fd, mine, beatIntervalMs);
     // Confirm the file on disk is still the one just written. Another
     // process recovering a stale claim can unlink between the create and
     // this read, and a claim that was never really held must fail startup
@@ -348,7 +358,7 @@ export async function acquireClaim(
     // still refreshes the claim we will see on the next try.
     let takeover: TakeoverLock | null = null;
     for (;;) {
-      takeover = acquireTakeover(dataDir, staleMs);
+      takeover = acquireTakeover(dataDir);
       if (takeover !== null) break;
       const holder = readClaim(dataDir);
       const age = holder ? Date.now() - new Date(holder.lastBeat).getTime() : Infinity;
