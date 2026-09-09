@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 import { recordAttempt } from "../../src/store/attempts.js";
-import { buildSnapshot } from "../../src/advisory/snapshot.js";
+import {
+  buildSnapshot,
+  projectQuotasResponse,
+  projectRecommendationResponse,
+} from "../../src/advisory/snapshot.js";
 
 const NOW = new Date("2026-09-07T06:00:00+10:00");
 const RT = { available: true, ready: true, polling: "idle" as const, lastCompletedPollAt: "2026-09-07T05:45:00+10:00", version: "0.0.21" };
@@ -49,5 +53,19 @@ describe("snapshot", () => {
     const s = buildSnapshot(db, { enabledProviders: ["agy"], now: NOW, runtime: RT });
     expect(s.providers.find(p => p.id === "agy")!.reporting).toBe(true);
     expect(s.providers.find(p => p.id === "agy:3p")!.exclusionReason).toBe("stale");
+  });
+
+  it("converts legacy shapes additively", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "kimi", usedPct: 16, sessionPct: 5, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
+    const q = projectQuotasResponse(s);
+    expect(q[0].provider).toBe("kimi");
+    expect(q[0].sessionPct).toBe(5);
+    expect(typeof q[0].stale).toBe("boolean");
+    const r = projectRecommendationResponse(s, "any");
+    expect(["kimi", "none"]).toContain(r.use);
+    expect(r).toHaveProperty("advisories");
+    expect(JSON.stringify(r)).not.toContain("Infinity");
   });
 });

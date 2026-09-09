@@ -241,3 +241,20 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
     recommendation,
   };
 }
+
+export function projectQuotasResponse(s: StateSnapshot): any[] {
+  return s.providers
+    .filter((p) => p.quota !== null)
+    .map((p) => ({
+      ...p.quota,
+      stale: p.stale,
+      ageMs: p.ageMs,
+      evidence: p.evidence,
+      exclusionReason: p.exclusionReason,
+    }));
+}
+
+export function projectRecommendationResponse(s: StateSnapshot, _task = "any"): Recommendation {
+  return s.recommendation;
+}
+
