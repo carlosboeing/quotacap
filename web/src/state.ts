@@ -1,0 +1,152 @@
+// Vendored view of Track A's StateSnapshot contract (src/advisory/types.ts).
+//
+// The web bundle cannot import Node-only src/ modules, so these types mirror
+// A's shapes field-for-field. Mapping is presentation only: server words and
+// flags pass through untouched. Staleness, ranking, waste, pace labels, and
+// freshness are never recomputed here.
+
+export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track";
+export type BurnStatus = "at risk" | "on track" | "unknown";
+export type PaceSource = "recent" | "window-average" | "unknown";
+export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
+
+export type ExclusionReason =
+  | "not-reporting"
+  | "stale"
+  | "reset-passed"
+  | "invalid"
+  | "provider-failed"
+  | null;
+
+export interface AdvisoryView {
+  provider: string;
+  daysLeft: number;
+  remaining: number;
+  idealRate: number;
+  burnRate: number | null;
+  burnMeasured: boolean;
+  paceSource: PaceSource;
+  daysToExhaust: number | null;
+  status: BurnStatus;
+  wastePct: number | null;
+  urgency: Urgency;
+}
+
+export interface RecommendationView {
+  use: string;
+  reason: string;
+  wastePct: number | null;
+  idealRate: number;
+  recommendationBasis: RecommendationBasis;
+  alternatives: unknown[];
+  advisories: AdvisoryView[];
+}
+
+export interface QuotaView {
+  provider: string;
+  plan: string;
+  usedPct: number;
+  sessionPct?: number;
+  resetsAt: string;
+  periodStart: string;
+  source: string;
+  fetchedAt: string;
+  creditsUsd?: number;
+  resetsAtEstimated?: boolean;
+}
+
+export type FailureCategory = "timeout" | "auth" | "parse" | "network" | "skipped" | "unknown" | null;
+
+export interface AttemptView {
+  provider: string;
+  attemptedAt: string;
+  completedAt: string | null;
+  succeededAt: string | null;
+  success: boolean;
+  failureCategory: FailureCategory;
+}
+
+export interface ProviderView {
+  id: string;
+  enabled: boolean;
+  quota: QuotaView | null;
+  lastAttempt: AttemptView | null;
+  lastSuccessAt: string | null;
+  reporting: boolean;
+  stale: boolean;
+  resetPassed: boolean;
+  ageMs: number | null;
+  evidence: string[];
+  exclusionReason: ExclusionReason;
+  advisory: AdvisoryView | null;
+}
+
+export interface RuntimeView {
+  available: boolean;
+  ready: boolean;
+  polling: "idle" | "in-progress" | "cooldown";
+  lastCompletedPollAt: string | null;
+  version: string;
+}
+
+export interface StateSnapshot {
+  asOf: string;
+  runtime: RuntimeView;
+  providers: ProviderView[];
+  recommendation: RecommendationView;
+}
+
+export interface ViewModel {
+  asOf: string;
+  runtime: RuntimeView;
+  providers: ProviderView[];
+  recommendation: RecommendationView;
+}
+
+/** Pass-through with null guards. Server words and flags are never altered. */
+export function toViewModel(s: StateSnapshot): ViewModel {
+  const providers = Array.isArray(s.providers)
+    ? s.providers.map((p) => ({
+        ...p,
+        evidence: Array.isArray(p.evidence) ? [...p.evidence] : [],
+      }))
+    : [];
+  const advisories = Array.isArray(s.recommendation?.advisories)
+    ? [...s.recommendation.advisories]
+    : [];
+  return {
+    asOf: s.asOf,
+    runtime: { ...s.runtime },
+    providers,
+    recommendation: { ...s.recommendation, advisories },
+  };
+}
+
+/** First run means no stored quota rows at all. Stale rows are still rows. */
+export function firstRun(s: { providers: Array<{ quota: unknown }> }): boolean {
+  return s.providers.every((p) => p.quota === null || p.quota === undefined);
+}
+
+/** "read Xm ago" from the last good snapshot's server timestamp. */
+export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
+  const diff = nowMs - Date.parse(asOf);
+  if (!Number.isFinite(diff) || diff < 1000) return "read just now";
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `read ${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `read ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `read ${hours}h ago`;
+  return `read ${Math.floor(hours / 24)}d ago`;
+}
+
+/** "1h 30m" style duration for a last-read age in milliseconds. */
+export function ageDuration(ageMs: number | null): string | null {
+  if (ageMs === null || !Number.isFinite(ageMs) || ageMs < 0) return null;
+  if (ageMs < 60_000) return `${Math.floor(ageMs / 1000)}s`;
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
