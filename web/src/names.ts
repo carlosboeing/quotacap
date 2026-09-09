@@ -13,3 +13,8 @@ const KNOWN: Record<string, string> = {
 export function displayName(id: string): string {
   return KNOWN[id] ?? id;
 }
+
+/** True for the five CLI-backed adapters; manual ids take generic copy. */
+export function isKnownProvider(id: string): boolean {
+  return id in KNOWN;
+}

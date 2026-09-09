@@ -14,6 +14,8 @@ import { SubscriptionList } from "./components/SubscriptionList.js";
 import { ResetRail } from "./components/ResetRail.js";
 import { ProviderDrawer } from "./components/ProviderDrawer.js";
 import { SettingsDrawer } from "./components/settings/SettingsDrawer.js";
+import { navigate, routeFor, useRoute } from "./router.js";
+import { Onboarding } from "./pages/Onboarding.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -110,6 +112,12 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const route = useRoute();
+  const target = snapshot ? routeFor(route, firstRun(snapshot)) : null;
+
+  useEffect(() => {
+    if (target && target !== route) navigate(target);
+  }, [target, route]);
 
   const load = useCallback(async () => {
     try {
@@ -151,6 +159,26 @@ function App() {
       setRefreshing(false);
     }
   }, [load]);
+
+  const setupMode = target === "/setup";
+  const pollErrorText = error
+    ? error.kind === "http-error"
+      ? `Request failed (HTTP ${error.status}): ${error.message}`
+      : `Service unavailable: ${error.message}`
+    : null;
+
+  if (snapshot && setupMode) {
+    return (
+      <div>
+        <Onboarding
+          snapshot={snapshot}
+          onFirstPoll={() => void refresh()}
+          polling={refreshing}
+          pollError={pollErrorText}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
