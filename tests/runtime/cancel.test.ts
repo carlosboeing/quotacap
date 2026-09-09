@@ -254,6 +254,48 @@ describe("cancellation reaches children", () => {
     await waitFor(() => liveChildCount() === 0, 2000, "liveChildCount 0");
   }, 15000);
 
+  it("killAll escalation never touches children spawned after the call", async () => {
+    const dir = mkHome();
+    const pidA = path.join(dir, "a.pid");
+    const pidB = path.join(dir, "b.pid");
+    const pa = trackedExecFile(
+      "test-a",
+      process.execPath,
+      [FAKE, "--mode", "hang", "--pidfile", pidA],
+      {},
+    );
+    pa.catch(() => {});
+    await waitFor(() => fs.existsSync(pidA), 5000, "child A to start");
+    killAll("SIGTERM", 200); // arms escalation against generation {A}
+    // Spawn B after killAll: the sweep at +200ms must not reap it.
+    const pb = trackedExecFile(
+      "test-b",
+      process.execPath,
+      [FAKE, "--mode", "hang", "--pidfile", pidB],
+      {},
+    );
+    pb.catch(() => {});
+    await waitFor(() => fs.existsSync(pidB), 5000, "child B to start");
+    await pa.then(
+      () => {
+        throw new Error("child A unexpectedly survived SIGTERM");
+      },
+      () => {},
+    );
+    await sleep(400); // past the escalation sweep
+    const pid = parseInt(fs.readFileSync(pidB, "utf8"), 10);
+    expect(isPidAlive(pid)).toBe(true);
+    expect(liveChildCount()).toBe(1);
+    killAll("SIGKILL", 0);
+    await pb.then(
+      () => {
+        throw new Error("child B unexpectedly survived SIGKILL");
+      },
+      () => {},
+    );
+    expect(liveChildCount()).toBe(0);
+  }, 15000);
+
   it("(e) killAll settles every adapter with no live children", async () => {
     const dir = mkHome();
     const pid1 = path.join(dir, "k1.pid");

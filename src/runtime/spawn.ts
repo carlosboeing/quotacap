@@ -41,15 +41,19 @@ export function liveChildCount(): number {
 }
 
 export function killAll(signal: NodeJS.Signals = "SIGTERM", escalateMs = 1000): void {
-  for (const entry of [...tracked]) {
+  // Snapshot: escalation only ever touches the generation alive at call
+  // time, never children spawned afterwards.
+  const targets = [...tracked];
+  for (const entry of targets) {
     try {
       entry.kill(signal);
     } catch {}
   }
-  if (escalateMs > 0) {
+  if (escalateMs > 0 && targets.length > 0) {
     // Survivors (still registered = still alive) get SIGKILL.
     const t = setTimeout(() => {
-      for (const entry of [...tracked]) {
+      for (const entry of targets) {
+        if (!tracked.has(entry)) continue;
         try {
           entry.kill("SIGKILL");
         } catch {}
