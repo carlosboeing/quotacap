@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { trackedExecFile } from "../runtime/spawn.js";
 import type { Adapter, ParsedQuota } from "./types.js";
-const exec = promisify(execFile);
 
 interface AgyBucket {
   id?: string;
@@ -98,7 +96,7 @@ export const agyAdapter: Adapter = {
   id: "agy",
   requiresAuth: "agy login (CLI owns credentials)",
   async poll(): Promise<ParsedQuota[]> {
-    const { stdout } = await exec("agy", ["-p", "/usage", "--output-format", "json"], { timeout: 20000 });
+    const { stdout } = await trackedExecFile("agy", "agy", ["-p", "/usage", "--output-format", "json"], { timeout: 20000 });
     return parseAgyUsage(JSON.parse(stdout));
   },
 };

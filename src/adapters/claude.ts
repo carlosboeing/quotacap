@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { trackedExecFile } from "../runtime/spawn.js";
 import { parseResetText } from "./parse.js";
 import type { ParsedQuota } from "./types.js";
-const exec = promisify(execFile);
 
 export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota {
   const sessionMatch = result.match(/Current session:\s+(\d+)% used[^·]*·\s*resets\s+([^\n(]+?)\s*\(/);
@@ -32,7 +30,7 @@ export const claudeAdapter: ClaudeAdapter = {
   execPath: "claude",
   async poll(execPath?: string): Promise<ParsedQuota> {
     const bin = execPath ?? claudeAdapter.execPath ?? "claude";
-    const { stdout } = await exec(bin, ["-p","/usage","--output-format","json"], { timeout: 8000 });
+    const { stdout } = await trackedExecFile("claude", bin, ["-p","/usage","--output-format","json"], { timeout: 8000 });
     const parsed = JSON.parse(stdout);
     const result: string = parsed.result ?? stdout;
     return parseClaudeUsage(result);
