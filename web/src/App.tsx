@@ -16,6 +16,8 @@ import { ProviderDrawer } from "./components/ProviderDrawer.js";
 import { SettingsDrawer } from "./components/settings/SettingsDrawer.js";
 import { navigate, routeFor, useRoute } from "./router.js";
 import { Onboarding } from "./pages/Onboarding.js";
+import { Header } from "./components/Header.js";
+import { FaultBanner } from "./components/FaultBanner.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -78,7 +80,6 @@ function ReadyView({
 }) {
   return (
     <div data-testid="dashboard-root">
-      <h1>QuotaCap</h1>
       <Recommendation
         recommendation={snapshot.recommendation}
         providers={snapshot.providers}
@@ -181,22 +182,33 @@ function App() {
   }
 
   return (
-    <div>
-      <button data-testid="refresh-button" type="button" onClick={() => void refresh()} disabled={refreshing}>
-        {refreshing ? "Refreshing…" : "Refresh"}
-      </button>
-      {/* Temporary opener. Task 9 moves this into the header. */}
-      <button data-testid="settings-button-temp" type="button" onClick={() => setSettingsOpen(true)}>
-        Settings
-      </button>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
+      <Header
+        runtime={snapshot?.runtime ?? null}
+        refreshing={refreshing}
+        onRefresh={() => void refresh()}
+        onSettings={() => setSettingsOpen(true)}
+      />
       {notice && (
         <div data-testid="refresh-notice" role="status">
           {notice}
         </div>
       )}
       {loading && !snapshot && (
-        <div data-testid="state-loading" aria-busy="true">
-          Loading quota state…
+        <div data-testid="state-loading" aria-busy="true" aria-label="Loading quota state">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              aria-hidden="true"
+              style={{
+                height: 64,
+                background: "var(--surface-raised)",
+                border: i === 0 ? "1px solid var(--rec)" : "1px solid var(--line)",
+                borderRadius: 8,
+                marginBottom: 8,
+              }}
+            />
+          ))}
         </div>
       )}
       {error?.kind === "service-unavailable" && !snapshot && (
@@ -218,6 +230,13 @@ function App() {
             Retry
           </button>
         </div>
+      )}
+      {snapshot && (
+        <FaultBanner
+          providers={snapshot.providers}
+          onRepoll={() => void refresh()}
+          repolling={refreshing}
+        />
       )}
       {snapshot && (
         <ReadyView snapshot={snapshot} onSelectProvider={(id) => setSelectedProvider(id)} />
