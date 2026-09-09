@@ -16,7 +16,7 @@ import { createCoordinator, type Coordinator } from "./poll.js";
 import { killAll } from "./spawn.js";
 import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
-import { getDbPath, readServiceConfig, type Config } from "../config.js";
+import { getDbPath, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
@@ -142,9 +142,12 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
     throw e;
   }
 
-  // Preserve daemon behavior: pin the resolved claude binary.
+  // Pin the claude binary: explicit resolver first, then the install-time
+  // recorded path from service metadata, then live PATH resolution.
   try {
-    const pinned = (opts?.resolveClaude ?? resolveClaudeExecPath)();
+    const recorded = readServiceMetadata(dataDir)?.providerPaths?.claude;
+    const pinned =
+      opts?.resolveClaude?.() ?? recorded ?? resolveClaudeExecPath();
     if (pinned) claudeAdapter.execPath = pinned;
   } catch {}
 
