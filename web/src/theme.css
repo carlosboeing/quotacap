@@ -1,0 +1,118 @@
+/* Emerald Obsidian tokens and Geist Modern type scale.
+ * Verbatim from the refined design §2.1–§2.2. Local only: no remote fetches. */
+
+:root {
+  color-scheme: light;
+
+  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --t-1: 600 11px var(--font-mono);
+  --t-2: 500 12.5px var(--font-sans);
+  --t-3: 400 14px var(--font-sans);
+  --t-4: 600 16px var(--font-sans);
+  --t-5: 700 20px var(--font-sans);
+  --t-6: 700 26px var(--font-sans);
+
+  --canvas: oklch(0.96 0.005 160);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.98 0.004 160);
+  --ink: oklch(0.16 0.015 160);
+  --ink-soft: oklch(0.38 0.02 160);
+  --line: oklch(0.88 0.008 160);
+  --line-strong: oklch(0.72 0.015 160);
+  --accent: oklch(0.62 0.18 155);
+  --rec: oklch(0.52 0.22 285);
+  --good: oklch(0.5 0.12 165);
+  --warn: oklch(0.46 0.13 82);
+  --ahead: oklch(0.5 0.15 52);
+  --danger: oklch(0.49 0.17 25);
+  --track: oklch(0.88 0.008 160);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: oklch(0.11 0.012 160);
+  --surface: oklch(0.205 0.016 160);
+  --surface-raised: oklch(0.255 0.018 160);
+  --ink: oklch(0.99 0.005 150);
+  --ink-soft: oklch(0.86 0.015 150);
+  --line: oklch(0.36 0.02 160);
+  --line-strong: oklch(0.52 0.025 160);
+  --accent: oklch(0.82 0.17 155);
+  --rec: oklch(0.78 0.18 285);
+  --good: oklch(0.78 0.13 165);
+  --warn: oklch(0.84 0.14 92);
+  --ahead: oklch(0.79 0.15 52);
+  --danger: oklch(0.75 0.15 25);
+  --track: oklch(0.29 0.015 160);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font: var(--t-3);
+}
+
+/* Responsive layouts (Task 10). Breakpoints only; no new tokens. */
+.cards-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+/* Internal scrollers keep wide content off the page scroll. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.rail-scroll {
+  overflow-x: auto;
+}
+
+.rail-inner {
+  position: relative;
+  min-width: 480px;
+  min-height: 120px;
+}
+
+/* Rail pins keep minimum 24px touch targets at every width. */
+[data-testid="pin"],
+[data-testid="cluster-pin"] {
+  min-height: 24px;
+}
+
+@media (min-width: 768px) {
+  .cards-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1100px) {
+  .rail-inner {
+    min-width: 0;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--line-strong);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
