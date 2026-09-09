@@ -13,6 +13,7 @@ import { Recommendation } from "./components/Recommendation.js";
 import { SubscriptionList } from "./components/SubscriptionList.js";
 import { ResetRail } from "./components/ResetRail.js";
 import { ProviderDrawer } from "./components/ProviderDrawer.js";
+import { SettingsDrawer } from "./components/settings/SettingsDrawer.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -108,6 +109,7 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -155,6 +157,10 @@ function App() {
       <button data-testid="refresh-button" type="button" onClick={() => void refresh()} disabled={refreshing}>
         {refreshing ? "Refreshing…" : "Refresh"}
       </button>
+      {/* Temporary opener. Task 9 moves this into the header. */}
+      <button data-testid="settings-button-temp" type="button" onClick={() => setSettingsOpen(true)}>
+        Settings
+      </button>
       {notice && (
         <div data-testid="refresh-notice" role="status">
           {notice}
@@ -191,6 +197,14 @@ function App() {
       <ProviderDrawer
         provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
         onClose={() => setSelectedProvider(null)}
+      />
+      <SettingsDrawer
+        open={settingsOpen}
+        providers={snapshot?.providers ?? []}
+        onRefresh={() => void refresh()}
+        refreshing={refreshing}
+        onIngested={() => void load()}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   );
