@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
 import type {
   ExclusionReason,
   FailureCategory,
@@ -168,137 +169,190 @@ export function ProviderDrawer({
     };
   }, [provider, onClose]);
 
+  const [copied, setCopied] = useState(false);
+
   if (!provider) return null;
   const model = drawerModel(provider);
   const titleId = "provider-drawer-title";
   const updated = ageDuration(model.ageMs);
 
   return (
-    <div
-      data-testid="drawer-scrim"
-      aria-hidden="false"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        zIndex: 40,
-      }}
-      onClick={onClose}
-    >
+    <>
       <div
+        data-testid="drawer-scrim"
+        className="scrim is-open"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <aside
         ref={dialogRef}
         tabIndex={-1}
         data-testid="provider-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "min(480px, 90vw)",
-          background: "var(--surface)",
-          color: "var(--ink)",
-          borderLeft: "1px solid var(--line)",
-          padding: 16,
-          overflowY: "auto",
-        }}
+        className="drawer is-open"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <h2 id={titleId} style={{ font: "var(--t-4)", flexGrow: 1, margin: 0 }}>
-            {model.name}
-          </h2>
+        <div className="drawer-head">
+          <span
+            className="picon"
+            style={{
+              background: `color-mix(in oklch, var(--p-${provider.id.split(":")[0]}, var(--accent)) 16%, transparent)`,
+              color: `var(--p-${provider.id.split(":")[0]}, var(--accent))`,
+            }}
+          >
+            {model.name.charAt(0)}
+          </span>
+          <div style={{ flex: 1 }}>
+            <h2 id={titleId}>{model.name}</h2>
+            <span className="sub" style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)" }}>
+              {provider.id}
+            </span>
+          </div>
           <Badge provider={provider} />
-          <button type="button" aria-label="Close provider details" onClick={onClose}>
-            ✕
+          <button
+            className="drawer-close"
+            type="button"
+            aria-label="Close provider details"
+            onClick={onClose}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         </div>
 
         {model.exclusionWords && (
-          <p role="note" style={{ font: "var(--t-3)" }}>
-            {model.exclusionWords}
-          </p>
+          <div className="alert" role="note" style={{ margin: "var(--s4) var(--s5) 0" }}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{model.exclusionWords}</span>
+          </div>
         )}
 
-        <section aria-label="Pacing">
-          <h3 style={{ font: "var(--t-2)" }}>Pacing</h3>
+        <section className="dsec" aria-label="Pacing">
+          <h3>Pacing</h3>
           {model.paceSource === "unknown" || model.burnRate === null ? (
-            <p style={{ font: "var(--t-3)" }}>Measuring pace — no rate yet.</p>
+            <p style={{ font: "var(--t-3)", color: "var(--ink-soft)", margin: 0 }}>
+              Measuring pace — no rate yet.
+            </p>
           ) : (
-            <dl style={{ font: "var(--t-2)" }}>
-              <div>
-                <dt>Burn rate</dt>
-                <dd>
-                  {model.burnRate.toFixed(1)}%/d ({model.paceLabel})
-                </dd>
-              </div>
-              <div>
-                <dt>Ideal rate</dt>
-                <dd>{model.idealRate !== null ? `${model.idealRate.toFixed(1)}%/d` : "—"}</dd>
-              </div>
+            <dl className="dkv">
+              <dt>Burn rate</dt>
+              <dd>
+                {model.burnRate.toFixed(1)}%/d {model.paceLabel ? `(${model.paceLabel})` : ""}
+              </dd>
+              <dt>Ideal rate</dt>
+              <dd>{model.idealRate !== null ? `${model.idealRate.toFixed(1)}%/d` : "—"}</dd>
               {model.daysToExhaust !== null && (
-                <div>
+                <>
                   <dt>Exhausts in</dt>
                   <dd>{model.daysToExhaust.toFixed(1)}d</dd>
-                </div>
+                </>
               )}
               {model.wastePct !== null && (
-                <div>
+                <>
                   <dt>Unused at this rate</dt>
                   <dd>
                     {Math.round(model.wastePct)}% in {model.daysLeft !== null ? model.daysLeft.toFixed(1) : "—"}d
                   </dd>
-                </div>
+                </>
               )}
             </dl>
           )}
           {model.daysLeft !== null && (
-            <p style={{ font: "var(--t-2)" }}>
+            <p style={{ font: "var(--t-2)", color: "var(--ink-soft)", marginTop: "var(--s3)", marginBottom: 0 }}>
               {model.remaining !== null ? `${Math.round(model.remaining)}% remains · ` : ""}
               {model.daysLeft.toFixed(1)}d left
             </p>
           )}
         </section>
 
-        <section aria-label="Window">
-          <h3 style={{ font: "var(--t-2)" }}>Window</h3>
-          <p style={{ font: "var(--t-2)" }}>
+        <section className="dsec" aria-label="Window">
+          <h3>Window</h3>
+          <p style={{ font: "var(--t-2)", margin: "0 0 var(--s2)" }}>
             {formatDateTime(model.periodStart)} → {formatDateTime(model.resetsAt)}
             {model.estimatedReset ? " (est.)" : ""}
           </p>
           {model.sessionPct !== undefined && (
-            <p style={{ font: "var(--t-2)" }}>Session use {model.sessionPct}%</p>
+            <div style={{ marginTop: "var(--s2)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--t-2)", marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Session use</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{model.sessionPct}%</span>
+              </div>
+              <div className="track" role="img" aria-label={`${model.sessionPct} percent of session window used`}>
+                <div
+                  className="fill"
+                  style={{
+                    width: `${Math.min(100, Math.max(0, model.sessionPct))}%`,
+                    background: "var(--fill-ontrack)",
+                  }}
+                />
+              </div>
+            </div>
           )}
         </section>
 
-        <section aria-label="Provenance">
-          <h3 style={{ font: "var(--t-2)" }}>Provenance</h3>
-          <dl style={{ font: "var(--t-2)" }}>
-            <div>
-              <dt>Last success</dt>
-              <dd>{model.lastSuccessAt ? formatDateTime(model.lastSuccessAt) : "never"}</dd>
-            </div>
-            <div>
-              <dt>Reading age</dt>
-              <dd>{updated ? `${updated} ago` : "unknown"}</dd>
-            </div>
+        <section className="dsec" aria-label="Provenance">
+          <h3>Provenance</h3>
+          <dl className="dkv">
+            <dt>Last success</dt>
+            <dd>{model.lastSuccessAt ? formatDateTime(model.lastSuccessAt) : "never"}</dd>
+            <dt>Reading age</dt>
+            <dd>{updated ? `${updated} ago` : "unknown"}</dd>
             {model.failureWords && (
-              <div>
+              <>
                 <dt>Last attempt</dt>
-                <dd>{model.failureWords}</dd>
-              </div>
+                <dd style={{ color: "var(--danger)" }}>{model.failureWords}</dd>
+              </>
             )}
             {evidenceLabels(model.evidence).length > 0 && (
-              <div>
+              <>
                 <dt>Evidence</dt>
                 <dd>{evidenceLabels(model.evidence).join(" · ")}</dd>
-              </div>
+              </>
             )}
           </dl>
+          <div className="draw-code-head">
+            <span style={{ fontSize: "var(--t-1)", color: "var(--ink-soft)" }}>Raw JSON snapshot:</span>
+            <button
+              className="btn btn-quiet btn-sm"
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(JSON.stringify(provider, null, 2));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? "Copied!" : "Copy JSON"}
+            </button>
+          </div>
+          <pre className="draw-code">{JSON.stringify(provider, null, 2)}</pre>
         </section>
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }
+

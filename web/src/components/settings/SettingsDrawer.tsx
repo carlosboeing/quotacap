@@ -71,54 +71,79 @@ export function SettingsDrawer({
   const titleId = "settings-drawer-title";
 
   return (
-    <div
-      data-testid="settings-scrim"
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }}
-      onClick={onClose}
-    >
+    <>
       <div
+        data-testid="settings-scrim"
+        className="scrim is-open"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <aside
         ref={dialogRef}
         tabIndex={-1}
         data-testid="settings-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "min(480px, 90vw)",
-          background: "var(--surface)",
-          color: "var(--ink)",
-          borderLeft: "1px solid var(--line)",
-          padding: 16,
-          overflowY: "auto",
-        }}
+        className="drawer is-open"
+        style={{ width: "min(580px, 100vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <h2 id={titleId} style={{ font: "var(--t-4)", flexGrow: 1, margin: 0 }}>
-            Settings
-          </h2>
-          <button type="button" aria-label="Close settings" onClick={onClose}>
-            ✕
+        <div className="drawer-head">
+          <div style={{ flex: 1 }}>
+            <h2 id={titleId} style={{ fontSize: "var(--t-5)", letterSpacing: "-0.015em", margin: "0 0 2px" }}>
+              Settings &amp; Configuration
+            </h2>
+            <span className="sub" style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)" }}>
+              Connected provider adapters, manual ingest, and CLI prompt integration.
+            </span>
+          </div>
+          <button
+            className="drawer-close"
+            type="button"
+            aria-label="Close settings"
+            onClick={onClose}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         </div>
-        <div role="tablist" aria-label="Settings sections" style={{ display: "flex", gap: 4 }}>
+
+        <div
+          className="seg"
+          role="tablist"
+          aria-label="Settings sections"
+          style={{ margin: "var(--s4) var(--s5) 0", display: "flex", height: 32 }}
+        >
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               role="tab"
+              className={tab === t.id ? "is-active" : ""}
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
+              style={{ flex: 1, justifyContent: "center" }}
             >
               {t.label}
             </button>
           ))}
         </div>
-        <div role="tabpanel" style={{ marginTop: 12 }}>
+
+        <div
+          role="tabpanel"
+          style={{ padding: "var(--s4) var(--s5) var(--s6)", overflowY: "auto" }}
+        >
           {tab === "providers" && (
             <ProvidersPanel
               providers={providers}
@@ -130,7 +155,8 @@ export function SettingsDrawer({
           {tab === "cli" && <CliIntegrationPanel />}
           {tab === "daemon" && <DaemonPanel />}
         </div>
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }
+

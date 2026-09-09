@@ -144,16 +144,23 @@ export function hatchGradient(badge: PaceBadge): string {
 export function Badge({ provider }: { provider: ProviderView }) {
   const badge = paceBadge(provider);
   const detail = exclusionDetail(provider.exclusionReason);
+  const badgeClass =
+    badge === "Behind pace"
+      ? "pace-behind"
+      : badge === "On track"
+      ? "pace-ontrack"
+      : badge === "Ahead of pace"
+      ? "pace-ahead"
+      : badge === "Cap risk"
+      ? "pace-cap"
+      : "pace-out";
   return (
     <span
       data-testid="pace-badge"
+      className={`pace ${badgeClass}`}
       style={{
         border: `1px solid ${badgeColor(badge)}`,
         color: badgeColor(badge),
-        borderRadius: 999,
-        padding: "2px 8px",
-        font: "var(--t-1)",
-        whiteSpace: "nowrap",
       }}
     >
       <span aria-hidden="true">● </span>
@@ -177,23 +184,12 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
     ? `${provider.id}: ${provider.quota.usedPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
   return (
-    <div data-testid="pace-bar" role="img" aria-label={label}>
-      <div
-        style={{
-          position: "relative",
-          height: 8,
-          background: "var(--track)",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
+    <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
+      <div className="track">
         <div
           aria-hidden="true"
+          className="fill"
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
             width: `${usedPct}%`,
             background: badgeColor(badge),
           }}
@@ -209,6 +205,7 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
               bottom: 0,
               right: 0,
               background: hatchGradient(badge),
+              borderRadius: "0 999px 999px 0",
             }}
           />
         )}
@@ -216,18 +213,18 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
           <div
             aria-hidden="true"
             title="elapsed"
+            className="mark"
             style={{
-              position: "absolute",
               left: `calc(${elapsedPct}% - 1px)`,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              background: "var(--ink)",
             }}
           />
         )}
       </div>
-      {elapsedPct !== null && <div style={{ font: "var(--t-1)" }}>Time elapsed: {Math.round(elapsedPct)}%</div>}
+      {elapsedPct !== null && (
+        <div className="tfoot">
+          <span>Time elapsed: {Math.round(elapsedPct)}%</span>
+        </div>
+      )}
     </div>
   );
 }

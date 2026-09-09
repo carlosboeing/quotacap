@@ -57,91 +57,83 @@ export function ProviderCard({
           onSelect(provider.id);
         }
       }}
-      style={{
-        background: "var(--surface)",
-        border: recommended ? "2px solid var(--rec)" : "1px solid var(--line)",
-        borderRadius: 12,
-        padding: 12,
-        cursor: "pointer",
-      }}
+      className={`pcard ${recommended ? "is-recommended" : ""}`}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="pcard-head">
         <span
-          aria-hidden="true"
+          className="picon"
           style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: badgeColor(paceBadge(provider)),
-            flexShrink: 0,
+            background: `var(--p-${provider.id}, var(--surface-raised))`,
+            color: "#fff",
           }}
-        />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ font: "var(--t-4)" }}>
-            {name}{" "}
+          aria-hidden="true"
+        >
+          {name.charAt(0)}
+        </span>
+        <div className="who">
+          <b>
+            {name}
             {recommended && (
-              <span role="img" aria-label="recommended">
-                ★
+              <span className="recommended-badge" role="img" aria-label="recommended">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                Top Pick
               </span>
             )}
-          </div>
-          {quota && quota.plan && <div style={{ font: "var(--t-2)" }}>{quota.plan}</div>}
-          {updated && <div style={{ font: "var(--t-2)" }}>Updated {updated} ago</div>}
+          </b>
+          {quota && quota.plan && <span className="pl">{quota.plan}</span>}
+          {updated && <span className="pl">Updated {updated} ago</span>}
         </div>
         <Badge provider={provider} />
       </div>
 
-      {quota ? (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8 }}>
-          <span style={{ font: "var(--t-3)" }}>{quota.usedPct}% used</span>
-          <span style={{ font: "var(--t-2)" }}>→ {forecastLine(provider)}</span>
-        </div>
-      ) : (
-        <div style={{ font: "var(--t-2)", marginTop: 8 }}>→ {forecastLine(provider)}</div>
-      )}
-      <div style={{ marginTop: 4 }}>
+      <div className="pcard-body">
+        {quota ? (
+          <div className="pcard-topline">
+            <span className="used">{quota.usedPct}% used</span>
+            <span className="pcard-underline">→ {forecastLine(provider)}</span>
+          </div>
+        ) : (
+          <div className="pcard-topline">
+            <span className="pcard-underline">→ {forecastLine(provider)}</span>
+          </div>
+        )}
+
         <PaceBar provider={provider} asOf={asOf} />
+
+        <div className="pstats">
+          <div>
+            <span className="l">PACE</span>
+            <span className="v">
+              {advisory && advisory.burnRate !== null ? `${advisory.burnRate.toFixed(1)}%/d` : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="l">NEEDED</span>
+            <span className="v">
+              {advisory ? `${advisory.idealRate.toFixed(1)}%/d` : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="l">RESETS IN</span>
+            <span className="v">
+              {resetsIn ? `${resetsIn}${isEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
+            </span>
+          </div>
+        </div>
+
+        {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
+          <div style={{ font: "var(--t-2)", marginTop: 6, color: "var(--ink-soft)" }}>Session use {quota.sessionPct}%</div>
+        )}
+        {evidence.length > 0 && (
+          <div style={{ font: "var(--t-1)", marginTop: 4, color: "var(--ink-soft)" }}>{evidence.join(" · ")}</div>
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>PACE</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {advisory && advisory.burnRate !== null ? `${advisory.burnRate.toFixed(1)}%/d` : "—"}
-          </div>
-        </div>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>NEEDED</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {advisory ? `${advisory.idealRate.toFixed(1)}%/d` : "—"}
-          </div>
-        </div>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>RESETS IN</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {resetsIn ? `${resetsIn}${isEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
-          </div>
-        </div>
-      </div>
-
-      {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-        <div style={{ font: "var(--t-2)", marginTop: 4 }}>Session use {quota.sessionPct}%</div>
-      )}
-      {evidence.length > 0 && (
-        <div style={{ font: "var(--t-1)", marginTop: 4 }}>{evidence.join(" · ")}</div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: 8,
-          font: "var(--t-2)",
-        }}
-      >
+      <div className="pcard-foot">
         <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
-        <span aria-hidden="true">Inspect →</span>
+        <span style={{ fontWeight: 600 }}>Inspect details &rarr;</span>
       </div>
     </article>
   );

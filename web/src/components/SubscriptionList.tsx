@@ -112,42 +112,51 @@ export function SubscriptionList({
   const asOfMs = Date.parse(asOf);
   return (
     <section aria-label="Subscriptions">
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <div role="group" aria-label="Density">
-          <button
-            type="button"
-            aria-pressed={effective === "cards"}
-            onClick={() => setDensity("cards")}
-          >
-            Cards
-          </button>
-          {!narrow && (
+      <div className="section-head">
+        <h2>Active Subscriptions</h2>
+        <span className="note">{enabled.length} tracked · {ageLabel(asOf)}</span>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--s3)", flexWrap: "wrap", gap: "var(--s3)" }}>
+        <div style={{ display: "flex", gap: "var(--s3)", alignItems: "center", flexWrap: "wrap" }}>
+          <div role="group" aria-label="Density" className="seg">
             <button
               type="button"
-              aria-pressed={effective === "table"}
-              onClick={() => setDensity("table")}
+              aria-pressed={effective === "cards"}
+              onClick={() => setDensity("cards")}
             >
-              Table
+              Cards
             </button>
-          )}
+            {!narrow && (
+              <button
+                type="button"
+                aria-pressed={effective === "table"}
+                onClick={() => setDensity("table")}
+              >
+                Table
+              </button>
+            )}
+          </div>
+          <label style={{ font: "var(--t-2)", color: "var(--ink-soft)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            Sort:{" "}
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="btn btn-sm btn-quiet"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <label>
-          Sort:{" "}
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <PacingLegend />
       </div>
-      <p>
-        {enabled.length} tracked · {ageLabel(asOf)}
-      </p>
+
       {effective === "cards" ? (
-        <div data-testid="cards-grid" className="cards-grid">
+        <div data-testid="cards-grid" className="cards cards-grid">
           {enabled.map((p) => (
             <ProviderCard
               key={p.id}
@@ -160,14 +169,14 @@ export function SubscriptionList({
         </div>
       ) : (
         <div className="table-scroll">
-          <table data-testid="ledger-table">
+          <table data-testid="ledger-table" className="ledger" style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Used</th>
-                <th>Resets</th>
-                <th>State</th>
-                <th>Forecast</th>
+              <tr className="lhead">
+                <th style={{ textAlign: "left" }}>Provider</th>
+                <th style={{ textAlign: "left" }}>Used vs elapsed</th>
+                <th style={{ textAlign: "left" }}>Resets</th>
+                <th style={{ textAlign: "left" }}>Pace state</th>
+                <th style={{ textAlign: "left" }}>Forecast / action</th>
               </tr>
             </thead>
             <tbody>
