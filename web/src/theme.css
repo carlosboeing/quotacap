@@ -49,11 +49,57 @@ html[data-theme="dark"] {
   --track: oklch(0.29 0.015 160);
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
   font: var(--t-3);
+}
+
+/* Responsive layouts (Task 10). Breakpoints only; no new tokens. */
+.cards-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+/* Internal scrollers keep wide content off the page scroll. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.rail-scroll {
+  overflow-x: auto;
+}
+
+.rail-inner {
+  position: relative;
+  min-width: 480px;
+  min-height: 120px;
+}
+
+/* Rail pins keep minimum 24px touch targets at every width. */
+[data-testid="pin"],
+[data-testid="cluster-pin"] {
+  min-height: 24px;
+}
+
+@media (min-width: 768px) {
+  .cards-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1100px) {
+  .rail-inner {
+    min-width: 0;
+  }
 }
 
 :focus-visible {

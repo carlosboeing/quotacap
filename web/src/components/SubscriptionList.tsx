@@ -147,7 +147,7 @@ export function SubscriptionList({
         {enabled.length} tracked · {ageLabel(asOf)}
       </p>
       {effective === "cards" ? (
-        <div data-testid="cards-grid" style={{ display: "grid", gap: 12 }}>
+        <div data-testid="cards-grid" className="cards-grid">
           {enabled.map((p) => (
             <ProviderCard
               key={p.id}
@@ -159,28 +159,30 @@ export function SubscriptionList({
           ))}
         </div>
       ) : (
-        <table data-testid="ledger-table">
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Used</th>
-              <th>Resets</th>
-              <th>State</th>
-              <th>Forecast</th>
-            </tr>
-          </thead>
-          <tbody>
-            {enabled.map((p) => (
-              <ProviderRow
-                key={p.id}
-                provider={p}
-                recommended={p.id === recommendation.use}
-                asOf={asOf}
-                onSelect={onSelectProvider}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table data-testid="ledger-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Used</th>
+                <th>Resets</th>
+                <th>State</th>
+                <th>Forecast</th>
+              </tr>
+            </thead>
+            <tbody>
+              {enabled.map((p) => (
+                <ProviderRow
+                  key={p.id}
+                  provider={p}
+                  recommended={p.id === recommendation.use}
+                  asOf={asOf}
+                  onSelect={onSelectProvider}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {disabled.length > 0 && (
         <section aria-label="Disabled providers">

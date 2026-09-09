@@ -270,7 +270,8 @@ export function ResetRail({
           </div>
         </div>
       </div>
-      <div style={{ position: "relative", minHeight: 120 }}>
+      <div className="rail-scroll">
+        <div className="rail-inner">
         {placement.placed.map((pin) => {
           const provider = byId.get(pin.id);
           const when = provider ? resetCountdown(provider, asOfMs) : "";
@@ -333,6 +334,7 @@ export function ResetRail({
             onClose={() => setOpenCluster(null)}
           />
         )}
+        </div>
       </div>
     </section>
   );

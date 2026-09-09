@@ -257,7 +257,7 @@ function App() {
   );
 }
 
-const el = document.getElementById("app");
+const el = typeof document === "undefined" ? null : document.getElementById("app");
 if (el) createRoot(el).render(<App />);
 
 export default App;
