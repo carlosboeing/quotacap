@@ -236,16 +236,20 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
       onOwnershipLost();
       return;
     }
-    if (inFlight) {
-      try {
-        await inFlight;
-      } catch {}
-    } else {
-      try {
-        await launch();
-      } catch {}
+    try {
+      await (inFlight ?? launch());
+    } catch (e: any) {
+      // A discarded failure leaves lastCompletedPollAt unchanged with no
+      // diagnostic, so repeated failures serve stale data and say nothing.
+      console.warn(
+        "[quotacap] scheduled poll failed",
+        e?.message ?? String(e),
+      );
+    } finally {
+      // Rearming stays outside the failure path: one bad generation must not
+      // end the schedule.
+      if (!closing && started) arm();
     }
-    if (!closing && started) arm();
   }
 
   function start(ms: number): void {

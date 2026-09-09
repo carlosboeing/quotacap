@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
 import { getLatestByProvider } from "../../src/store/quotas.js";
 import { getAttempt, recordAttempt } from "../../src/store/attempts.js";
@@ -16,6 +16,7 @@ afterEach(() => {
       c.stop();
     } catch {}
   }
+  vi.restoreAllMocks();
 });
 
 function track(c: Coordinator): Coordinator {
@@ -430,5 +431,31 @@ describe("poll coordinator", () => {
     const callsAfterFence = calls;
     await coord.scheduledTick();
     expect(calls).toBe(callsAfterFence);
+  });
+
+  it("logs a failed generation once and keeps the next poll scheduled", async () => {
+    const db = freshDb();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let calls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["claude"],
+        pollFn: async () => {
+          calls++;
+          throw new Error("database write failed");
+        },
+      }),
+    );
+    coord.start(20);
+    await sleep(200);
+    coord.stop();
+    // The schedule survived the failures.
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(coord.getState().lastCompletedPollAt).toBeNull();
+    // Each failure is reported exactly once, naming the cause.
+    const logged = warn.mock.calls.map((c) => c.join(" "));
+    expect(logged).toHaveLength(calls);
+    expect(logged.every((l) => l.includes("database write failed"))).toBe(true);
   });
 });

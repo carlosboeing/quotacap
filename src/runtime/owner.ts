@@ -20,6 +20,13 @@ export interface AcquireOptions {
   staleMs?: number;
   graceMs?: number;
   rounds?: number;
+  /**
+   * Test seam. `beforeStaleUnlink` is awaited between the last read of a
+   * stale claim and the unlink that removes it, so a test can drive the one
+   * interleaving that unlink has to survive: the old owner releasing and a
+   * new owner creating a lock in that window.
+   */
+  hooks?: { beforeStaleUnlink?: () => void | Promise<void> };
 }
 
 export class AlreadyRunningError extends Error {
@@ -177,12 +184,21 @@ function acquireTakeover(dataDir: string, staleMs: number): (() => void) | null 
     } catch (err: any) {
       if (err.code !== "EEXIST") throw err;
     }
+    let observedIno: number | null = null;
     let age = Infinity;
     try {
-      age = Date.now() - fs.statSync(file).mtimeMs;
+      const st = fs.statSync(file);
+      observedIno = st.ino;
+      age = Date.now() - st.mtimeMs;
     } catch {}
     if (age < staleMs) return null;
+    // Remove the entry examined above and no other. A process that took the
+    // mutex between the stat and this unlink wrote a different inode, and
+    // removing by path alone would drop its mutex while it still holds it.
     try {
+      if (observedIno !== null && fs.statSync(file).ino !== observedIno) {
+        return null;
+      }
       fs.rmSync(file, { force: true });
     } catch {}
   }
@@ -242,7 +258,16 @@ export async function acquireClaim(
       } catch {}
       throw err;
     }
-    return startHeartbeat(file, fd, mine, beatIntervalMs);
+    const claim = startHeartbeat(file, fd, mine, beatIntervalMs);
+    // Confirm the file on disk is still the one just written. Another
+    // process recovering a stale claim can unlink between the create and
+    // this read, and a claim that was never really held must fail startup
+    // rather than run until its first ownership check.
+    if (!claim.verify()) {
+      claim.release();
+      throw new AlreadyRunningError(readClaim(dataDir));
+    }
+    return claim;
   };
 
   for (let round = 0; round < rounds; round++) {
@@ -274,6 +299,26 @@ export async function acquireClaim(
         : Infinity;
       if (recheck && reAge < staleMs) {
         throw new AlreadyRunningError(recheck);
+      }
+      // Identity of the file this round decided to remove. Creation and
+      // release never take the takeover mutex, so between the read above and
+      // the unlink below the old owner can release and a third process can
+      // create a fresh lock. Unlinking by path alone would delete that new
+      // owner's file, leaving two processes each believing they hold one.
+      const observedIno = inodeOf(file);
+      const observedNonce = recheck?.nonce ?? null;
+      if (opts?.hooks?.beforeStaleUnlink) {
+        await opts.hooks.beforeStaleUnlink();
+      }
+      const current = readClaim(dataDir);
+      if (
+        inodeOf(file) !== observedIno ||
+        (current?.nonce ?? null) !== observedNonce
+      ) {
+        // Replaced while we waited: not the stale file we examined, so not
+        // ours to remove.
+        if (current) throw new AlreadyRunningError(current);
+        continue;
       }
       try {
         fs.rmSync(file, { force: true });

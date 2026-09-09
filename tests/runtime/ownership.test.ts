@@ -190,6 +190,40 @@ describe("ownership claim", () => {
     }
   }, 20000);
 
+  it("recovery cannot delete a lock created after its final read", async () => {
+    const dir = mkHome();
+    const old = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
+    claims.push(old);
+    fs.writeFileSync(
+      lockFile(dir),
+      JSON.stringify({
+        ...old.info,
+        lastBeat: new Date(Date.now() - 120_000).toISOString(),
+      }) + "\n",
+    );
+    const fresh: Claim[] = [];
+    // The hook fires between the recovering acquire's last read of the stale
+    // claim and its unlink: the old owner releases and a new owner takes the
+    // lock inside that window.
+    const recovery = acquireClaim(dir, {
+      staleMs: 1000,
+      graceMs: 10,
+      rounds: 1,
+      hooks: {
+        beforeStaleUnlink: async () => {
+          old.release();
+          const next = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
+          claims.push(next);
+          fresh.push(next);
+        },
+      },
+    });
+    await expect(recovery).rejects.toBeInstanceOf(AlreadyRunningError);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].verify()).toBe(true);
+    expect(readClaim(dir)?.nonce).toBe(fresh[0].info.nonce);
+  });
+
   it("(e) release by a non-owner leaves the file", async () => {
     const dir = mkHome();
     const claim = await acquireClaim(dir, { beatIntervalMs: 3600_000 });
