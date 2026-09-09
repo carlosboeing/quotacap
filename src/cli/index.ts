@@ -3,9 +3,9 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { VERSION } from "../version.js";
-import { buildApp } from "../http/server.js";
 import { openDb, migrate } from "../store/db.js";
 import { getDbPath, readConfig } from "../config.js";
+import { registerRuntimeCommands } from "./runtime.js";
 function ensureDbDir(){ try{ const d=path.dirname(getDbPath()); fs.mkdirSync(d, {recursive:true, mode:0o700}); try{ fs.chmodSync(d,0o700);}catch{} }catch{} }
 const program = new Command();
 program.name("quotacap").version(VERSION);
@@ -43,36 +43,14 @@ program.command("ingest").requiredOption("--provider <p>").requiredOption("--tex
   upsertQuota(db, parseManualUsage(o.provider, o.text));
   console.log("ingested");
 });
-program.command("web").option("--port <n>").action(async (o)=>{
-  ensureDbDir(); const db=openDb(getDbPath()); migrate(db);
-  const { isDaemonRunning, startDaemon, ensureDaemonToken } = await import("../daemon.js");
-  if (!isDaemonRunning()) {
-    // Transient until Task 7 extracts runtime commands: the service now owns
-    // HTTP too, so this second listener below will be replaced, not doubled.
-    await startDaemon().catch(() => {});
-    console.log("daemon started (auto)");
-  }
-  const token = ensureDaemonToken();
-  const { createCoordinator } = await import("../runtime/poll.js");
-  const app=buildApp({ db, token, coordinator: createCoordinator({ db, enabledProviders: [] }), enabledProviders: [], version: VERSION, exec: process.execPath });
-  const port=o.port?parseInt(o.port): (await readConfig()).port;
-  await app.listen({port, host:"127.0.0.1"});
-  console.log(`QuotaCap at http://localhost:${port}`);
-});
 program.command("init").action(async()=>{
   const { readConfig, writeConfig } = await import("../config.js");
   const c=await readConfig(); await writeConfig(c); console.log(JSON.stringify(c,null,2));
-});
-program.command("daemon").option("--foreground","keep foreground (default: true)").option("--port <n>").action(async(o)=>{
-  const { startDaemon } = await import("../daemon.js");
-  // The service owns signals and exit codes; contention/invalid config exit
-  // non-zero from inside startDaemon.
-  const started = await startDaemon(o.port ? { port: parseInt(o.port, 10) } : undefined);
-  console.log(`quotacap service listening on http://127.0.0.1:${started.port}`);
 });
 program.command("mcp").description("start MCP server (stdio over HTTP)").action(async()=>{
   const mod=await import("../mcp/server.js");
   // if run with --help, commander handles it before action; this is the real server
   await mod.runMcpServer();
 });
+registerRuntimeCommands(program);
 program.parseAsync();
