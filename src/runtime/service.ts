@@ -23,7 +23,10 @@ import { claudeAdapter } from "../adapters/claude.js";
 
 export function resolveClaudeExecPath(): string | undefined {
   try {
-    const resolved = execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
+    const resolved = execFileSync("which", ["claude"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
     return resolved.length > 0 ? resolved : undefined;
   } catch {
     return undefined;

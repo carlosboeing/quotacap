@@ -48,7 +48,10 @@ export function foregroundGuidance(verb: string, platform: string): string {
 
 export function defaultRunLaunchctl(args: string[]): string {
   try {
-    return execFileSync("launchctl", args, { encoding: "utf8" });
+    return execFileSync("launchctl", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch (e: any) {
     throw new Error(
       `launchctl ${args.join(" ")} failed: ${String(e?.stderr ?? e?.message ?? e).trim()}`,
@@ -58,7 +61,10 @@ export function defaultRunLaunchctl(args: string[]): string {
 
 export function defaultWhich(bin: string): string | null {
   try {
-    const out = execFileSync("which", [bin], { encoding: "utf8" }).trim();
+    const out = execFileSync("which", [bin], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
     return out.length > 0 ? out : null;
   } catch {
     return null;
@@ -67,7 +73,10 @@ export function defaultWhich(bin: string): string | null {
 
 export function defaultLintPlist(plistFile: string): void {
   try {
-    execFileSync("plutil", ["-lint", plistFile], { encoding: "utf8" });
+    execFileSync("plutil", ["-lint", plistFile], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch (e: any) {
     throw new Error(
       `plist failed plutil -lint: ${String(e?.stderr ?? e?.message ?? e).trim()}`,
