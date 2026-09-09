@@ -6,6 +6,7 @@ import {
   start,
   stop,
   restart,
+  status,
   foregroundGuidance,
   serviceSupported as macosSupported,
   type ServiceDeps,
@@ -23,10 +24,14 @@ export {
   start,
   stop,
   restart,
+  status,
+  collectStatus,
+  formatStatus,
   foregroundGuidance,
   SERVICE_LABEL,
   PROVIDER_BINS,
   type ServiceDeps,
+  type ServiceStatus,
 } from "./macos.js";
 
 export function serviceSupported(platform: string = process.platform): boolean {
@@ -62,6 +67,9 @@ export async function runServiceCommand(
         break;
       case "restart":
         await restart(deps);
+        break;
+      case "status":
+        await status(deps, { json: !!opts.json });
         break;
       default:
         error(`unknown service command: ${verb ?? "(none)"}`);

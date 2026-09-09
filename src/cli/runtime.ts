@@ -12,6 +12,7 @@ import {
   ServiceError,
   ServiceUnavailable,
 } from "../runtime/client.js";
+import { runServiceCommand } from "../service/index.js";
 
 export type StartServiceFn = (opts?: StartServiceOptions) => ReturnType<
   typeof startService
@@ -66,13 +67,9 @@ export function registerRuntimeCommands(
   const start = deps?.startService ?? startService;
   const openBrowser = deps?.openBrowser ?? defaultOpenBrowser;
   const exit = deps?.exit ?? process.exit;
-  // Task 8 replaces this default with the real service lifecycle; tests and
-  // Task 9 inject execService.
   const execService: ExecServiceFn =
     deps?.execService ??
-    (async () => {
-      throw new Error("service commands are implemented in Task 8 of this track");
-    });
+    ((args, opts) => runServiceCommand(args, opts ?? {}, {}));
 
   program
     .command("daemon")

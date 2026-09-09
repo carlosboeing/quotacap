@@ -26,6 +26,7 @@ export interface ServiceDeps {
   home?: string;
   uid?: number;
   dataDir?: string;
+  port?: number;
   execPath?: string;
   argv1?: string | undefined;
   quotacapHome?: string | null;
@@ -435,4 +436,244 @@ export async function restart(deps: ServiceDeps = {}): Promise<void> {
   }
   await stop(deps);
   await start(deps);
+}
+
+export interface ServiceStatus {
+  registration: {
+    installed: boolean;
+    loaded: boolean;
+    pid: number | null;
+    lastExitStatus: number | null;
+    plist: string | null;
+    error: string | null;
+  };
+  readiness: {
+    ok: boolean;
+    ready: boolean;
+    version: string | null;
+    exec: string | null;
+    polling: string | null;
+    error: string | null;
+  };
+  version: { service: string | null; cli: string; skew: boolean };
+  endpoint: { port: number | null; url: string | null; error: string | null };
+  lastPoll: { at: string | null; ageMs: number | null; error: string | null };
+  providers: {
+    paths: Record<string, string | null> | null;
+    missing: string[];
+    error: string | null;
+  };
+}
+
+function parsePrintOutput(out: string): {
+  pid: number | null;
+  lastExitStatus: number | null;
+} {
+  const pidMatch = out.match(/^\s*pid\s*=\s*(\d+)/m);
+  const exitMatch = out.match(/^\s*last exit code\s*=\s*(-?\d+)/m);
+  return {
+    pid: pidMatch ? parseInt(pidMatch[1], 10) : null,
+    lastExitStatus: exitMatch ? parseInt(exitMatch[1], 10) : null,
+  };
+}
+
+// Each section is attempted independently: a failing section records its
+// error without hiding the others. Read-only: never bootstraps or installs.
+export async function collectStatus(deps: ServiceDeps = {}): Promise<ServiceStatus> {
+  const home = deps.home ?? os.homedir();
+  const uid = deps.uid ?? process.getuid?.() ?? 0;
+  const dataDir = deps.dataDir ?? path.dirname(getDbPath());
+  const run = deps.runLaunchctl ?? defaultRunLaunchctl;
+  const nowMs = (deps.now?.() ?? new Date()).getTime();
+  const plistFile = plistFileFor(home);
+
+  const status: ServiceStatus = {
+    registration: {
+      installed: false,
+      loaded: false,
+      pid: null,
+      lastExitStatus: null,
+      plist: plistFile,
+      error: null,
+    },
+    readiness: {
+      ok: false,
+      ready: false,
+      version: null,
+      exec: null,
+      polling: null,
+      error: null,
+    },
+    version: { service: null, cli: VERSION, skew: false },
+    endpoint: { port: null, url: null, error: null },
+    lastPoll: { at: null, ageMs: null, error: null },
+    providers: { paths: null, missing: [], error: null },
+  };
+
+  try {
+    status.registration.installed = fs.existsSync(plistFile);
+  } catch (e: any) {
+    status.registration.error = String(e?.message ?? e);
+  }
+  try {
+    const out = run(["print", `gui/${uid}/${SERVICE_LABEL}`]);
+    const { pid, lastExitStatus } = parsePrintOutput(out);
+    status.registration.loaded = true;
+    status.registration.pid = pid;
+    status.registration.lastExitStatus = lastExitStatus;
+  } catch (e: any) {
+    if (!/could not find service/i.test(String(e?.message ?? e))) {
+      status.registration.error = String(e?.message ?? e);
+    }
+  }
+
+  let port: number | null = null;
+  try {
+    port = deps.port ?? (await readConfig()).port;
+    status.endpoint.port = port;
+    status.endpoint.url = `http://127.0.0.1:${port}`;
+  } catch (e: any) {
+    status.endpoint.error = String(e?.message ?? e);
+  }
+
+  let lastCompletedPollAt: string | null = null;
+  if (port !== null) {
+    try {
+      const health = await createServiceClient({ port, timeoutMs: 2000 }).get(
+        "/health",
+      );
+      status.readiness.ok = !!health?.ok;
+      status.readiness.ready = !!health?.ready;
+      status.readiness.version =
+        typeof health?.version === "string" ? health.version : null;
+      status.readiness.exec = typeof health?.exec === "string" ? health.exec : null;
+      status.readiness.polling =
+        typeof health?.polling === "string" ? health.polling : null;
+      if (typeof health?.lastCompletedPollAt === "string") {
+        lastCompletedPollAt = health.lastCompletedPollAt;
+      }
+      if (!health?.ok) {
+        status.readiness.error = "service answered but not ok";
+      }
+    } catch (e: any) {
+      status.readiness.error = String(e?.message ?? e);
+    }
+  } else {
+    status.readiness.error = "no endpoint port";
+  }
+
+  status.version.service = status.readiness.version;
+  status.version.skew =
+    status.version.service !== null && status.version.service !== VERSION;
+
+  if (lastCompletedPollAt) {
+    status.lastPoll.at = lastCompletedPollAt;
+    const age = nowMs - new Date(lastCompletedPollAt).getTime();
+    status.lastPoll.ageMs = Number.isFinite(age) && age >= 0 ? age : null;
+  } else {
+    status.lastPoll.error = status.readiness.ok
+      ? "no completed poll yet"
+      : "unknown — service not answering";
+  }
+
+  try {
+    const meta = readServiceMetadata(dataDir);
+    if (meta) {
+      status.providers.paths = meta.providerPaths;
+      status.providers.missing = Object.entries(meta.providerPaths)
+        .filter(([, p]) => p === null)
+        .map(([bin]) => bin);
+    } else {
+      status.providers.error = "no install metadata";
+    }
+  } catch (e: any) {
+    status.providers.error = String(e?.message ?? e);
+  }
+
+  return status;
+}
+
+function formatAge(ageMs: number | null): string {
+  if (ageMs === null) return "unknown age";
+  const s = Math.floor(ageMs / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+export function formatStatus(st: ServiceStatus): string {
+  const lines: string[] = [];
+  const r = st.registration;
+  if (!r.installed && !r.loaded) {
+    lines.push("Registration: not installed — run 'quotacap service install'");
+  } else if (!r.loaded) {
+    lines.push("Registration: installed but not loaded — run 'quotacap service start'");
+  } else if (r.pid === null) {
+    lines.push(
+      `Registration: loaded but not running${r.lastExitStatus !== null ? ` (last exit ${r.lastExitStatus})` : ""}`,
+    );
+  } else {
+    lines.push(`Registration: loaded (pid ${r.pid}, last exit ${r.lastExitStatus ?? "n/a"})`);
+  }
+  if (r.error) lines.push(`  error: ${r.error}`);
+  lines.push(`  plist: ${r.plist ?? "(unknown)"}`);
+
+  const h = st.readiness;
+  if (h.ok) {
+    lines.push(
+      `Readiness: ${h.ready ? "ready" : "not ready"} (version ${h.version ?? "unknown"}, polling ${h.polling ?? "unknown"})`,
+    );
+  } else {
+    lines.push(`Readiness: unavailable (${h.error ?? "unknown error"})`);
+  }
+  if (st.version.skew) {
+    lines.push(
+      `  version skew: service ${st.version.service} differs from CLI ${st.version.cli} — reinstall the service to fix (never auto-fixed)`,
+    );
+  }
+
+  lines.push(
+    st.endpoint.url
+      ? `Endpoint: ${st.endpoint.url}`
+      : `Endpoint: unknown (${st.endpoint.error ?? "no port"})`,
+  );
+
+  lines.push(
+    st.lastPoll.at
+      ? `Last poll: ${st.lastPoll.at} (${formatAge(st.lastPoll.ageMs)})`
+      : `Last poll: unknown${st.lastPoll.error ? ` (${st.lastPoll.error})` : ""}`,
+  );
+
+  const p = st.providers;
+  if (p.paths) {
+    lines.push("Providers:");
+    for (const [bin, binPath] of Object.entries(p.paths)) {
+      lines.push(
+        binPath
+          ? `  ${bin}: ${binPath}`
+          : `  ${bin}: missing — install the ${bin} CLI, then re-run 'quotacap service install' to refresh`,
+      );
+    }
+  } else {
+    lines.push(
+      `Providers: ${p.error ?? "unknown"} — run 'quotacap service install'`,
+    );
+  }
+  return lines.join("\n");
+}
+
+export async function status(
+  deps: ServiceDeps = {},
+  opts: { json?: boolean } = {},
+): Promise<void> {
+  const platform = deps.platform ?? process.platform;
+  if (!serviceSupported(platform)) {
+    (deps.print ?? console.log)(foregroundGuidance("status", platform));
+    return;
+  }
+  const st = await collectStatus(deps);
+  (deps.print ?? console.log)(opts.json ? JSON.stringify(st, null, 2) : formatStatus(st));
 }
