@@ -10,6 +10,7 @@ import {
 } from "./api.js";
 import { ageLabel, firstRun, toViewModel, type ViewModel } from "./state.js";
 import { Recommendation } from "./components/Recommendation.js";
+import { SubscriptionList } from "./components/SubscriptionList.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -62,7 +63,7 @@ function HttpErrorPanel({
   );
 }
 
-/** Interim ready view. Tasks 4–5 replace the list block with real components. */
+/** Interim ready view. Task 5 adds the reset rail above the list. */
 function ReadyView({
   snapshot,
   onSelectProvider,
@@ -76,22 +77,16 @@ function ReadyView({
       <Recommendation
         recommendation={snapshot.recommendation}
         providers={snapshot.providers}
+        asOf={snapshot.asOf}
         onSelectProvider={onSelectProvider}
       />
       {!firstRun(snapshot) && (
-        <>
-          <ul>
-            {snapshot.providers.map((p) => (
-              <li key={p.id}>
-                {p.id}
-                {p.exclusionReason ? ` (${p.exclusionReason})` : ""}
-              </li>
-            ))}
-          </ul>
-          <p>
-            {snapshot.providers.length} tracked · {ageLabel(snapshot.asOf)}
-          </p>
-        </>
+        <SubscriptionList
+          providers={snapshot.providers}
+          recommendation={snapshot.recommendation}
+          asOf={snapshot.asOf}
+          onSelectProvider={onSelectProvider}
+        />
       )}
     </div>
   );

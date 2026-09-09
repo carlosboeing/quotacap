@@ -7,6 +7,7 @@ import type {
   Urgency,
 } from "../state.js";
 import { displayName } from "../names.js";
+import { timeLeft } from "./PaceBar.js";
 
 export type Lane = "use-more" | "ease-off";
 
@@ -58,25 +59,36 @@ function LaneSection({
   testId,
   label,
   members,
+  providers,
+  asOfMs,
   onSelectProvider,
 }: {
   testId: string;
   label: string;
   members: AdvisoryView[];
+  providers: ProviderView[];
+  asOfMs: number;
   onSelectProvider?: (id: string) => void;
 }) {
   if (members.length === 0) return null;
+  const byId = new Map(providers.map((p) => [p.id, p]));
   return (
     <section data-testid={testId} aria-label={label}>
       <h3>{label}</h3>
       <ul>
-        {members.map((m) => (
-          <li key={m.provider}>
-            <button type="button" onClick={() => onSelectProvider?.(m.provider)}>
-              {displayName(m.provider)}
-            </button>
-          </li>
-        ))}
+        {members.map((m) => {
+          const quota = byId.get(m.provider)?.quota;
+          const left = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
+          return (
+            <li key={m.provider}>
+              <button type="button" onClick={() => onSelectProvider?.(m.provider)}>
+                {displayName(m.provider)}
+                {quota ? ` ${quota.usedPct}% used` : ""}
+                {left ? ` · ${left} left` : ""}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -90,13 +102,16 @@ function LaneSection({
 export function Recommendation({
   recommendation,
   providers,
+  asOf,
   onSelectProvider,
 }: {
   recommendation: RecommendationView;
   providers: ProviderView[];
+  asOf: string;
   onSelectProvider?: (id: string) => void;
 }) {
   const { useMore, easeOff } = lanesFor(recommendation.advisories, providers);
+  const asOfMs = Date.parse(asOf);
   const measuring = recommendation.use !== "none" && recommendation.wastePct === null;
   return (
     <section
@@ -112,8 +127,8 @@ export function Recommendation({
         </p>
       )}
       {measuring && <span data-testid="rec-measuring">measuring pace</span>}
-      <LaneSection testId="lane-use-more" label="USE MORE" members={useMore} onSelectProvider={onSelectProvider} />
-      <LaneSection testId="lane-ease-off" label="EASE OFF" members={easeOff} onSelectProvider={onSelectProvider} />
+      <LaneSection testId="lane-use-more" label="USE MORE" members={useMore} providers={providers} asOfMs={asOfMs} onSelectProvider={onSelectProvider} />
+      <LaneSection testId="lane-ease-off" label="EASE OFF" members={easeOff} providers={providers} asOfMs={asOfMs} onSelectProvider={onSelectProvider} />
     </section>
   );
 }
