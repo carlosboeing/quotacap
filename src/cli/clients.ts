@@ -4,6 +4,7 @@
 import type { Command } from "commander";
 import type { ServiceClient } from "../runtime/client.js";
 import { registerStatusCommand } from "./status.js";
+import { registerAdviseCommand } from "./advise.js";
 
 export interface CreateClientOptions {
   port: number;
@@ -21,4 +22,5 @@ export interface ClientCommandDeps {
 
 export function registerClientCommands(program: Command, deps?: ClientCommandDeps): void {
   registerStatusCommand(program, deps ?? {});
+  registerAdviseCommand(program, deps ?? {});
 }
