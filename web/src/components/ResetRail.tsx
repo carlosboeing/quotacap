@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ProviderView } from "../state.js";
 import { displayName } from "../names.js";
-import { paceBadge, resetCountdown, timeLeft } from "./PaceBar.js";
+import { paceBadge, resetClock, resetCountdown, timeLeft } from "./PaceBar.js";
 
 export const RAIL_DAYS = 7;
 const RAIL_MS = RAIL_DAYS * 24 * 60 * 60 * 1000;
@@ -126,17 +126,7 @@ export function placePins(rows: RailRow[], asOf: Date): PinPlacement {
   return { placed, clusters, overflow, invalid };
 }
 
-function pinStyle(positionPct: number, band: RailBand, tier: number): React.CSSProperties {
-  return {
-    position: "absolute",
-    left: `${positionPct}%`,
-    transform: `translateX(-${positionPct}%)`,
-    top: band === "above" ? undefined : "50%",
-    bottom: band === "above" ? "50%" : undefined,
-    marginBottom: band === "above" ? 10 + tier * 22 : undefined,
-    marginTop: band === "below" ? 10 + tier * 22 : undefined,
-  };
-}
+
 
 function ClusterPopover({
   cluster,
@@ -167,23 +157,18 @@ function ClusterPopover({
       data-testid="cluster-popover"
       role="dialog"
       aria-label={`${cluster.ids.length} resets at the same time`}
+      className="cluster-popover"
       style={{
-        position: "absolute",
-        zIndex: 30,
         left: `${cluster.positionPct}%`,
         transform: `translateX(-${cluster.positionPct}%)`,
-        top: "50%",
-        marginTop: 28,
-        background: "var(--surface)",
-        border: "1px solid var(--line)",
-        borderRadius: 8,
-        padding: 8,
-        minWidth: 200,
+        top: cluster.band === "above" ? "15%" : "55%",
       }}
     >
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      <h4>{cluster.ids.length} concurrent resets</h4>
+      <ul>
         {cluster.ids.map((id) => {
           const provider = providers.get(id);
+          const name = displayName(id);
           return (
             <li key={id}>
               <button
@@ -193,28 +178,64 @@ function ClusterPopover({
                   onClose();
                 }}
               >
-                {displayName(id)}
-                {provider?.quota ? ` · ${provider.quota.usedPct}% used` : ""}
-                {provider ? ` · ${resetCountdown(provider, asOfMs)}` : ""}
+                <b>{name}</b>
+                <span>
+                  {provider?.quota ? `${provider.quota.usedPct}% · ` : ""}
+                  {provider ? resetCountdown(provider, asOfMs) : ""}
+                </span>
               </button>
             </li>
           );
         })}
       </ul>
-      <button type="button" onClick={onClose}>
+      <button
+        type="button"
+        className="btn btn-sm btn-quiet"
+        style={{ marginTop: "var(--s2)", width: "100%" }}
+        onClick={onClose}
+      >
         Close
       </button>
     </div>
   );
 }
 
+function tzAbbrev(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function pinPace(provider: ProviderView | undefined): { cls: string; color: string } {
+  if (!provider) return { cls: "pace-out", color: "var(--ink-soft)" };
+  switch (paceBadge(provider)) {
+    case "Behind pace":
+      return { cls: "pace-behind", color: "var(--warn)" };
+    case "On track":
+      return { cls: "pace-ontrack", color: "var(--good)" };
+    case "Ahead of pace":
+      return { cls: "pace-ahead", color: "var(--ahead)" };
+    case "Cap risk":
+      return { cls: "pace-cap", color: "var(--danger)" };
+    default:
+      return { cls: "pace-out", color: "var(--ink-soft)" };
+  }
+}
+
+function pinWhen(resetsAt: string): string {
+  return resetClock(resetsAt) ?? "";
+}
+
 function dayLabels(asOfMs: number): string[] {
-  return Array.from({ length: RAIL_DAYS }, (_, i) =>
-    new Date(asOfMs + i * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
-      weekday: "short",
-      day: "numeric",
-    })
-  );
+  return Array.from({ length: RAIL_DAYS }, (_, i) => {
+    const d = new Date(asOfMs + i * 24 * 60 * 60 * 1000);
+    const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+    const day = d.toLocaleDateString(undefined, { day: "numeric" });
+    return `${weekday} ${day}`;
+  });
 }
 
 export function ResetRail({
@@ -237,122 +258,156 @@ export function ResetRail({
 
   return (
     <section aria-label="Upcoming resets">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <h2>Upcoming resets</h2>
-        {placement.overflow.length > 0 && (
-          <span
-            data-testid="rail-overflow"
-            title={placement.overflow.map((o) => displayName(o.id)).join(", ")}
-            style={{ font: "var(--t-2)" }}
-          >
-            +{placement.overflow.length} beyond rail
-          </span>
-        )}
-      </div>
-      <div data-testid="rail" role="img" aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}>
-        <div aria-hidden="true" style={{ position: "relative", height: 16 }}>
-          <span
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              font: "var(--t-1)",
-              color: "var(--accent)",
-            }}
-          >
-            NOW
-          </span>
-        </div>
-        <div aria-hidden="true" style={{ position: "relative", height: 2, background: "var(--line)" }}>
-          {labels.map((_, i) => (
+      <div className="section-head">
+        <h2 id="resets-h">Upcoming resets</h2>
+        <span className="note">
+          Next 7 days · hover pin for usage · click for details · {tzAbbrev()}
+          {placement.overflow.length > 0 && (
             <span
-              key={i}
-              style={{
-                position: "absolute",
-                left: `${(i / RAIL_DAYS) * 100}%`,
-                top: -4,
-                bottom: -4,
-                width: 1,
-                background: "var(--line)",
-              }}
-            />
-          ))}
-        </div>
-        <div
-          aria-hidden="true"
-          style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}
-        >
-          {labels.map((label) => (
-            <span key={label} style={{ font: "var(--t-1)" }}>
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-      <div className="rail-scroll">
-        <div className="rail-inner">
-        {placement.placed.map((pin) => {
-          const provider = byId.get(pin.id);
-          const when = provider ? resetCountdown(provider, asOfMs) : "";
-          const pace = provider ? paceBadge(provider) : "";
-          const left = provider?.quota ? timeLeft(provider.quota.resetsAt, asOfMs) : null;
-          return (
-            <button
-              key={pin.id}
-              data-testid="pin"
-              type="button"
-              style={{
-                ...pinStyle(pin.positionPct, pin.band, pin.tier),
-                border: "1px solid var(--line-strong)",
-                background: "var(--surface)",
-                borderRadius: 999,
-                padding: "4px 10px",
-                font: "var(--t-2)",
-                whiteSpace: "nowrap",
-              }}
-              aria-label={`${displayName(pin.id)}: ${pace}, resets ${when}`}
-              title={
-                provider?.quota
-                  ? `${provider.quota.usedPct}% used · ${left ? `${left} left` : when}${pin.estimated ? " (est.)" : ""}`
-                  : when
-              }
-              onClick={() => onSelectProvider(pin.id)}
+              data-testid="rail-overflow"
+              title={placement.overflow.map((o) => displayName(o.id)).join(", ")}
+              style={{ marginLeft: 8, fontWeight: 600, color: "var(--ahead)" }}
             >
-              {displayName(pin.id)}
-              {pin.estimated ? " (est.)" : ""}
-            </button>
-          );
-        })}
-        {placement.clusters.map((cluster, index) => (
-          <button
-            key={cluster.ids.join("+")}
-            data-testid="cluster-pin"
-            type="button"
-            style={{
-              ...pinStyle(cluster.positionPct, cluster.band, cluster.tier),
-              border: "1px solid var(--accent)",
-              background: "var(--surface)",
-              borderRadius: 999,
-              padding: "4px 10px",
-              font: "var(--t-2)",
-              whiteSpace: "nowrap",
-            }}
-            aria-label={`${cluster.ids.length} resets at the same time: ${cluster.ids.map(displayName).join(", ")}`}
-            aria-expanded={openCluster === index}
-            onClick={() => setOpenCluster(openCluster === index ? null : index)}
-          >
-            {cluster.ids.length} resets
-          </button>
-        ))}
-        {openCluster !== null && placement.clusters[openCluster] && (
-          <ClusterPopover
-            cluster={placement.clusters[openCluster]}
-            providers={byId}
-            asOfMs={asOfMs}
-            onSelect={onSelectProvider}
-            onClose={() => setOpenCluster(null)}
-          />
-        )}
+              +{placement.overflow.length} beyond rail
+            </span>
+          )}
+        </span>
+      </div>
+
+      <div
+        data-testid="rail"
+        className="rail-scroller"
+        tabIndex={0}
+        role="region"
+        aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}
+      >
+        <div className="rail">
+          <div className="rail-grid" aria-hidden="true">
+            {Array.from({ length: RAIL_DAYS }, (_, i) => (
+              <span key={i} />
+            ))}
+          </div>
+          <div className="rail-axis" aria-hidden="true" />
+          <div className="rail-now" aria-hidden="true" />
+          <span className="rail-nowlabel" aria-hidden="true">
+            Now
+          </span>
+
+          {placement.placed.map((pin) => {
+            const provider = byId.get(pin.id);
+            const when = provider?.quota ? pinWhen(provider.quota.resetsAt) : provider ? resetCountdown(provider, asOfMs) : "";
+            const pace = provider ? paceBadge(provider) : "";
+            const left = provider?.quota ? timeLeft(provider.quota.resetsAt, asOfMs) : null;
+            const name = displayName(pin.id);
+            const { cls: paceCls, color: paceColor } = pinPace(provider);
+            const alignClass = pin.positionPct < 12 ? "pin-start" : pin.positionPct > 88 ? "pin-end" : "";
+            const tierClass = pin.tier > 0 ? `tier${pin.tier + 1}` : "tier1";
+            const pinBorder = {
+              ["--pin-border" as string]: `color-mix(in oklch, ${paceColor} 45%, var(--line))`,
+            };
+            return (
+              <button
+                key={pin.id}
+                data-testid="pin"
+                type="button"
+                className={`pin ${pin.band} ${tierClass} ${alignClass}`}
+                style={
+                  {
+                    left: `${pin.positionPct}%`,
+                    "--dot-color": paceColor,
+                  } as React.CSSProperties
+                }
+                aria-label={`${name}: ${pace}, resets ${when}`}
+                onClick={() => onSelectProvider(pin.id)}
+              >
+                {pin.band === "above" ? (
+                  <>
+                    <span className="pin-when">{when}</span>
+                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                      {name.split(" ")[0]}
+                      {pin.estimated ? " (est.)" : ""}
+                    </span>
+                    <span className="pin-stem" />
+                    <span className="pin-dot" />
+                  </>
+                ) : (
+                  <>
+                    <span className="pin-dot" />
+                    <span className="pin-stem" />
+                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                      {name.split(" ")[0]}
+                      {pin.estimated ? " (est.)" : ""}
+                    </span>
+                    <span className="pin-when">{when}</span>
+                  </>
+                )}
+                <span className="pin-tooltip" role="tooltip">
+                  <b>{name}</b>
+                  <span className="pt-sep">·</span>
+                  {provider?.quota ? `${provider.quota.usedPct}% used` : "no readings"}
+                  <span className="pt-sep">·</span>
+                  {left ? `${left} left` : when}
+                  {pin.estimated ? " (est.)" : ""}
+                </span>
+              </button>
+            );
+          })}
+
+          {placement.clusters.map((cluster, index) => {
+            const alignClass = cluster.positionPct < 12 ? "pin-start" : cluster.positionPct > 88 ? "pin-end" : "";
+            const tierClass = cluster.tier > 0 ? `tier${cluster.tier + 1}` : "tier1";
+            return (
+              <button
+                key={cluster.ids.join("+")}
+                data-testid="cluster-pin"
+                type="button"
+                className={`pin ${cluster.band} ${tierClass} ${alignClass}`}
+                style={
+                  {
+                    left: `${cluster.positionPct}%`,
+                    "--dot-color": "var(--accent)",
+                  } as React.CSSProperties
+                }
+                aria-label={`${cluster.ids.length} resets at the same time: ${cluster.ids.map(displayName).join(", ")}`}
+                aria-expanded={openCluster === index}
+                onClick={() => setOpenCluster(openCluster === index ? null : index)}
+              >
+                {cluster.band === "above" ? (
+                  <>
+                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+                      {cluster.ids.length} resets
+                    </span>
+                    <span className="pin-stem" />
+                    <span className="pin-dot" />
+                  </>
+                ) : (
+                  <>
+                    <span className="pin-dot" />
+                    <span className="pin-stem" />
+                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+                      {cluster.ids.length} resets
+                    </span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+
+          {openCluster !== null && placement.clusters[openCluster] && (
+            <ClusterPopover
+              cluster={placement.clusters[openCluster]}
+              providers={byId}
+              asOfMs={asOfMs}
+              onSelect={onSelectProvider}
+              onClose={() => setOpenCluster(null)}
+            />
+          )}
+
+          <div className="rail-days" aria-hidden="true">
+            {labels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
         </div>
       </div>
     </section>

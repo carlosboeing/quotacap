@@ -58,6 +58,20 @@ export function isEstimated(provider: ProviderView): boolean {
   return provider.evidence.includes("estimated-reset");
 }
 
+/** Weekday plus 24h clock, e.g. "Thu 21:00". Null when unparseable. */
+export function resetClock(resetsAt: string, locale?: string): string | null {
+  const ms = Date.parse(resetsAt);
+  if (!Number.isFinite(ms)) return null;
+  const when = new Date(ms);
+  const day = when.toLocaleDateString(locale, { weekday: "short" });
+  const time = when.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${day} ${time}`;
+}
+
 /** "6d 12h" style time left from server timestamps. Null when unparseable. */
 export function timeLeft(resetsAt: string, asOfMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -93,8 +107,6 @@ export function resetCountdown(provider: ProviderView, asOfMs: number): string {
 export interface BarGeometry {
   usedPct: number;
   elapsedPct: number | null;
-  /** Projected window-end position; null when pace is unknown. */
-  projectedPct: number | null;
 }
 
 /** Bar geometry from server timestamps and percents. Presentation only. */
@@ -108,12 +120,7 @@ export function barGeometry(provider: ProviderView, asOfMs: number): BarGeometry
       elapsedPct = Math.min(1, Math.max(0, (asOfMs - startMs) / (resetMs - startMs))) * 100;
     }
   }
-  let projectedPct: number | null = null;
-  const advisory = provider.advisory;
-  if (provider.quota && advisory && advisory.burnRate !== null && Number.isFinite(advisory.daysLeft)) {
-    projectedPct = usedPct + advisory.burnRate * advisory.daysLeft;
-  }
-  return { usedPct, elapsedPct, projectedPct };
+  return { usedPct, elapsedPct };
 }
 
 export function badgeColor(badge: PaceBadge): string {
@@ -131,32 +138,75 @@ export function badgeColor(badge: PaceBadge): string {
   }
 }
 
+export function fillToken(badge: PaceBadge): string {
+  switch (badge) {
+    case "On track":
+      return "var(--fill-ontrack)";
+    case "Behind pace":
+      return "var(--fill-behind)";
+    case "Ahead of pace":
+      return "var(--fill-ahead)";
+    case "Cap risk":
+      return "var(--fill-cap)";
+    case "Not reporting":
+      return "var(--fill-out)";
+  }
+}
+
+export function edgeToken(badge: PaceBadge): string {
+  switch (badge) {
+    case "On track":
+      return "var(--edge-ontrack)";
+    case "Behind pace":
+      return "var(--edge-behind)";
+    case "Ahead of pace":
+      return "var(--edge-ahead)";
+    case "Cap risk":
+      return "var(--edge-cap)";
+    case "Not reporting":
+      return "var(--edge-out)";
+  }
+}
+
+export function outKind(badge: PaceBadge): "behind" | "cap" | "ontrack" | "none" {
+  switch (badge) {
+    case "Behind pace":
+      return "behind";
+    case "Cap risk":
+      return "cap";
+    case "On track":
+      return "ontrack";
+    default:
+      return "none";
+  }
+}
+
 /**
- * Hatch fill for the projected-unused span. The badge colours are CSS custom
- * properties, so an alpha suffix would not parse: color-mix applies the
- * transparency instead.
+ * Hatch fill for unused quota. Ink mix (not an alpha suffix on a custom
+ * property) so the browser always paints a gradient.
  */
-export function hatchGradient(badge: PaceBadge): string {
-  const tint = `color-mix(in srgb, ${badgeColor(badge)} 33%, transparent)`;
-  return `repeating-linear-gradient(45deg, transparent 0 3px, ${tint} 3px 5px)`;
+export function hatchGradient(_badge?: PaceBadge): string {
+  return "repeating-linear-gradient(45deg, color-mix(in oklch, var(--ink) 20%, transparent) 0 1.5px, transparent 1.5px 7px)";
 }
 
 export function Badge({ provider }: { provider: ProviderView }) {
   const badge = paceBadge(provider);
   const detail = exclusionDetail(provider.exclusionReason);
+  const badgeClass =
+    badge === "Behind pace"
+      ? "pace-behind"
+      : badge === "On track"
+      ? "pace-ontrack"
+      : badge === "Ahead of pace"
+      ? "pace-ahead"
+      : badge === "Cap risk"
+      ? "pace-cap"
+      : "pace-out";
   return (
     <span
       data-testid="pace-badge"
-      style={{
-        border: `1px solid ${badgeColor(badge)}`,
-        color: badgeColor(badge),
-        borderRadius: 999,
-        padding: "2px 8px",
-        font: "var(--t-1)",
-        whiteSpace: "nowrap",
-      }}
+      className={`pace ${badgeClass}`}
     >
-      <span aria-hidden="true">● </span>
       {badge}
       {detail ? ` · ${detail}` : ""}
     </span>
@@ -167,48 +217,57 @@ export function Badge({ provider }: { provider: ProviderView }) {
  * Two-tier pacing rail: used fill, elapsed tick, projected-unused hatch.
  * Unknown pace shows fill and tick but no hatch and no numeric rate.
  */
-export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: string }) {
+export function PaceBar({
+  provider,
+  asOf,
+  showHeadline = true,
+}: {
+  provider: ProviderView;
+  asOf: string;
+  showHeadline?: boolean;
+}) {
   const badge = paceBadge(provider);
   const asOfMs = Date.parse(asOf);
-  const { usedPct, elapsedPct, projectedPct } = barGeometry(provider, asOfMs);
+  const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
+  const wastePct = provider.advisory?.wastePct;
   const showHatch =
-    projectedPct !== null && Number.isFinite(projectedPct) && projectedPct < 100 && projectedPct > usedPct;
+    wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
   const label = provider.quota
     ? `${provider.id}: ${provider.quota.usedPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
+  const forecast =
+    showHatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
+  const kind = outKind(badge);
   return (
-    <div data-testid="pace-bar" role="img" aria-label={label}>
-      <div
-        style={{
-          position: "relative",
-          height: 8,
-          background: "var(--track)",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
+    <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
+      {showHeadline && provider.quota && (
+        <div className="tline">
+          <span className="used">{provider.quota.usedPct}% used</span>
+          {forecast && kind !== "none" ? (
+            <span className={`out out-${kind}`}>→ {forecast}</span>
+          ) : forecast ? (
+            <span className="out out-none">→ {forecast}</span>
+          ) : null}
+        </div>
+      )}
+      <div className="track">
         <div
           aria-hidden="true"
+          className="fill"
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
             width: `${usedPct}%`,
-            background: badgeColor(badge),
+            background: fillToken(badge),
+            ["--fill-edge" as string]: edgeToken(badge),
           }}
         />
         {showHatch && (
           <div
             aria-hidden="true"
             data-testid="pace-hatch"
+            className="band band-waste"
             style={{
-              position: "absolute",
-              left: `${projectedPct}%`,
-              top: 0,
-              bottom: 0,
-              right: 0,
-              background: hatchGradient(badge),
+              left: `${100 - wastePct!}%`,
+              width: `${wastePct}%`,
             }}
           />
         )}
@@ -216,18 +275,18 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
           <div
             aria-hidden="true"
             title="elapsed"
+            className="mark"
             style={{
-              position: "absolute",
-              left: `calc(${elapsedPct}% - 1px)`,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              background: "var(--ink)",
+              left: `${elapsedPct}%`,
             }}
           />
         )}
       </div>
-      {elapsedPct !== null && <div style={{ font: "var(--t-1)" }}>Time elapsed: {Math.round(elapsedPct)}%</div>}
+      <div className="tfoot">
+        <span>start</span>
+        <span>{elapsedPct !== null ? `Time elapsed: ${Math.round(elapsedPct)}%` : ""}</span>
+        <span>reset</span>
+      </div>
     </div>
   );
 }

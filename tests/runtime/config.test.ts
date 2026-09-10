@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  isExperimentalIngestEnabled,
   readServiceConfig,
   readServiceMetadata,
   writeServiceMetadata,
@@ -106,6 +107,42 @@ describe("strict service config", () => {
     writeConfig({ enabledProviders: ["manual", "claude"] });
     const cfg = await readServiceConfig();
     expect(cfg.enabledProviders).toEqual(["manual", "claude"]);
+  });
+});
+
+describe("experimental ingest flag", () => {
+  const oldFlag = process.env.QUOTACAP_EXPERIMENTAL_INGEST;
+
+  afterEach(() => {
+    if (oldFlag === undefined) delete process.env.QUOTACAP_EXPERIMENTAL_INGEST;
+    else process.env.QUOTACAP_EXPERIMENTAL_INGEST = oldFlag;
+  });
+
+  it("is off by default and omitted from written defaults", async () => {
+    isolatedHome();
+    delete process.env.QUOTACAP_EXPERIMENTAL_INGEST;
+    expect(isExperimentalIngestEnabled()).toBe(false);
+    const cfg = await readServiceConfig();
+    expect(cfg.experimentalIngest).toBeUndefined();
+  });
+
+  it("follows env over config, then the optional config key", async () => {
+    isolatedHome();
+    writeConfig({ experimentalIngest: true });
+    delete process.env.QUOTACAP_EXPERIMENTAL_INGEST;
+    const cfg = await readServiceConfig();
+    expect(cfg.experimentalIngest).toBe(true);
+    expect(isExperimentalIngestEnabled(cfg, {})).toBe(true);
+
+    expect(isExperimentalIngestEnabled(cfg, { QUOTACAP_EXPERIMENTAL_INGEST: "0" })).toBe(
+      false,
+    );
+    expect(isExperimentalIngestEnabled({ experimentalIngest: false }, { QUOTACAP_EXPERIMENTAL_INGEST: "1" })).toBe(
+      true,
+    );
+    expect(isExperimentalIngestEnabled({}, { QUOTACAP_EXPERIMENTAL_INGEST: "true" })).toBe(
+      true,
+    );
   });
 });
 

@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { seedFileDb, runCli } from "./helpers.js";
 
+const ENABLE_INGEST = { QUOTACAP_EXPERIMENTAL_INGEST: "1" };
+
 const tmpDirs: string[] = [];
 function tmpDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qc-ingest-"));
@@ -83,7 +85,7 @@ describe("ingest process", () => {
       const home = tmpDir();
       writeConfig(home, stub.port);
       writeToken(home, "test-token-123");
-      const run = await runCli(home, ["ingest", "--provider", "my plan", "--text", "Weekly limit 16% used"]);
+      const run = await runCli(home, ["ingest", "--provider", "my plan", "--text", "Weekly limit 16% used"], ENABLE_INGEST);
       expect(run.code).toBe(0);
       expect(run.stderr).toBe("");
       expect(run.stdout).toBe("ingested\n");
@@ -104,7 +106,7 @@ describe("ingest process", () => {
     writeConfig(home, await closedPort());
     writeToken(home, "test-token-123");
     const dbPath = path.join(home, ".quotacap", "quotacap.db");
-    const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"]);
+    const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"], ENABLE_INGEST);
     expect(run.code).toBe(1);
     expect(run.stdout).toBe("");
     expect(run.stderr).toMatch(/service-unavailable/);
@@ -118,7 +120,7 @@ describe("ingest process", () => {
     const dbPath = seedFileDb(path.join(home, ".quotacap", "quotacap.db"));
     const before = fs.readFileSync(dbPath);
     writeConfig(home, await closedPort());
-    const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"]);
+    const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"], ENABLE_INGEST);
     expect(run.code).toBe(1);
     expect(run.stderr).toMatch(/service-unavailable/);
     expect(fs.readFileSync(dbPath).equals(before)).toBe(true);
@@ -133,7 +135,7 @@ describe("ingest process", () => {
       const home = tmpDir();
       writeConfig(home, stub.port);
       writeToken(home, "test-token-123");
-      const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"]);
+      const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"], ENABLE_INGEST);
       expect(run.code).toBe(1);
       expect(run.stdout).toBe("");
       expect(run.stderr).toMatch(/service-error/);
@@ -153,7 +155,7 @@ describe("ingest process", () => {
       const home = tmpDir();
       writeConfig(home, stub.port);
       writeToken(home, "wrong-token");
-      const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"]);
+      const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"], ENABLE_INGEST);
       expect(run.code).toBe(1);
       expect(run.stdout).toBe("");
       expect(run.stderr).toMatch(/service-error/);
@@ -174,7 +176,7 @@ describe("ingest process", () => {
         const home = tmpDir();
         writeConfig(home, stub.port);
         writeToken(home, "test-token-123");
-        const run = await runCli(home, ["ingest", "--provider", provider, "--text", "81% used"]);
+        const run = await runCli(home, ["ingest", "--provider", provider, "--text", "81% used"], ENABLE_INGEST);
         expect(run.code).toBe(0);
         expect(run.stdout).toBe("ingested\n");
         expect(JSON.parse(stub.captured.body).provider).toBe(provider);
@@ -182,5 +184,22 @@ describe("ingest process", () => {
         await stub.close();
       }
     }
+  }, 15000);
+
+  it("is an unknown command unless the experimental flag is set", async () => {
+    const home = tmpDir();
+    const run = await runCli(home, ["ingest", "--provider", "p", "--text", "t"], {
+      QUOTACAP_EXPERIMENTAL_INGEST: "0",
+    });
+    expect(run.code).not.toBe(0);
+    expect(run.stdout + run.stderr).toMatch(/unknown command|unknown command 'ingest'/i);
+    expect(run.stdout + run.stderr).not.toMatch(/^ingested$/m);
+  }, 15000);
+
+  it("--help lists ingest when the experimental flag is set", async () => {
+    const home = tmpDir();
+    const run = await runCli(home, ["--help"], ENABLE_INGEST);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toMatch(/\bingest\b/);
   }, 15000);
 });

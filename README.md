@@ -55,12 +55,6 @@ quotacap advise
 
 `web` stays in the foreground and starts the daemon.
 
-For a provider without a live adapter:
-
-```bash
-quotacap ingest --provider myplan --text "65% used · resets Sep 1"
-```
-
 ## MCP
 
 ```json

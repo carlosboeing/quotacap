@@ -275,7 +275,7 @@ describe("status process", () => {
     }
   }, 15000);
 
-  it("no-data exits 0 with the start-service/ingest hint and creates nothing", async () => {
+  it("no-data exits 0 with the start-service hint and creates nothing", async () => {
     const home = tmpDir();
     writeConfig(home, await closedPort());
     const dbPath = path.join(home, ".quotacap", "quotacap.db");
@@ -283,7 +283,7 @@ describe("status process", () => {
     expect(run.code).toBe(0);
     expect(run.stdout).toMatch(/no quotas yet/);
     expect(run.stdout).toMatch(/quotacap web/);
-    expect(run.stdout).toMatch(/quotacap ingest/);
+    expect(run.stdout).not.toMatch(/quotacap ingest/);
     expect(fs.existsSync(dbPath)).toBe(false);
     const json = await runCli(home, ["status", "--json"]);
     expect(json.code).toBe(0);

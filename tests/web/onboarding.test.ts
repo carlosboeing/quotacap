@@ -17,7 +17,7 @@ describe("setup readiness", () => {
     const byId = new Map<string, any>(s.providers.map((p: any) => [p.id, p]));
     expect(readiness(byId.get("kimi")).status).toBe("Ready");
     expect(readiness(byId.get("manual")).status).toBe("Sign in first");
-    expect(readiness(byId.get("manual")).detail).toMatch(/never handles those credentials/);
+    expect(readiness(byId.get("manual")).detail).toMatch(/no live adapter/);
     expect(
       readiness({ id: "claude", quota: null, lastAttempt: { failureCategory: "auth" } } as any).status
     ).toBe("Sign in first");

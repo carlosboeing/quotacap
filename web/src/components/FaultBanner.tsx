@@ -77,18 +77,37 @@ export function FaultBanner({
             key={p.id}
             data-testid="fault-banner"
             role="alert"
-            style={{
-              border: "1px solid var(--danger)",
-              borderRadius: 8,
-              padding: 8,
-              marginBottom: 8,
-              font: "var(--t-3)",
-            }}
+            className="alert"
           >
-            <strong>{displayName(p.id)}</strong> {bannerVerb(p)}. {age ? `Last read ${age} ago; ` : ""}
-            excluded from ranking. {repair.text}{" "}
-            <button type="button" onClick={onRepoll} disabled={repolling}>
-              {repolling ? "Polling…" : "Re-poll"}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.3"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M12 8v5" />
+              <path d="M12 16.5v.01" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+            <span>
+              <strong>
+                {displayName(p.id)} {bannerVerb(p)}.
+              </strong>{" "}
+              {age ? `Last read ${age} ago; ` : ""}
+              excluded from ranking. {repair.text}
+            </span>
+            <button
+              type="button"
+              className="linkbtn"
+              onClick={onRepoll}
+              disabled={repolling}
+              style={{ flex: "none", marginLeft: "auto" }}
+            >
+              {repolling ? "Polling…" : `Check ${displayName(p.id)}`}
             </button>
           </div>
         );
@@ -96,3 +115,4 @@ export function FaultBanner({
     </div>
   );
 }
+

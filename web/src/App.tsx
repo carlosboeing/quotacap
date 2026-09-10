@@ -13,11 +13,13 @@ import { Recommendation } from "./components/Recommendation.js";
 import { SubscriptionList } from "./components/SubscriptionList.js";
 import { ResetRail } from "./components/ResetRail.js";
 import { ProviderDrawer } from "./components/ProviderDrawer.js";
+import { AdviceDrawer } from "./components/AdviceDrawer.js";
 import { SettingsDrawer } from "./components/settings/SettingsDrawer.js";
 import { navigate, routeFor, useRoute } from "./router.js";
 import { Onboarding } from "./pages/Onboarding.js";
 import { Header } from "./components/Header.js";
 import { FaultBanner } from "./components/FaultBanner.js";
+import { SiteFooter } from "./components/PacingLegend.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -74,17 +76,20 @@ function HttpErrorPanel({
 function ReadyView({
   snapshot,
   onSelectProvider,
+  onViewAdvice,
 }: {
   snapshot: ViewModel;
   onSelectProvider: (id: string) => void;
+  onViewAdvice: () => void;
 }) {
   return (
-    <div data-testid="dashboard-root">
+    <div data-testid="dashboard-root" className="dashboard">
       <Recommendation
         recommendation={snapshot.recommendation}
         providers={snapshot.providers}
         asOf={snapshot.asOf}
         onSelectProvider={onSelectProvider}
+        onViewAdvice={onViewAdvice}
       />
       {!firstRun(snapshot) && (
         <>
@@ -97,6 +102,8 @@ function ReadyView({
             providers={snapshot.providers}
             recommendation={snapshot.recommendation}
             asOf={snapshot.asOf}
+            lastCompletedPollAt={snapshot.runtime.lastCompletedPollAt}
+            polling={snapshot.runtime.polling}
             onSelectProvider={onSelectProvider}
           />
         </>
@@ -112,6 +119,7 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [adviceOpen, setAdviceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const route = useRoute();
   const target = snapshot ? routeFor(route, firstRun(snapshot)) : null;
@@ -168,93 +176,132 @@ function App() {
       : `Service unavailable: ${error.message}`
     : null;
 
+  const header = (
+    <Header
+      runtime={snapshot?.runtime ?? null}
+      unreachable={error?.kind === "service-unavailable"}
+      refreshing={refreshing}
+      onRefresh={() => void refresh()}
+      onSettings={() => setSettingsOpen(true)}
+    />
+  );
+
   if (snapshot && setupMode) {
     return (
-      <div>
-        <Onboarding
-          snapshot={snapshot}
-          onFirstPoll={() => void refresh()}
-          polling={refreshing}
-          pollError={pollErrorText}
+      <>
+        {header}
+        <main>
+          <Onboarding
+            snapshot={snapshot}
+            onFirstPoll={() => void refresh()}
+            polling={refreshing}
+            pollError={pollErrorText}
+          />
+        </main>
+        <SettingsDrawer
+          open={settingsOpen}
+          providers={snapshot.providers}
+          onRefresh={() => void refresh()}
+          refreshing={refreshing}
+          onClose={() => setSettingsOpen(false)}
         />
-      </div>
+        <SiteFooter />
+      </>
     );
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
-      <Header
-        runtime={snapshot?.runtime ?? null}
-        unreachable={error?.kind === "service-unavailable"}
-        refreshing={refreshing}
-        onRefresh={() => void refresh()}
-        onSettings={() => setSettingsOpen(true)}
-      />
-      {notice && (
-        <div data-testid="refresh-notice" role="status">
-          {notice}
-        </div>
-      )}
-      {loading && !snapshot && (
-        <div data-testid="state-loading" aria-busy="true" aria-label="Loading quota state">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              aria-hidden="true"
-              style={{
-                height: 64,
-                background: "var(--surface-raised)",
-                border: i === 0 ? "1px solid var(--rec)" : "1px solid var(--line)",
-                borderRadius: 8,
-                marginBottom: 8,
-              }}
-            />
-          ))}
-        </div>
-      )}
-      {error?.kind === "service-unavailable" && !snapshot && (
-        <UnavailablePanel endpoint={daemonEndpoint()} lastGood={snapshot} onRetry={() => void load()} />
-      )}
-      {error?.kind === "http-error" && !snapshot && (
-        <HttpErrorPanel
-          status={error.status}
-          message={error.message}
-          lastGood={snapshot}
-          onRetry={() => void load()}
-        />
-      )}
-      {error && snapshot && (
-        <div data-testid="state-stale-error" role="alert">
-          {error.kind === "http-error" ? `Request failed (HTTP ${error.status}): ` : "Service unavailable: "}
-          {error.message} Showing last readings ({ageLabel(snapshot.asOf)}).{" "}
-          <button type="button" onClick={() => void load()}>
-            Retry
-          </button>
-        </div>
-      )}
-      {snapshot && (
-        <FaultBanner
-          providers={snapshot.providers}
-          onRepoll={() => void refresh()}
-          repolling={refreshing}
-        />
-      )}
-      {snapshot && (
-        <ReadyView snapshot={snapshot} onSelectProvider={(id) => setSelectedProvider(id)} />
-      )}
+    <>
+      {header}
+      <main>
+        {notice && (
+          <div data-testid="refresh-notice" role="status">
+            {notice}
+          </div>
+        )}
+        {loading && !snapshot && (
+          <div data-testid="state-loading" aria-busy="true" aria-label="Loading quota state">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                aria-hidden="true"
+                className="skel"
+                style={{
+                  height: 64,
+                  background: "var(--surface-raised)",
+                  border: i === 0 ? "1px solid var(--rec)" : "1px solid var(--line)",
+                  borderRadius: 8,
+                  marginBottom: 8,
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {error?.kind === "service-unavailable" && !snapshot && (
+          <UnavailablePanel endpoint={daemonEndpoint()} lastGood={snapshot} onRetry={() => void load()} />
+        )}
+        {error?.kind === "http-error" && !snapshot && (
+          <HttpErrorPanel
+            status={error.status}
+            message={error.message}
+            lastGood={snapshot}
+            onRetry={() => void load()}
+          />
+        )}
+        {error && snapshot && (
+          <div data-testid="state-stale-error" role="alert">
+            {error.kind === "http-error" ? `Request failed (HTTP ${error.status}): ` : "Service unavailable: "}
+            {error.message} Showing last readings ({ageLabel(snapshot.asOf)}).{" "}
+            <button type="button" onClick={() => void load()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {snapshot && (
+          <FaultBanner
+            providers={snapshot.providers}
+            onRepoll={() => void refresh()}
+            repolling={refreshing}
+          />
+        )}
+        {snapshot && (
+          <ReadyView
+            snapshot={snapshot}
+            onSelectProvider={(id) => {
+              setAdviceOpen(false);
+              setSelectedProvider(id);
+            }}
+            onViewAdvice={() => {
+              setSelectedProvider(null);
+              setAdviceOpen(true);
+            }}
+          />
+        )}
+      </main>
       <ProviderDrawer
         provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
+        asOf={snapshot?.asOf ?? ""}
+        recommendation={snapshot?.recommendation ?? null}
         onClose={() => setSelectedProvider(null)}
       />
+      {snapshot && (
+        <AdviceDrawer
+          open={adviceOpen}
+          recommendation={snapshot.recommendation}
+          providers={snapshot.providers}
+          asOf={snapshot.asOf}
+          onClose={() => setAdviceOpen(false)}
+        />
+      )}
       <SettingsDrawer
         open={settingsOpen}
         providers={snapshot?.providers ?? []}
         onRefresh={() => void refresh()}
         refreshing={refreshing}
-        onIngested={() => void load()}
         onClose={() => setSettingsOpen(false)}
       />
-    </div>
+      <SiteFooter />
+    </>
   );
 }
 

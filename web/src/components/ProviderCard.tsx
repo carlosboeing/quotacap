@@ -5,25 +5,18 @@ import { displayName } from "../names.js";
 import {
   Badge,
   PaceBar,
-  badgeColor,
-  evidenceLabels,
-  forecastLine,
   isEstimated,
-  paceBadge,
+  resetClock,
   resetCountdown,
   timeLeft,
 } from "./PaceBar.js";
+import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 function resetsDate(provider: ProviderView): string | null {
   if (!provider.quota) return null;
-  const ms = Date.parse(provider.quota.resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms).toLocaleString(undefined, {
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `Resets ${when}${isEstimated(provider) ? " (est.)" : ""}`;
+  const clock = resetClock(provider.quota.resetsAt);
+  if (!clock) return null;
+  return `Resets ${clock}${isEstimated(provider) ? " (est.)" : ""}`;
 }
 
 export function ProviderCard({
@@ -41,7 +34,6 @@ export function ProviderCard({
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(provider.ageMs);
-  const evidence = evidenceLabels(provider.evidence);
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
   const name = displayName(provider.id);
   return (
@@ -57,91 +49,57 @@ export function ProviderCard({
           onSelect(provider.id);
         }
       }}
-      style={{
-        background: "var(--surface)",
-        border: recommended ? "2px solid var(--rec)" : "1px solid var(--line)",
-        borderRadius: 12,
-        padding: 12,
-        cursor: "pointer",
-      }}
+      className={`pcard ${recommended ? "is-recommended is-top-pick" : ""}`}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: badgeColor(paceBadge(provider)),
-            flexShrink: 0,
-          }}
-        />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ font: "var(--t-4)" }}>
-            {name}{" "}
+      <div className="pcard-head">
+        <span className="picon" style={providerTint(provider.id)} aria-hidden="true">
+          <ProviderIcon id={provider.id} title={name} />
+        </span>
+        <div className="who">
+          <b>
+            {name}
             {recommended && (
-              <span role="img" aria-label="recommended">
-                ★
+              <span className="rec-icon" title="Recommended for next session" role="img" aria-label="recommended">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+                </svg>
               </span>
             )}
-          </div>
-          {quota && quota.plan && <div style={{ font: "var(--t-2)" }}>{quota.plan}</div>}
-          {updated && <div style={{ font: "var(--t-2)" }}>Updated {updated} ago</div>}
+          </b>
+          {quota && quota.plan && <span className="pl">{quota.plan}</span>}
+          {updated && <span className="src">Updated {updated} ago</span>}
         </div>
         <Badge provider={provider} />
       </div>
 
-      {quota ? (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8 }}>
-          <span style={{ font: "var(--t-3)" }}>{quota.usedPct}% used</span>
-          <span style={{ font: "var(--t-2)" }}>→ {forecastLine(provider)}</span>
-        </div>
-      ) : (
-        <div style={{ font: "var(--t-2)", marginTop: 8 }}>→ {forecastLine(provider)}</div>
-      )}
-      <div style={{ marginTop: 4 }}>
+      <div className="pcard-body">
         <PaceBar provider={provider} asOf={asOf} />
+
+        <div className="pstats">
+          <div>
+            <span className="l">Pace</span>
+            <span className="v">
+              {advisory && advisory.burnRate !== null ? `${advisory.burnRate.toFixed(1)}%/d` : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="l">Needed</span>
+            <span className="v">
+              {advisory ? `${advisory.idealRate.toFixed(1)}%/d` : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="l">Resets in</span>
+            <span className="v">
+              {resetsIn ? `${resetsIn}${isEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>PACE</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {advisory && advisory.burnRate !== null ? `${advisory.burnRate.toFixed(1)}%/d` : "—"}
-          </div>
-        </div>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>NEEDED</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {advisory ? `${advisory.idealRate.toFixed(1)}%/d` : "—"}
-          </div>
-        </div>
-        <div>
-          <div style={{ font: "var(--t-1)" }}>RESETS IN</div>
-          <div style={{ font: "var(--t-3)" }}>
-            {resetsIn ? `${resetsIn}${isEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
-          </div>
-        </div>
-      </div>
-
-      {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-        <div style={{ font: "var(--t-2)", marginTop: 4 }}>Session use {quota.sessionPct}%</div>
-      )}
-      {evidence.length > 0 && (
-        <div style={{ font: "var(--t-1)", marginTop: 4 }}>{evidence.join(" · ")}</div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: 8,
-          font: "var(--t-2)",
-        }}
-      >
+      <div className="pcard-foot">
         <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
-        <span aria-hidden="true">Inspect →</span>
+        <span className="rowbtn" aria-hidden="true">Inspect</span>
       </div>
     </article>
   );

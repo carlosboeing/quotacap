@@ -1,6 +1,7 @@
-// ingest: service-required manual usage submission. The running service
-// validates and stores; this command never writes SQLite itself and never
-// falls back. Provider IDs pass through unvalidated (forecast-side concern).
+// ingest: service-required manual usage submission. Registered only when
+// experimental ingest is on. The running service validates and stores; this
+// command never writes SQLite itself and never falls back. Provider IDs pass
+// through unvalidated (forecast-side concern).
 import type { Command } from "commander";
 import { readConfig } from "../config.js";
 import { ServiceError, ServiceUnavailable, createServiceClient } from "../runtime/client.js";

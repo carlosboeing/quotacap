@@ -26,6 +26,6 @@ export const manualAdapter = {
     return parseManualUsage(provider, text);
   },
   async poll(): Promise<ParsedQuota> {
-    throw new Error("manual has no poll — use ingest");
+    throw new Error("manual has no poll");
   },
 };

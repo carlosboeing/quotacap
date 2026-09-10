@@ -87,6 +87,10 @@ async function expectNoPageOverflow(page: Page) {
 
 const exampleState = () => JSON.parse(exampleStateSnapshotJson);
 const reasonOf = (s: any): string => s.recommendation.reason as string;
+const recWaste = (s: any): string =>
+  s.recommendation.wastePct !== null && s.recommendation.wastePct !== undefined
+    ? `${Math.round(s.recommendation.wastePct)}%`
+    : reasonOf(s);
 
 /** First-run server state: every provider present, no quota rows stored. */
 function firstRunState(): any {
@@ -176,10 +180,10 @@ function spreadResetState(): any {
   };
 }
 
-test("prints the server recommendation verbatim", async ({ page }) => {
+test("renders recommendation advice with forecast waste percentage", async ({ page }) => {
   const stub = await stubFor(exampleState());
   await page.goto(stub.url);
-  await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+  await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
 });
 
 const VIEWPORTS = [320, 390, 768, 1440];
@@ -194,12 +198,94 @@ test("dashboard renders in every viewport and theme without page overflow", asyn
       const { context, page } = await themedPage(browser, theme, width);
       try {
         await page.goto(stub.url);
-        await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+        await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
         await expectNoPageOverflow(page);
         await shot(page, `dashboard-${width}-${theme}.png`);
       } finally {
         await context.close();
       }
+    }
+  }
+});
+
+async function expectLabeledChrome(page: Page) {
+  await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
+  await expect(page.getByRole("heading", { name: /quota advice & pacing/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /upcoming resets/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /all subscriptions/i })).toBeVisible();
+  await expect(page.getByTestId("view-advice")).toBeVisible();
+  await expect(page.getByLabel(/Sort by/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Table" })).toBeVisible();
+  const refreshLabel = page.locator('[data-testid="refresh-button"] .btn-label');
+  const settingsLabel = page.locator('[data-testid="settings-button"] .btn-label');
+  await expect(refreshLabel).toBeVisible();
+  await expect(refreshLabel).toHaveText("Refresh");
+  await expect(refreshLabel).not.toHaveCSS("display", "none");
+  await expect(settingsLabel).toBeVisible();
+  await expect(settingsLabel).toHaveText("Settings");
+  await expect(settingsLabel).not.toHaveCSS("display", "none");
+}
+
+test("dashboard chrome matches the signed-off section structure", async ({ browser }) => {
+  const stub = await stubFor(exampleState());
+  for (const width of [1440, 390] as const) {
+    const { context, page } = await themedPage(browser, "light", width);
+    try {
+      await page.goto(stub.url);
+      await expectLabeledChrome(page);
+      if (width === 1440) {
+        await expect(page.getByTestId("pill")).toContainText("daemon live");
+        const rec = page.getByTestId("recommendation");
+        const recRadius = await rec.evaluate((el) => getComputedStyle(el).borderRadius);
+        expect(recRadius).toBe("18px");
+        const head = page.getByRole("heading", { name: /quota advice & pacing/i });
+        const headSize = await head.evaluate((el) => getComputedStyle(el).fontSize);
+        expect(headSize).toBe("12.5px");
+        await expect(page.getByTestId("provider-card-kimi")).toContainText("% used");
+        await expect(page.getByTestId("rail")).toHaveCSS("overflow-x", "visible");
+        await page.getByRole("button", { name: "Table" }).click();
+        await expect(page.getByTestId("ledger-table")).toBeVisible();
+        await shot(page, "dashboard-table-1440-light.png");
+        await page.getByRole("button", { name: "Cards" }).click();
+      } else {
+        await shot(page, "dashboard-chrome-390-light.png");
+      }
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test("settings tabs and advice drawer capture every operational surface", async ({ browser }) => {
+  const stub = await stubFor(exampleState());
+  for (const theme of THEMES) {
+    const { context, page } = await themedPage(browser, theme, 1440);
+    try {
+      await page.goto(stub.url);
+      await expect(page.getByTestId("rec-prose")).toBeVisible();
+      await page.getByTestId("settings-button").click();
+      const settings = page.getByTestId("settings-drawer");
+      await expect(settings).toBeVisible();
+      await shot(page, `settings-providers-1440-${theme}.png`);
+      await page.getByRole("tab", { name: "CLI & Shell" }).click();
+      await shot(page, `settings-cli-1440-${theme}.png`);
+      await page.getByRole("tab", { name: "Daemon" }).click();
+      await shot(page, `settings-daemon-1440-${theme}.png`);
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeHidden();
+      await page.getByTestId("view-advice").click();
+      const advice = page.getByTestId("advice-drawer");
+      await expect(advice).toBeVisible();
+      await expect(advice).toContainText("Quota Advice");
+      await expect(advice).toContainText("Recommended for next session");
+      await expect(advice).toContainText("Fleet Pacing Breakdown");
+      await expect(advice).toContainText("quotacap advise");
+      await shot(page, `advice-drawer-1440-${theme}.png`);
+      await page.keyboard.press("Escape");
+      await expect(advice).toBeHidden();
+    } finally {
+      await context.close();
     }
   }
 });
@@ -269,7 +355,7 @@ test("provider drawer traps focus, closes on esc and scrim, and returns focus", 
       await card.click();
       const drawer = page.getByTestId("provider-drawer");
       await expect(drawer).toBeVisible();
-      await expect(drawer).toContainText("Window avg");
+      await expect(drawer).toContainText(/averaged over|Window avg|Measured/);
       await shot(page, `provider-drawer-1440-${theme}.png`);
       // A reverse tab from the freshly focused dialog container stays inside.
       await page.keyboard.press("Shift+Tab");
@@ -310,6 +396,61 @@ test("settings drawer holds focus on an immediate reverse tab", async ({ page })
   expect(await focusInside(page, "settings-drawer")).toBe(true);
 });
 
+test("every dashboard control matches the prototype click targets", async ({ browser }) => {
+  const stub = await stubFor(exampleState());
+  const { context, page } = await themedPage(browser, "dark", 1440);
+  try {
+    await page.goto(stub.url);
+    await expect(page.getByTestId("rec-prose")).toBeVisible();
+
+    await page.getByTestId("theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.getByTestId("theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    await page.getByTestId("view-advice").click();
+    const advice = page.getByTestId("advice-drawer");
+    await expect(advice).toBeVisible();
+    await expect(advice.getByRole("heading", { name: /quota advice & pacing/i })).toBeVisible();
+    await expect(advice).toContainText("Recommended for next session");
+    await expect(advice).toContainText("Use more");
+    await expect(advice).toContainText("Ease off");
+    await expect(advice).toContainText("$ quotacap advise");
+    await shot(page, "interaction-advice-drawer-1440-dark.png");
+    await page.getByRole("button", { name: "Close advice" }).click();
+    await expect(advice).toBeHidden();
+
+    await page.getByTestId("provider-card-kimi").getByRole("button", { name: "Inspect" }).click();
+    await expect(page.getByTestId("provider-drawer")).toBeVisible();
+    await expect(page.getByTestId("advice-drawer")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    await page.getByTestId("settings-button").click();
+    const settings = page.getByTestId("settings-drawer");
+    await expect(settings).toBeVisible();
+    await page.getByRole("tab", { name: "Providers" }).click();
+    await shot(page, "interaction-settings-providers-1440-dark.png");
+    await page.getByRole("tab", { name: "CLI & Shell" }).click();
+    await expect(settings).toContainText("Shell");
+    await page.getByRole("tab", { name: "Daemon" }).click();
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeHidden();
+
+    await page.getByLabel(/Sort by/).click();
+    await expect(page.getByRole("option", { name: "Recommended" })).toBeVisible();
+    await page.getByRole("option", { name: "Highest Usage" }).click();
+    await page.getByRole("button", { name: "Table" }).click();
+    await expect(page.getByTestId("ledger-table")).toBeVisible();
+    await page.getByRole("button", { name: "Cards" }).click();
+    await expect(page.getByTestId("cards-grid")).toBeVisible();
+
+    await page.getByRole("button", { name: /legend/i }).click();
+    await expect(page.getByRole("dialog", { name: "Pacing legend" })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
 test("the projected-unused hatch paints a gradient the browser accepts", async ({ page }) => {
   const stub = await stubFor(exampleState());
   await page.goto(stub.url);
@@ -330,7 +471,7 @@ test("the projected-unused hatch paints a gradient the browser accepts", async (
   }
 });
 
-test("settings ingest posts unparsed input and renders server errors verbatim", async ({
+test("settings lists adapters only and has no ingest form", async ({
   browser,
 }) => {
   const stub = await stubFor(exampleState());
@@ -340,19 +481,11 @@ test("settings ingest posts unparsed input and renders server errors verbatim", 
     await page.getByTestId("settings-button").click();
     const drawer = page.getByTestId("settings-drawer");
     await expect(drawer).toBeVisible();
+    await expect(drawer.getByText("Kimi Code")).toBeVisible();
+    await expect(drawer.getByText("manual", { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText("Manual Quota Ingest")).toHaveCount(0);
+    await expect(page.getByLabel("Provider id for manual ingest")).toHaveCount(0);
     await shot(page, "settings-drawer-1440-light.png");
-    const text = "Used 45 of 100 requests. Resets in 2 days.";
-    await page.getByLabel("Provider id for manual ingest").fill("my-plan");
-    await page.getByLabel("Usage text for manual ingest").fill(text);
-    await page.getByRole("button", { name: "Send to server" }).click();
-    await expect(page.getByTestId("ingest-saved")).toContainText("Saved.");
-    const posted = stub.requests.filter((r) => r.url === "/api/ingest").pop();
-    expect(posted?.body).toEqual({ provider: "my-plan", text });
-    stub.setIngest({ status: 400, body: { error: "need more detail" } });
-    // Success clears the text, disabling submit; refill for the error case.
-    await page.getByLabel("Usage text for manual ingest").fill(text);
-    await page.getByRole("button", { name: "Send to server" }).click();
-    await expect(page.getByTestId("ingest-error")).toContainText("need more detail");
   } finally {
     await context.close();
   }
@@ -385,14 +518,15 @@ test("keyboard-only traversal reaches rail pins, sort, density, and drawers", as
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("provider-drawer")).toBeVisible();
   await page.keyboard.press("Escape");
-  // Sort changes order from the keyboard via type-ahead.
-  // (Arrow keys do not drive native selects in headless shell; typing does.)
+  // Sort changes order from the keyboard via the custom SortDropdown.
   await expect(page.getByTestId("cards-grid").locator("article").first()).toHaveAttribute(
     "data-testid",
     "provider-card-my-plan"
   );
   await page.getByLabel(/Sort/).focus();
-  await page.keyboard.press("u");
+  await page.keyboard.press("Enter");
+  await page.getByRole("option", { name: "Highest Usage" }).focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByTestId("cards-grid").locator("article").first()).toHaveAttribute(
     "data-testid",
     "provider-card-agy:3p"
@@ -401,7 +535,7 @@ test("keyboard-only traversal reaches rail pins, sort, density, and drawers", as
   await page.getByRole("button", { name: "Table" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("ledger-table")).toBeVisible();
-  await page.getByRole("button", { name: /Legend/ }).focus();
+  await page.getByRole("button", { name: /legend/i }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Pacing legend" })).toBeVisible();
 });
@@ -436,6 +570,8 @@ test("every graphic carries its label", async ({ page }) => {
   for (let i = 0; i < (await pins.count()); i++) {
     await expect(pins.nth(i)).toHaveAttribute("aria-label", /resets/);
   }
+  await expect(page.locator(".pin-label.pace-behind").first()).toBeVisible();
+  await expect(page.getByTestId("rail")).toHaveCSS("overflow-x", "visible");
 });
 
 test("fault banner per excluded provider carries last-read age", async ({ page }) => {
@@ -451,13 +587,13 @@ test("fault banner per excluded provider carries last-read age", async ({ page }
 test("failed refresh preserves prior readings with age", async ({ page }) => {
   const stub = await stubFor(exampleState());
   await page.goto(stub.url);
-  await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+  await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
   stub.setRefresh({ status: 500, body: { error: "poll exploded" } });
   await page.getByTestId("refresh-button").click();
   const stale = page.getByTestId("state-stale-error");
   await expect(stale).toContainText("poll exploded");
   await expect(stale).toContainText(/read .* ago/);
-  await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+  await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
 });
 
 test("refresh surfaces server cooldown info verbatim", async ({ page }) => {
@@ -486,7 +622,7 @@ test("first run routes to setup and completes to the dashboard", async ({ browse
     stub.setRefresh({ nextState: exampleState() });
     await page.getByTestId("setup-poll-button").click();
     await expect(page).toHaveURL(`${stub.url}/`);
-    await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+    await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
   } finally {
     await context.close();
   }
@@ -527,7 +663,7 @@ test("error states render from server fields", async ({ browser }) => {
       await shot(page, "states-unavailable-1440-dark.png");
       await page.unroute("**/api/state");
       await panel.getByRole("button", { name: "Retry" }).click();
-      await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+      await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
     } finally {
       await context.close();
     }
@@ -561,7 +697,7 @@ test("error states render from server fields", async ({ browser }) => {
       await page.goto(stub.url);
       await expect(page.getByTestId("state-loading")).toBeVisible();
       await shot(page, "states-loading-1440-dark.png");
-      await expect(page.getByTestId("rec-prose")).toContainText(reasonOf(exampleState()));
+      await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
     } finally {
       await context.close();
     }

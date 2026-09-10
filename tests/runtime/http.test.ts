@@ -166,9 +166,21 @@ describe("http runtime context", () => {
     expect(calls).toBe(1);
   });
 
-  it("(e) POST /api/ingest stores quota fields only and no attempt", async () => {
+  it("POST /api/ingest is 404 unless experimental ingest is enabled", async () => {
     const db = buildFixtureDb();
     const app = buildApp(ctxWith(db));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ingest",
+      headers: { "x-quotacap-token": TOKEN },
+      payload: { provider: "p", text: "10% used" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("(e) POST /api/ingest stores quota fields only and no attempt", async () => {
+    const db = buildFixtureDb();
+    const app = buildApp(ctxWith(db, { ingestEnabled: true }));
 
     const anon = await app.inject({
       method: "POST",
@@ -219,7 +231,7 @@ describe("http runtime context", () => {
       enabledProviders: [],
       pollFn: async () => [],
     });
-    const app = buildApp(ctxWith(db, { coordinator, canWrite: () => owner }));
+    const app = buildApp(ctxWith(db, { coordinator, canWrite: () => owner, ingestEnabled: true }));
     const ingest = () =>
       app.inject({
         method: "POST",

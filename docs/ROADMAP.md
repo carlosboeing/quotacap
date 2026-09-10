@@ -2,7 +2,9 @@
 
 ## Recently shipped — Unreleased
 
-* Track D — terminal CLI (`status`, `advise`, `ingest`) and stdio MCP clients with labeled offline fallback and fixed-clock parity (#34)
+* Dashboard visual follow-up — settings connections, drawers, recommendation gap, and health/site footer matched to the signed-off concept
+* Hide manual ingest behind a default-off experimental flag (CLI, HTTP, public docs)
+* Track D — terminal CLI (`status`, `advise`) and stdio MCP clients with labeled offline fallback and fixed-clock parity (#34)
 * Track C — responsive React dashboard with decision-ranked provider rows, reset rail, pace bar, provider drawer, and theme switching (#33)
 * Track B — runtime coordinator, heartbeat-locked ownership, coalesced poller, and macOS login item service (#32)
 * Track A — store persistence with session percentage, attempts tracking, pacing engine, and shared snapshot projection (#31)

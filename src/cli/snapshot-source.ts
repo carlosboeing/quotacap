@@ -29,8 +29,7 @@ export class ClientError extends Error {
 // stderr label for labeled offline fallback (stdout stays a pure data contract).
 export const OFFLINE_LABEL = "offline: showing stored readings (service unreachable)";
 
-const NO_DATA_HINT =
-  "no quotas yet - start the service (quotacap web) or add one (quotacap ingest --provider <p> --text <t>)";
+const NO_DATA_HINT = "no quotas yet - start the service (quotacap web)";
 
 function unreadableMessage(dbPath: string): string {
   return `incompatible-schema: ${dbPath} is not a current QuotaCap database - start the service (quotacap web) to upgrade it`;
