@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.22
 
-- Dashboard: restyle settings connections, provider/advice drawers, recommendation spacing, and the health/site footer to the signed-off concept.
+- Dashboard: restyle settings connections, provider/advice drawers, recommendation spacing, and the health/site footer to the signed-off concept (#36).
 - Hide manual ingest (CLI command, HTTP route, and docs) behind a default-off experimental flag until the product design is settled.
 - CLI & MCP (Track D): Terminal commands (`status`, `advise`) and stdio MCP server over shared projection with labeled offline fallback and fixed-clock parity (#34).
 - Dashboard (Track C): Responsive Vite+React dashboard with decision-ranked rows, pace bar, reset rail, provider drawer, and theme switching (#33).
