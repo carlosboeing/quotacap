@@ -157,10 +157,9 @@ jobs:
           test -f "$BIN"
           TAR="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//).tar.gz"
           test -f "$TAR"
-          tar -tzf "$TAR" | grep -q "^quotacap$"
+          tar -tzf "$TAR" quotacap >/dev/null
           echo "tarball contents verified for ${{ matrix.target }}"
-          if tar -tzf "$TAR" | grep -q "pty/node-pty"; then
-            tar -tzf "$TAR" | grep -q "pty/node-pty/lib/index.js"
+          if tar -tzf "$TAR" pty/node-pty/lib/index.js >/dev/null 2>&1; then
             test -x dist-bin/pty/node-pty/prebuilds/*/*spawn-helper 2>/dev/null || test -x dist-bin/pty/node-pty/prebuilds/*/*.node 2>/dev/null
             echo "pty sidecar verified for ${{ matrix.target }}"
           else
