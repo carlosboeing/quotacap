@@ -131,14 +131,55 @@ export function badgeColor(badge: PaceBadge): string {
   }
 }
 
+export function fillToken(badge: PaceBadge): string {
+  switch (badge) {
+    case "On track":
+      return "var(--fill-ontrack)";
+    case "Behind pace":
+      return "var(--fill-behind)";
+    case "Ahead of pace":
+      return "var(--fill-ahead)";
+    case "Cap risk":
+      return "var(--fill-cap)";
+    case "Not reporting":
+      return "var(--fill-out)";
+  }
+}
+
+export function edgeToken(badge: PaceBadge): string {
+  switch (badge) {
+    case "On track":
+      return "var(--edge-ontrack)";
+    case "Behind pace":
+      return "var(--edge-behind)";
+    case "Ahead of pace":
+      return "var(--edge-ahead)";
+    case "Cap risk":
+      return "var(--edge-cap)";
+    case "Not reporting":
+      return "var(--edge-out)";
+  }
+}
+
+export function outKind(badge: PaceBadge): "behind" | "cap" | "ontrack" | "none" {
+  switch (badge) {
+    case "Behind pace":
+      return "behind";
+    case "Cap risk":
+      return "cap";
+    case "On track":
+      return "ontrack";
+    default:
+      return "none";
+  }
+}
+
 /**
- * Hatch fill for the projected-unused span. The badge colours are CSS custom
- * properties, so an alpha suffix would not parse: color-mix applies the
- * transparency instead.
+ * Hatch fill for unused quota. Ink mix (not an alpha suffix on a custom
+ * property) so the browser always paints a gradient.
  */
-export function hatchGradient(badge: PaceBadge): string {
-  const tint = `color-mix(in srgb, ${badgeColor(badge)} 33%, transparent)`;
-  return `repeating-linear-gradient(45deg, transparent 0 3px, ${tint} 3px 5px)`;
+export function hatchGradient(_badge?: PaceBadge): string {
+  return "repeating-linear-gradient(45deg, color-mix(in oklch, var(--ink) 20%, transparent) 0 1.5px, transparent 1.5px 7px)";
 }
 
 export function Badge({ provider }: { provider: ProviderView }) {
@@ -158,12 +199,7 @@ export function Badge({ provider }: { provider: ProviderView }) {
     <span
       data-testid="pace-badge"
       className={`pace ${badgeClass}`}
-      style={{
-        border: `1px solid ${badgeColor(badge)}`,
-        color: badgeColor(badge),
-      }}
     >
-      <span aria-hidden="true">● </span>
       {badge}
       {detail ? ` · ${detail}` : ""}
     </span>
@@ -174,38 +210,57 @@ export function Badge({ provider }: { provider: ProviderView }) {
  * Two-tier pacing rail: used fill, elapsed tick, projected-unused hatch.
  * Unknown pace shows fill and tick but no hatch and no numeric rate.
  */
-export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: string }) {
+export function PaceBar({
+  provider,
+  asOf,
+  showHeadline = true,
+}: {
+  provider: ProviderView;
+  asOf: string;
+  showHeadline?: boolean;
+}) {
   const badge = paceBadge(provider);
   const asOfMs = Date.parse(asOf);
-  const { usedPct, elapsedPct, projectedPct } = barGeometry(provider, asOfMs);
+  const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
+  const wastePct = provider.advisory?.wastePct;
   const showHatch =
-    projectedPct !== null && Number.isFinite(projectedPct) && projectedPct < 100 && projectedPct > usedPct;
+    wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
   const label = provider.quota
     ? `${provider.id}: ${provider.quota.usedPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
+  const forecast =
+    showHatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
+  const kind = outKind(badge);
   return (
     <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
+      {showHeadline && provider.quota && (
+        <div className="tline">
+          <span className="used">{provider.quota.usedPct}% used</span>
+          {forecast && kind !== "none" ? (
+            <span className={`out out-${kind}`}>→ {forecast}</span>
+          ) : forecast ? (
+            <span className="out out-none">→ {forecast}</span>
+          ) : null}
+        </div>
+      )}
       <div className="track">
         <div
           aria-hidden="true"
           className="fill"
           style={{
             width: `${usedPct}%`,
-            background: badgeColor(badge),
+            background: fillToken(badge),
+            ["--fill-edge" as string]: edgeToken(badge),
           }}
         />
         {showHatch && (
           <div
             aria-hidden="true"
             data-testid="pace-hatch"
+            className="band band-waste"
             style={{
-              position: "absolute",
-              left: `${projectedPct}%`,
-              top: 0,
-              bottom: 0,
-              right: 0,
-              background: hatchGradient(badge),
-              borderRadius: "0 999px 999px 0",
+              left: `${100 - wastePct!}%`,
+              width: `${wastePct}%`,
             }}
           />
         )}
@@ -215,16 +270,16 @@ export function PaceBar({ provider, asOf }: { provider: ProviderView; asOf: stri
             title="elapsed"
             className="mark"
             style={{
-              left: `calc(${elapsedPct}% - 1px)`,
+              left: `${elapsedPct}%`,
             }}
           />
         )}
       </div>
-      {elapsedPct !== null && (
-        <div className="tfoot">
-          <span>Time elapsed: {Math.round(elapsedPct)}%</span>
-        </div>
-      )}
+      <div className="tfoot">
+        <span>start</span>
+        <span>{elapsedPct !== null ? `Time elapsed: ${Math.round(elapsedPct)}%` : ""}</span>
+        <span>reset</span>
+      </div>
     </div>
   );
 }

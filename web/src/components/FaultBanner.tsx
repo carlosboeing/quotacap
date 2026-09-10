@@ -68,7 +68,7 @@ export function FaultBanner({
   const faulted = providers.filter((p) => p.enabled && p.exclusionReason !== null);
   if (faulted.length === 0) return null;
   return (
-    <div style={{ marginBottom: "var(--s4)" }}>
+    <div>
       {faulted.map((p) => {
         const age = ageDuration(p.ageMs);
         const repair = repairFor(p);
@@ -100,12 +100,12 @@ export function FaultBanner({
             </span>
             <button
               type="button"
-              className="btn btn-quiet btn-sm"
+              className="linkbtn"
               onClick={onRepoll}
               disabled={repolling}
               style={{ flex: "none", marginLeft: "auto" }}
             >
-              {repolling ? "Polling…" : "Re-poll"}
+              {repolling ? "Polling…" : `Check ${displayName(p.id)}`}
             </button>
           </div>
         );

@@ -5,7 +5,7 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { badgeColor, hatchGradient, paceBadge } from "../../web/src/components/PaceBar.js";
+import { hatchGradient, paceBadge } from "../../web/src/components/PaceBar.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -39,15 +39,11 @@ describe("pace badges", () => {
 });
 
 describe("projected-unused hatch", () => {
-  it("tints the badge colour with color-mix, never an alpha suffix", () => {
-    const badges = ["On track", "Behind pace", "Ahead of pace", "Cap risk", "Not reporting"] as const;
-    for (const badge of badges) {
-      const gradient = hatchGradient(badge);
-      // var(--warn)55 is not a colour, and one bad stop voids the gradient.
-      expect(gradient).not.toContain(`${badgeColor(badge)}55`);
-      expect(gradient).toContain(`color-mix(in srgb, ${badgeColor(badge)} 33%, transparent)`);
-      expect(gradient.startsWith("repeating-linear-gradient(45deg,")).toBe(true);
-    }
+  it("paints an ink mix gradient, never an alpha suffix on a custom property", () => {
+    const gradient = hatchGradient("Behind pace");
+    expect(gradient).not.toMatch(/var\(--[a-z-]+\)[0-9]+/);
+    expect(gradient).toContain("color-mix(in oklch, var(--ink) 20%, transparent)");
+    expect(gradient.startsWith("repeating-linear-gradient(45deg,")).toBe(true);
   });
 });
 

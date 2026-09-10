@@ -91,10 +91,10 @@ export function SettingsDrawer({
       >
         <div className="drawer-head">
           <div style={{ flex: 1 }}>
-            <h2 id={titleId} style={{ fontSize: "var(--t-5)", letterSpacing: "-0.015em", margin: "0 0 2px" }}>
+            <h2 id={titleId} style={{ margin: "0 0 2px" }}>
               Settings &amp; Configuration
             </h2>
-            <span className="sub" style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)" }}>
+            <span className="sub">
               Connected provider adapters, manual ingest, and CLI prompt integration.
             </span>
           </div>
@@ -130,7 +130,7 @@ export function SettingsDrawer({
               key={t.id}
               type="button"
               role="tab"
-              className={tab === t.id ? "is-active" : ""}
+              className={`settings-tab${tab === t.id ? " is-active" : ""}`}
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               style={{ flex: 1, justifyContent: "center" }}

@@ -3,8 +3,8 @@ import { describe, it, expect } from "vitest";
 import { effectiveDensity } from "../../web/src/components/SubscriptionList.js";
 
 describe("responsive rules", () => {
-  it("forces cards on narrow viewports and restores the choice when wide", () => {
-    expect(effectiveDensity("table", true)).toBe("cards");
+  it("keeps the Cards|Table choice at every width, matching the prototype", () => {
+    expect(effectiveDensity("table", true)).toBe("table");
     expect(effectiveDensity("table", false)).toBe("table");
     expect(effectiveDensity("cards", true)).toBe("cards");
   });
@@ -15,5 +15,8 @@ describe("responsive rules", () => {
     expect(css).toMatch(/\.rail-scroll/);
     expect(css).toMatch(/\.table-scroll/);
     expect(css).toMatch(/min-height: 24px/);
+    expect(css).toMatch(
+      /main > \.dashboard:first-child > section:first-of-type > \.section-head/
+    );
   });
 });

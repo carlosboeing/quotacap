@@ -210,13 +210,47 @@ function ClusterPopover({
   );
 }
 
+function tzAbbrev(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function pinPace(provider: ProviderView | undefined): { cls: string; color: string } {
+  if (!provider) return { cls: "pace-out", color: "var(--ink-soft)" };
+  switch (paceBadge(provider)) {
+    case "Behind pace":
+      return { cls: "pace-behind", color: "var(--warn)" };
+    case "On track":
+      return { cls: "pace-ontrack", color: "var(--good)" };
+    case "Ahead of pace":
+      return { cls: "pace-ahead", color: "var(--ahead)" };
+    case "Cap risk":
+      return { cls: "pace-cap", color: "var(--danger)" };
+    default:
+      return { cls: "pace-out", color: "var(--ink-soft)" };
+  }
+}
+
+function pinWhen(resetsAt: string): string {
+  const ms = Date.parse(resetsAt);
+  if (!Number.isFinite(ms)) return "";
+  const when = new Date(ms);
+  const day = when.toLocaleDateString(undefined, { weekday: "short" });
+  const time = when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day} ${time}`;
+}
+
 function dayLabels(asOfMs: number): string[] {
-  return Array.from({ length: RAIL_DAYS }, (_, i) =>
-    new Date(asOfMs + i * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
-      weekday: "short",
-      day: "numeric",
-    })
-  );
+  return Array.from({ length: RAIL_DAYS }, (_, i) => {
+    const d = new Date(asOfMs + i * 24 * 60 * 60 * 1000);
+    const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+    const day = d.toLocaleDateString(undefined, { day: "numeric" });
+    return `${weekday} ${day}`;
+  });
 }
 
 export function ResetRail({
@@ -242,7 +276,7 @@ export function ResetRail({
       <div className="section-head">
         <h2 id="resets-h">Upcoming resets</h2>
         <span className="note">
-          Next 7 days · hover pin for usage · click for details
+          Next 7 days · hover pin for usage · click for details · {tzAbbrev()}
           {placement.overflow.length > 0 && (
             <span
               data-testid="rail-overflow"
@@ -257,7 +291,7 @@ export function ResetRail({
 
       <div
         data-testid="rail"
-        className="rail-scroller rail-scroll"
+        className="rail-scroller"
         tabIndex={0}
         role="region"
         aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}
@@ -276,12 +310,16 @@ export function ResetRail({
 
           {placement.placed.map((pin) => {
             const provider = byId.get(pin.id);
-            const when = provider ? resetCountdown(provider, asOfMs) : "";
+            const when = provider?.quota ? pinWhen(provider.quota.resetsAt) : provider ? resetCountdown(provider, asOfMs) : "";
             const pace = provider ? paceBadge(provider) : "";
             const left = provider?.quota ? timeLeft(provider.quota.resetsAt, asOfMs) : null;
             const name = displayName(pin.id);
-            const alignClass = pin.positionPct < 8 ? "pin-start" : pin.positionPct > 92 ? "pin-end" : "";
+            const { cls: paceCls, color: paceColor } = pinPace(provider);
+            const alignClass = pin.positionPct < 12 ? "pin-start" : pin.positionPct > 88 ? "pin-end" : "";
             const tierClass = pin.tier > 0 ? `tier${pin.tier + 1}` : "tier1";
+            const pinBorder = {
+              ["--pin-border" as string]: `color-mix(in oklch, ${paceColor} 45%, var(--line))`,
+            };
             return (
               <button
                 key={pin.id}
@@ -291,22 +329,17 @@ export function ResetRail({
                 style={
                   {
                     left: `${pin.positionPct}%`,
-                    "--dot-color": `var(--p-${pin.id}, var(--line-strong))`,
+                    "--dot-color": paceColor,
                   } as React.CSSProperties
                 }
                 aria-label={`${name}: ${pace}, resets ${when}`}
-                title={
-                  provider?.quota
-                    ? `${provider.quota.usedPct}% used · ${left ? `${left} left` : when}${pin.estimated ? " (est.)" : ""}`
-                    : when
-                }
                 onClick={() => onSelectProvider(pin.id)}
               >
                 {pin.band === "above" ? (
                   <>
                     <span className="pin-when">{when}</span>
-                    <span className="pin-label">
-                      {name}
+                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                      {name.split(" ")[0]}
                       {pin.estimated ? " (est.)" : ""}
                     </span>
                     <span className="pin-stem" />
@@ -316,8 +349,8 @@ export function ResetRail({
                   <>
                     <span className="pin-dot" />
                     <span className="pin-stem" />
-                    <span className="pin-label">
-                      {name}
+                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                      {name.split(" ")[0]}
                       {pin.estimated ? " (est.)" : ""}
                     </span>
                     <span className="pin-when">{when}</span>
@@ -336,7 +369,7 @@ export function ResetRail({
           })}
 
           {placement.clusters.map((cluster, index) => {
-            const alignClass = cluster.positionPct < 8 ? "pin-start" : cluster.positionPct > 92 ? "pin-end" : "";
+            const alignClass = cluster.positionPct < 12 ? "pin-start" : cluster.positionPct > 88 ? "pin-end" : "";
             const tierClass = cluster.tier > 0 ? `tier${cluster.tier + 1}` : "tier1";
             return (
               <button

@@ -14,10 +14,11 @@ export function PacingLegend() {
     <div style={{ position: "relative", display: "inline-block" }}>
       <button
         type="button"
+        className="btn btn-quiet btn-sm"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        Legend ▾
+        Pacing legend
       </button>
       {open && (
         <div
@@ -34,7 +35,7 @@ export function PacingLegend() {
             minWidth: 260,
           }}
         >
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, font: "var(--t-2)" }}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, fontSize: "var(--t-2)" }}>
             {STATES.map((s) => (
               <li key={s.label}>
                 <span aria-hidden="true" style={{ color: s.color }}>
@@ -44,7 +45,7 @@ export function PacingLegend() {
               </li>
             ))}
           </ul>
-          <p style={{ font: "var(--t-2)", marginBottom: 0 }}>
+          <p style={{ fontSize: "var(--t-2)", marginBottom: 0 }}>
             Rail: <span aria-hidden="true">█</span> used · <span aria-hidden="true">│</span> elapsed ·{" "}
             <span aria-hidden="true">░</span> unused quota
           </p>

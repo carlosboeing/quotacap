@@ -174,7 +174,7 @@ function SamplePreview() {
           <span>reset</span>
         </div>
       </div>
-      <p style={{ font: "var(--t-2)", color: "var(--ink-soft)", margin: "var(--s3) 0 0" }}>
+      <p style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)", margin: "var(--s3) 0 0" }}>
         Switch to Kimi next — 67% waste in 1.2d
       </p>
     </div>

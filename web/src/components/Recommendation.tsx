@@ -6,8 +6,10 @@ import type {
   RecommendationView,
   Urgency,
 } from "../state.js";
+import { ageLabel } from "../state.js";
 import { displayName } from "../names.js";
 import { timeLeft } from "./PaceBar.js";
+import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export type Lane = "use-more" | "ease-off";
 
@@ -91,15 +93,8 @@ function LaneSection({
           const name = displayName(m.provider);
           return (
             <div key={m.provider} className="rsub">
-              <span
-                className="sq"
-                style={{
-                  background: `var(--p-${m.provider}, var(--surface-raised))`,
-                  color: "#fff",
-                }}
-                aria-hidden="true"
-              >
-                {name.charAt(0)}
+              <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
+                <ProviderIcon id={m.provider} title={name} size={13} />
               </span>
               <div className="rnm-group">
                 <button
@@ -112,9 +107,17 @@ function LaneSection({
                 </button>
               </div>
               <span className="rnum">
-                {quota ? <b>{quota.usedPct}%</b> : ""}
-                {quota && left ? " · " : ""}
-                {left ? `${left} left` : ""}
+                {quota ? (
+                  <>
+                    <b>{quota.usedPct}%</b> used
+                    {left ? (
+                      <>
+                        {" · "}
+                        <b>{left}</b> left
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
               </span>
             </div>
           );
@@ -125,28 +128,47 @@ function LaneSection({
 }
 
 /**
- * Lead prose plus USE MORE / EASE OFF lanes. Prints the server reason
- * verbatim and never computes a forecast. No advice-engine drawer: lane
- * names open the provider drawer instead.
+ * Lead prose plus USE MORE / EASE OFF lanes. View advice opens the
+ * advice drawer. Lane names still open the provider drawer.
  */
 export function Recommendation({
   recommendation,
   providers,
   asOf,
   onSelectProvider,
+  onViewAdvice,
 }: {
   recommendation: RecommendationView;
   providers: ProviderView[];
   asOf: string;
   onSelectProvider?: (id: string) => void;
+  onViewAdvice?: () => void;
 }) {
   const { useMore, easeOff } = lanesFor(recommendation.advisories, providers);
   const asOfMs = Date.parse(asOf);
   const measuring = recommendation.use !== "none" && recommendation.wastePct === null;
   const isClear = recommendation.use === "none" && useMore.length === 0 && easeOff.length === 0;
+  const tracked = providers.filter((p) => p.enabled && p.id !== "manual").length;
+  const easeTint = easeOff.some((a) => a.status === "at risk") ? "tint-cap" : "tint-ahead";
+  const pick = providers.find((p) => p.id === recommendation.use);
+  const pickLeft = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
+  const openAdvice = () => {
+    onViewAdvice?.();
+  };
+
+  const head = (
+    <div className="section-head">
+      <h2>Quota Advice & Pacing</h2>
+      <span className="note">
+        {tracked} tracked · {ageLabel(asOf)}
+      </span>
+    </div>
+  );
 
   if (isClear) {
     return (
+      <section aria-label="Quota advice and pacing">
+        {head}
       <section
         data-testid="recommendation"
         aria-label="Recommendation"
@@ -170,10 +192,13 @@ export function Recommendation({
           <span data-testid="rec-prose">{recommendation.reason}</span>
         </div>
       </section>
+      </section>
     );
   }
 
   return (
+    <section aria-label="Quota advice and pacing">
+      {head}
     <section
       data-testid="recommendation"
       aria-label="Recommendation"
@@ -192,7 +217,7 @@ export function Recommendation({
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
             </svg>
             Recommendation
           </span>
@@ -202,7 +227,16 @@ export function Recommendation({
             </p>
           ) : (
             <p className="rec-advice-prose" data-testid="rec-prose">
-              Switch to <strong>{displayName(recommendation.use)}</strong> next — {recommendation.reason}
+              Switch to <strong>{displayName(recommendation.use)}</strong> next
+              {recommendation.wastePct !== null ? (
+                <>
+                  {" — "}
+                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused quota forecast to expire in{" "}
+                  <strong>{pickLeft ?? recommendation.reason}</strong>.
+                </>
+              ) : (
+                <> — {recommendation.reason}</>
+              )}
             </p>
           )}
           {measuring && (
@@ -219,17 +253,31 @@ export function Recommendation({
             </span>
           )}
         </div>
+        {recommendation.use !== "none" && (
+          <button
+            type="button"
+            className="btn"
+            data-testid="view-advice"
+            title="Open recommended provider"
+            onClick={openAdvice}
+          >
+            View advice
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
       </div>
       {(useMore.length > 0 || easeOff.length > 0) && (
         <div className="recB">
           <LaneSection
             testId="lane-use-more"
-            label="USE MORE"
-            tintClass="tint-ahead"
-            laneClass="l-ahead"
+            label="Use more"
+            tintClass="tint-behind"
+            laneClass="l-behind"
             icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="18 15 12 9 6 15" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20V5M6 11l6-6 6 6" />
               </svg>
             }
             members={useMore}
@@ -239,12 +287,12 @@ export function Recommendation({
           />
           <LaneSection
             testId="lane-ease-off"
-            label="EASE OFF"
-            tintClass="tint-behind"
-            laneClass="l-behind"
+            label="Ease off"
+            tintClass={easeTint}
+            laneClass={easeTint === "tint-cap" ? "l-cap" : "l-ahead"}
             icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 4v15M6 13l6 6 6-6" />
               </svg>
             }
             members={easeOff}
@@ -254,6 +302,7 @@ export function Recommendation({
           />
         </div>
       )}
+    </section>
     </section>
   );
 }

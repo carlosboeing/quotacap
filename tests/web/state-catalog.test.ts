@@ -125,9 +125,11 @@ describe("state catalog: server-rendered components", () => {
         asOf: s.asOf,
       })
     );
-    expect(html).toContain(s.recommendation.reason);
+    expect(html).toContain(String(Math.round(s.recommendation.wastePct as number)));
+    expect(html).toContain("unused quota forecast");
     expect(html).toContain("lane-use-more");
-    expect(html).toContain("USE MORE");
+    expect(html).toContain("Use more");
+    expect(html).toMatch(/7(<!-- -->)? tracked/);
   });
   it("renders badges, counts, and unknown pace without predicted waste", () => {
     const s = toViewModel(JSON.parse(unknownPaceStateSnapshotJson));
@@ -142,7 +144,7 @@ describe("state catalog: server-rendered components", () => {
     expect(html).toContain("Behind pace");
     expect(html).toContain("Not reporting");
     expect(html).toContain("On track");
-    expect(html).toMatch(/7(<!-- -->)? tracked/);
+    expect(html).toContain("used in ranking");
     expect(html).toContain("Measuring pace");
     expect(html).not.toContain("predicted");
   });
@@ -166,7 +168,7 @@ describe("state catalog: server-rendered components", () => {
       })
     );
     expect(header).toContain('data-state="live"');
-    expect(header).toContain("Daemon active");
+    expect(header).toContain("daemon live");
     const banners = renderToString(
       React.createElement(FaultBanner, {
         providers: s.providers,

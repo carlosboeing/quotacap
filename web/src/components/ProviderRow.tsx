@@ -26,61 +26,60 @@ export function ProviderRow({
   const evidence = evidenceLabels(provider.evidence);
   const name = displayName(provider.id);
   return (
-    <tr
+    <div
       data-testid={`provider-row-${provider.id}`}
+      className={`lrow ${recommended ? "is-recommended is-top-pick" : ""}`}
       onClick={() => onSelect(provider.id)}
-      className={`lrow ${recommended ? "is-recommended" : ""}`}
-      style={{ cursor: "pointer" }}
     >
-      <td>
-        <div className="prov">
-          <span
-            className="dot"
-            style={{ background: `var(--p-${provider.id}, var(--surface-raised))` }}
-            aria-hidden="true"
-          />
-          <div>
-            <button
-              type="button"
-              className="rnm"
-              style={{ fontWeight: 600 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(provider.id);
-              }}
-            >
-              {recommended ? "★ " : ""}
-              {name}
-            </button>
-            {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-              <div className="cell-s">Session use {quota.sessionPct}%</div>
+      <div className="prov" data-label="Provider">
+        <span
+          className="dot"
+          style={{ background: `var(--p-${provider.id.split(":")[0]}, var(--surface-raised))` }}
+          aria-hidden="true"
+        />
+        <span>
+          <span className="nm">
+            {name}
+            {recommended && (
+              <span className="rec-icon" title="Recommended for next session" role="img" aria-label="recommended">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+                </svg>
+              </span>
             )}
-          </div>
-        </div>
-      </td>
-      <td>
-        {quota ? (
-          <div>
-            <div className="cell-b">{quota.usedPct}%</div>
-            <PaceBar provider={provider} asOf={asOf} />
-          </div>
-        ) : (
-          "—"
-        )}
-      </td>
-      <td className="cell-b">{resetCountdown(provider, asOfMs)}</td>
-      <td>
+          </span>
+          {quota?.plan && <span className="pl">{quota.plan}</span>}
+          {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
+            <span className="src">Session use {quota.sessionPct}%</span>
+          )}
+        </span>
+      </div>
+      <div data-label="Used vs elapsed">
+        {quota ? <PaceBar provider={provider} asOf={asOf} /> : "—"}
+      </div>
+      <div data-label="Resets in">
+        <span className="cell-b">{resetCountdown(provider, asOfMs)}</span>
+      </div>
+      <div data-label="Pace">
         <Badge provider={provider} />
-      </td>
-      <td>
-        <div className="cell-s" style={{ fontWeight: 500, color: "var(--ink)" }}>
-          {advisory && advisory.burnRate !== null
-            ? `${advisory.burnRate.toFixed(1)}%/d of ${advisory.idealRate.toFixed(1)}%/d · `
-            : ""}
-          {forecastLine(provider)}
-        </div>
+        {advisory && advisory.burnRate !== null && (
+          <div className="cell-s" style={{ marginTop: 2 }}>
+            Pace {advisory.burnRate.toFixed(1)}%/d · needed {advisory.idealRate.toFixed(1)}%/d
+          </div>
+        )}
         {evidence.length > 0 && <div className="cell-s" style={{ marginTop: 2 }}>{evidence.join(" · ")}</div>}
-      </td>
-    </tr>
+      </div>
+      <button
+        type="button"
+        className="rowbtn"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(provider.id);
+        }}
+      >
+        Inspect
+      </button>
+      <span className="sr-only">{forecastLine(provider)}</span>
+    </div>
   );
 }

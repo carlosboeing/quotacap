@@ -9,6 +9,7 @@ import type {
 import { ageDuration } from "../state.js";
 import { displayName } from "../names.js";
 import { Badge, evidenceLabels, paceBadge, type PaceBadge } from "./PaceBar.js";
+import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export interface DrawerModel {
   id: string;
@@ -195,19 +196,13 @@ export function ProviderDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="drawer-head">
-          <span
-            className="picon"
-            style={{
-              background: `color-mix(in oklch, var(--p-${provider.id.split(":")[0]}, var(--accent)) 16%, transparent)`,
-              color: `var(--p-${provider.id.split(":")[0]}, var(--accent))`,
-            }}
-          >
-            {model.name.charAt(0)}
+          <span className="picon" style={providerTint(provider.id)}>
+            <ProviderIcon id={provider.id} title={model.name} />
           </span>
           <div style={{ flex: 1 }}>
             <h2 id={titleId}>{model.name}</h2>
-            <span className="sub" style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)" }}>
-              {provider.id}
+            <span className="sub">
+              {provider.quota?.plan ? `${provider.quota.plan} · ${provider.id}` : provider.id}
             </span>
           </div>
           <Badge provider={provider} />
@@ -255,7 +250,7 @@ export function ProviderDrawer({
         <section className="dsec" aria-label="Pacing">
           <h3>Pacing</h3>
           {model.paceSource === "unknown" || model.burnRate === null ? (
-            <p style={{ font: "var(--t-3)", color: "var(--ink-soft)", margin: 0 }}>
+            <p style={{ fontSize: "var(--t-3)", color: "var(--ink-soft)", margin: 0 }}>
               Measuring pace — no rate yet.
             </p>
           ) : (
@@ -283,7 +278,7 @@ export function ProviderDrawer({
             </dl>
           )}
           {model.daysLeft !== null && (
-            <p style={{ font: "var(--t-2)", color: "var(--ink-soft)", marginTop: "var(--s3)", marginBottom: 0 }}>
+            <p style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)", marginTop: "var(--s3)", marginBottom: 0 }}>
               {model.remaining !== null ? `${Math.round(model.remaining)}% remains · ` : ""}
               {model.daysLeft.toFixed(1)}d left
             </p>
@@ -292,7 +287,7 @@ export function ProviderDrawer({
 
         <section className="dsec" aria-label="Window">
           <h3>Window</h3>
-          <p style={{ font: "var(--t-2)", margin: "0 0 var(--s2)" }}>
+          <p style={{ fontSize: "var(--t-2)", margin: "0 0 var(--s2)" }}>
             {formatDateTime(model.periodStart)} → {formatDateTime(model.resetsAt)}
             {model.estimatedReset ? " (est.)" : ""}
           </p>
