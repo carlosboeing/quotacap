@@ -309,7 +309,7 @@ export function ProviderDrawer({
   const planBits = [provider.quota?.plan, sourceLabel(provider.quota?.source)].filter(
     (b) => b && b !== "unknown"
   );
-  const sub = planBits.length ? planBits.join(" · ") : sourceLabel(provider.quota?.source);
+  const sub = planBits.join(" · ");
 
   return (
     <>
@@ -422,9 +422,12 @@ export function ProviderDrawer({
               className="btn btn-quiet btn-sm"
               type="button"
               onClick={() => {
-                void navigator.clipboard?.writeText(recordJson);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
+                navigator.clipboard?.writeText(recordJson)
+                  .then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  })
+                  .catch(() => {});
               }}
             >
               {copied ? "Copied!" : "Copy JSON"}

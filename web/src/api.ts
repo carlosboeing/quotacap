@@ -87,39 +87,6 @@ export function refreshMessage(body: unknown): string | null {
   return null;
 }
 
-export interface IngestResult {
-  ok: boolean;
-  status: number;
-  /** Server message verbatim when the server sends one. */
-  message: string | null;
-  raw: unknown;
-}
-
-/**
- * Manual usage ingest. The input text is sent unparsed; the server validates
- * and stores it. Server validation errors surface verbatim via StateHttpError.
- */
-export async function postIngest(provider: string, text: string): Promise<IngestResult> {
-  const token = await fetchToken();
-  let r: Response;
-  try {
-    r = await fetch("/api/ingest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-QuotaCap-Token": token },
-      body: JSON.stringify({ provider, text }),
-    });
-  } catch (e) {
-    throw new StateNetworkError("/api/ingest", e);
-  }
-  let raw: unknown = null;
-  try {
-    raw = await r.json();
-  } catch {
-    raw = null;
-  }
-  if (!r.ok) throw new StateHttpError(r.status, refreshMessage(raw) ?? r.statusText ?? `HTTP ${r.status}`);
-  return { ok: r.ok, status: r.status, message: refreshMessage(raw), raw };
-}
 
 /** Manual refresh. Callers preserve prior readings when this throws. */
 export async function triggerRefresh(): Promise<RefreshResult> {

@@ -5,7 +5,7 @@ const STATES: Array<{ label: string; cls: string; meaning: string }> = [
   { label: "Behind pace", cls: "pace-behind", meaning: "Burning slow; risk of unused quota waste" },
   { label: "Ahead of pace", cls: "pace-ahead", meaning: "Burning faster than time; monitor usage" },
   { label: "Cap risk", cls: "pace-cap", meaning: "Will hit cap before reset window closes" },
-  { label: "Not reporting", cls: "pace-out", meaning: "Adapter failed or credential stale" },
+  { label: "Not reporting", cls: "pace-out", meaning: "No usable reading; excluded from ranking" },
 ];
 
 export function PacingLegend() {

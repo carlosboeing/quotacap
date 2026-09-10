@@ -40,9 +40,9 @@ describe("pace badges", () => {
 
 describe("reset clock", () => {
   it("formats weekday and 24h time with a space, not a middot", () => {
-    expect(resetClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
-    expect(resetClock("2026-09-10T21:00:00+10:00")).not.toContain("·");
-    expect(resetClock("not-a-date")).toBeNull();
+    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).not.toContain("·");
+    expect(resetClock("not-a-date", "en-US")).toBeNull();
   });
 });
 

@@ -59,12 +59,12 @@ export function isEstimated(provider: ProviderView): boolean {
 }
 
 /** Weekday plus 24h clock, e.g. "Thu 21:00". Null when unparseable. */
-export function resetClock(resetsAt: string): string | null {
+export function resetClock(resetsAt: string, locale?: string): string | null {
   const ms = Date.parse(resetsAt);
   if (!Number.isFinite(ms)) return null;
   const when = new Date(ms);
-  const day = when.toLocaleDateString(undefined, { weekday: "short" });
-  const time = when.toLocaleTimeString(undefined, {
+  const day = when.toLocaleDateString(locale, { weekday: "short" });
+  const time = when.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -107,8 +107,6 @@ export function resetCountdown(provider: ProviderView, asOfMs: number): string {
 export interface BarGeometry {
   usedPct: number;
   elapsedPct: number | null;
-  /** Projected window-end position; null when pace is unknown. */
-  projectedPct: number | null;
 }
 
 /** Bar geometry from server timestamps and percents. Presentation only. */
@@ -122,12 +120,7 @@ export function barGeometry(provider: ProviderView, asOfMs: number): BarGeometry
       elapsedPct = Math.min(1, Math.max(0, (asOfMs - startMs) / (resetMs - startMs))) * 100;
     }
   }
-  let projectedPct: number | null = null;
-  const advisory = provider.advisory;
-  if (provider.quota && advisory && advisory.burnRate !== null && Number.isFinite(advisory.daysLeft)) {
-    projectedPct = usedPct + advisory.burnRate * advisory.daysLeft;
-  }
-  return { usedPct, elapsedPct, projectedPct };
+  return { usedPct, elapsedPct };
 }
 
 export function badgeColor(badge: PaceBadge): string {

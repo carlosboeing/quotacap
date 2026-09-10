@@ -29,15 +29,15 @@ export function DaemonPanel() {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
           <span style={{ color: "var(--ink-soft)" }}>Polling Cadence</span>
-          <span>Every 15 minutes</span>
+          <span>Every 15 minutes (default)</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
           <span style={{ color: "var(--ink-soft)" }}>Storage Engine</span>
-          <span>SQLite (WAL mode)</span>
+          <span>SQLite</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
           <span style={{ color: "var(--ink-soft)" }}>Database File</span>
-          <code>~/.quotacap/quotas.db</code>
+          <code>~/.quotacap/quotacap.db</code>
         </div>
       </div>
 

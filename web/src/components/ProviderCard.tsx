@@ -99,16 +99,7 @@ export function ProviderCard({
 
       <div className="pcard-foot">
         <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
-        <button
-          type="button"
-          className="rowbtn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(provider.id);
-          }}
-        >
-          Inspect
-        </button>
+        <span className="rowbtn" aria-hidden="true">Inspect</span>
       </div>
     </article>
   );

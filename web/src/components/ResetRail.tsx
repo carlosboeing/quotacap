@@ -126,17 +126,7 @@ export function placePins(rows: RailRow[], asOf: Date): PinPlacement {
   return { placed, clusters, overflow, invalid };
 }
 
-function pinStyle(positionPct: number, band: RailBand, tier: number): React.CSSProperties {
-  return {
-    position: "absolute",
-    left: `${positionPct}%`,
-    transform: `translateX(-${positionPct}%)`,
-    top: band === "above" ? undefined : "50%",
-    bottom: band === "above" ? "50%" : undefined,
-    marginBottom: band === "above" ? 10 + tier * 22 : undefined,
-    marginTop: band === "below" ? 10 + tier * 22 : undefined,
-  };
-}
+
 
 function ClusterPopover({
   cluster,
@@ -291,9 +281,9 @@ export function ResetRail({
         role="region"
         aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}
       >
-        <div className="rail rail-inner">
+        <div className="rail">
           <div className="rail-grid" aria-hidden="true">
-            {Array.from({ length: 7 }, (_, i) => (
+            {Array.from({ length: RAIL_DAYS }, (_, i) => (
               <span key={i} />
             ))}
           </div>

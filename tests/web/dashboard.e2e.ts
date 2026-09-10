@@ -180,7 +180,7 @@ function spreadResetState(): any {
   };
 }
 
-test("prints the server recommendation verbatim", async ({ page }) => {
+test("renders recommendation advice with forecast waste percentage", async ({ page }) => {
   const stub = await stubFor(exampleState());
   await page.goto(stub.url);
   await expect(page.getByTestId("rec-prose")).toContainText(recWaste(exampleState()));
@@ -257,7 +257,7 @@ test("dashboard chrome matches the signed-off section structure", async ({ brows
   }
 });
 
-test("settings tabs and provider drawer capture every operational surface", async ({ browser }) => {
+test("settings tabs and advice drawer capture every operational surface", async ({ browser }) => {
   const stub = await stubFor(exampleState());
   for (const theme of THEMES) {
     const { context, page } = await themedPage(browser, theme, 1440);
@@ -518,14 +518,15 @@ test("keyboard-only traversal reaches rail pins, sort, density, and drawers", as
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("provider-drawer")).toBeVisible();
   await page.keyboard.press("Escape");
-  // Sort changes order from the keyboard via type-ahead.
-  // (Arrow keys do not drive native selects in headless shell; typing does.)
+  // Sort changes order from the keyboard via the custom SortDropdown.
   await expect(page.getByTestId("cards-grid").locator("article").first()).toHaveAttribute(
     "data-testid",
     "provider-card-my-plan"
   );
-  await page.getByLabel(/Sort/).click();
-  await page.getByRole("option", { name: "Highest Usage" }).click();
+  await page.getByLabel(/Sort/).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("option", { name: "Highest Usage" }).focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByTestId("cards-grid").locator("article").first()).toHaveAttribute(
     "data-testid",
     "provider-card-agy:3p"

@@ -226,13 +226,13 @@ export function SubscriptionList({
         </div>
       ) : (
         <div className="table-scroll">
-          <div data-testid="ledger-table" className="ledger">
-            <div className="lrow lhead" aria-hidden="true">
-              <span>Provider</span>
-              <span>Used vs elapsed</span>
-              <span>Resets in</span>
-              <span>Pace</span>
-              <span />
+          <div data-testid="ledger-table" className="ledger" role="table">
+            <div className="lrow lhead" role="row">
+              <span role="columnheader">Provider</span>
+              <span role="columnheader">Used vs elapsed</span>
+              <span role="columnheader">Resets in</span>
+              <span role="columnheader">Pace</span>
+              <span role="columnheader" />
             </div>
             {enabled.map((p) => (
               <ProviderRow

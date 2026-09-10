@@ -551,10 +551,13 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   text-align: left;
   transition: background 120ms ease, color 120ms ease;
 }
-.sort-option:hover,
+.sort-option:hover {
+  background: color-mix(in oklch, var(--ink) 6%, transparent);
+}
 .sort-option:focus-visible {
   background: color-mix(in oklch, var(--ink) 6%, transparent);
-  outline: none;
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .sort-option.is-active {
   color: var(--focus);
@@ -698,10 +701,6 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   flex: none;
   font-weight: 700;
   font-size: 11px;
-}
-.rsub .sq svg {
-  width: 13px;
-  height: 13px;
 }
 .rsub .sq svg {
   width: 13px;
@@ -2132,11 +2131,6 @@ footer.health .dot {
   gap: var(--s4);
   grid-template-columns: 1fr;
 }
-@media (min-width: 768px) {
-  .rail-scroll {
-    overflow-x: auto;
-  }
-}
 @media (min-width: 901px) {
   .cards,
   .cards-grid {
@@ -2144,11 +2138,6 @@ footer.health .dot {
   }
 }
 
-.rail-wrap {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-}
 
 .table-scroll {
   overflow-x: auto;
@@ -2157,11 +2146,6 @@ footer.health .dot {
   -webkit-overflow-scrolling: touch;
 }
 
-.rail-scroll {
-  overflow: visible;
-  max-width: 100%;
-  min-width: 0;
-}
 
 [data-testid="pin"],
 [data-testid="cluster-pin"] {

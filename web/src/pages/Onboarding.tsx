@@ -28,7 +28,7 @@ export function readiness(provider: ProviderView): Readiness {
   if (!isKnownProvider(provider.id)) {
     return {
       status: "Sign in first",
-      detail: `QuotaCap has no live adapter for ${name}.`,
+      detail: `QuotaCap has no live adapter for ${name}. Use manual ingest via the CLI to add readings.`,
     };
   }
   if (provider.lastAttempt?.failureCategory === "auth") {
@@ -216,21 +216,21 @@ export function Onboarding({
 
       <div className="setup">
         <ol className="steps">
-          <li className={step === 1 ? "is-now" : ""}>
+          <li className={step === 1 ? "is-now" : ""} aria-current={step === 1 ? "step" : undefined}>
             <span className="num">1</span>
             <span>
               <span className="t">Detect</span>
               <span className="d">Find installed coding tools</span>
             </span>
           </li>
-          <li className={step === 2 ? "is-now" : ""}>
+          <li className={step === 2 ? "is-now" : ""} aria-current={step === 2 ? "step" : undefined}>
             <span className="num">2</span>
             <span>
               <span className="t">Review</span>
               <span className="d">Check what each adapter reads</span>
             </span>
           </li>
-          <li className={step === 3 ? "is-now" : ""}>
+          <li className={step === 3 ? "is-now" : ""} aria-current={step === 3 ? "step" : undefined}>
             <span className="num">3</span>
             <span>
               <span className="t">Start</span>

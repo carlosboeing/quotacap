@@ -231,8 +231,8 @@ export function Recommendation({
               {recommendation.wastePct !== null ? (
                 <>
                   {" — "}
-                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused quota forecast to expire in{" "}
-                  <strong>{pickLeft ?? recommendation.reason}</strong>.
+                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused quota forecast
+                  {pickLeft ? <> to expire in <strong>{pickLeft}</strong></> : null}.
                 </>
               ) : (
                 <> — {recommendation.reason}</>
