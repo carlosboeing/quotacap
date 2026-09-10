@@ -31,7 +31,7 @@ export async function pollAll(enabled: string[], opts?: PollAllOptions){
     const a = adapters[id];
     if (!a) return Promise.reject(new Error(`unknown adapter ${id}`));
     // manual adapter has no poll capability — skip without degraded
-    if (id === "manual") return Promise.reject(new Error("manual skipped — use ingest"));
+    if (id === "manual") return Promise.reject(new Error("manual skipped"));
     const timeout = opts?.timeouts?.[id] ?? ADAPTER_TIMEOUTS[id] ?? 8000;
     // One controller per adapter: a timeout aborts only that adapter's
     // children; the signal clears when its job settles.

@@ -6,13 +6,16 @@ import { stripWarnings } from "./helpers.js";
 const exec = promisify(execFile);
 
 // Contract shell: help lists every command, version is byte-identical.
-// Command behavior lives in the per-command suites (status/advise/ingest).
+// Command behavior lives in the per-command suites (status/advise).
 describe("cli contract", () => {
   it("--help lists all commands", async () => {
-    const { stdout } = await exec("node", ["dist/cli/index.js", "--help"]);
-    for (const cmd of ["status", "advise", "ingest", "init", "version", "mcp", "daemon", "web", "service"]) {
+    const { stdout } = await exec("node", ["dist/cli/index.js", "--help"], {
+      env: { ...process.env, QUOTACAP_EXPERIMENTAL_INGEST: "0" },
+    });
+    for (const cmd of ["status", "advise", "init", "version", "mcp", "daemon", "web", "service"]) {
       expect(stdout).toMatch(new RegExp(`\\b${cmd}\\b`));
     }
+    expect(stdout).not.toMatch(/\bingest\b/);
   });
   it("status --help lists the four options", async () => {
     const { stdout } = await exec("node", ["dist/cli/index.js", "status", "--help"]);

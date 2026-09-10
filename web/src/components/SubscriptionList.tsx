@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { ProviderView, RecommendationView } from "../state.js";
+import type { ProviderView, RecommendationView, RuntimeView } from "../state.js";
+import { nextRefreshLabel } from "../state.js";
 import { displayName } from "../names.js";
 import { lanesFor } from "./Recommendation.js";
 import { ProviderCard } from "./ProviderCard.js";
 import { ProviderRow } from "./ProviderRow.js";
-import { PacingLegend } from "./PacingLegend.js";
 import { resetCountdown } from "./PaceBar.js";
 
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
@@ -156,11 +156,15 @@ export function SubscriptionList({
   providers,
   recommendation,
   asOf,
+  lastCompletedPollAt,
+  polling,
   onSelectProvider,
 }: {
   providers: ProviderView[];
   recommendation: RecommendationView;
   asOf: string;
+  lastCompletedPollAt: string | null;
+  polling: RuntimeView["polling"];
   onSelectProvider: (id: string) => void;
 }) {
   const [density, setDensity] = useState<Density>("cards");
@@ -265,7 +269,7 @@ export function SubscriptionList({
             </li>
           )}
         </ul>
-        <PacingLegend />
+        <span>{nextRefreshLabel(lastCompletedPollAt, polling)}</span>
       </footer>
 
       {disabled.length > 0 && (

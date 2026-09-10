@@ -140,6 +140,31 @@ export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
   return `read ${Math.floor(hours / 24)}d ago`;
 }
 
+/** Default poll interval; matches `pollMinutes` in `src/config.ts`. */
+export const DEFAULT_POLL_INTERVAL_MS = 15 * 60 * 1000;
+
+/** Health-strip copy for the next scheduled poll. */
+export function nextRefreshLabel(
+  lastCompletedPollAt: string | null,
+  polling: RuntimeView["polling"],
+  nowMs: number = Date.now(),
+  intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+): string {
+  if (polling === "in-progress") return "Refreshing now";
+  if (!lastCompletedPollAt) return "Next automatic refresh pending";
+  const last = Date.parse(lastCompletedPollAt);
+  if (!Number.isFinite(last)) return "Next automatic refresh pending";
+  const remaining = intervalMs - (nowMs - last);
+  if (remaining <= 0) return "Next automatic refresh due";
+  const minutes = Math.max(1, Math.round(remaining / 60_000));
+  if (minutes < 60) return `Next automatic refresh in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0
+    ? `Next automatic refresh in ${hours}h`
+    : `Next automatic refresh in ${hours}h ${rest}m`;
+}
+
 /** "1h 30m" style duration for a last-read age in milliseconds. */
 export function ageDuration(ageMs: number | null): string | null {
   if (ageMs === null || !Number.isFinite(ageMs) || ageMs < 0) return null;

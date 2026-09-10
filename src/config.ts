@@ -18,9 +18,40 @@ const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy"]),
+  // Optional, omitted from defaults and `init` output. Manual ingest stays
+  // in-tree but is not a public surface until the product design lands.
+  experimentalIngest: z.boolean().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+function envFlag(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === "1" || v === "true" || v === "yes") return true;
+  if (v === "0" || v === "false" || v === "no") return false;
+  return undefined;
+}
+
+/**
+ * Manual ingest (CLI `ingest`, POST /api/ingest) is off unless this returns
+ * true. Env `QUOTACAP_EXPERIMENTAL_INGEST` wins; otherwise the optional
+ * config key. Do not document this as a supported product flag.
+ */
+export function isExperimentalIngestEnabled(
+  config?: Pick<Config, "experimentalIngest">,
+  env: NodeJS.Dict<string> = process.env,
+): boolean {
+  const fromEnv = envFlag(env.QUOTACAP_EXPERIMENTAL_INGEST);
+  if (fromEnv !== undefined) return fromEnv;
+  if (config) return config.experimentalIngest === true;
+  try {
+    const parsed = JSON.parse(fsSync.readFileSync(getConfigPath(), "utf8"));
+    return parsed?.experimentalIngest === true;
+  } catch {
+    return false;
+  }
+}
 
 export async function readConfig(p?: string): Promise<Config> {
   try {
@@ -50,6 +81,7 @@ const ServiceConfigSchema = z.object({
         });
       }
     }),
+  experimentalIngest: z.boolean().optional(),
 });
 
 export async function readServiceConfig(p?: string): Promise<Config> {

@@ -88,6 +88,8 @@ export interface RuntimeContext {
    * claim must stop writing at once, not at its next scheduled poll.
    */
   canWrite?: () => boolean;
+  /** Off unless experimental ingest is enabled. Unset means off. */
+  ingestEnabled?: boolean;
 }
 
 // Ingest writes outside the poll path, so it needs the same fence the
@@ -105,6 +107,7 @@ export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeCo
     enabledProviders: [],
     version: "test",
     exec: "test",
+    ingestEnabled: false,
     ...overrides,
   };
 }
@@ -205,7 +208,8 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
     }
   });
 
-  app.post("/api/ingest", async (req: any, reply) => {
+  if (ctx.ingestEnabled) {
+    app.post("/api/ingest", async (req: any, reply) => {
     const headerToken = req.headers["x-quotacap-token"];
     if (!isValidToken(headerToken, ctx.token)) {
       return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
@@ -241,7 +245,8 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       resetsAtEstimated: parsed.resetsAtEstimated,
     });
     return { ok: true, provider };
-  });
+    });
+  }
 
   // serve built vite assets at /assets/* (web/dist/assets/*)
   app.get("/assets/*", async (req: any, reply) => {

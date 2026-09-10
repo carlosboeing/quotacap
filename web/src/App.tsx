@@ -19,6 +19,7 @@ import { navigate, routeFor, useRoute } from "./router.js";
 import { Onboarding } from "./pages/Onboarding.js";
 import { Header } from "./components/Header.js";
 import { FaultBanner } from "./components/FaultBanner.js";
+import { SiteFooter } from "./components/PacingLegend.js";
 
 type ShellError =
   | { kind: "service-unavailable"; message: string }
@@ -101,6 +102,8 @@ function ReadyView({
             providers={snapshot.providers}
             recommendation={snapshot.recommendation}
             asOf={snapshot.asOf}
+            lastCompletedPollAt={snapshot.runtime.lastCompletedPollAt}
+            polling={snapshot.runtime.polling}
             onSelectProvider={onSelectProvider}
           />
         </>
@@ -200,9 +203,9 @@ function App() {
           providers={snapshot.providers}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
-          onIngested={() => void load()}
           onClose={() => setSettingsOpen(false)}
         />
+        <SiteFooter />
       </>
     );
   }
@@ -277,6 +280,8 @@ function App() {
       </main>
       <ProviderDrawer
         provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
+        asOf={snapshot?.asOf ?? ""}
+        recommendation={snapshot?.recommendation ?? null}
         onClose={() => setSelectedProvider(null)}
       />
       {snapshot && (
@@ -293,9 +298,9 @@ function App() {
         providers={snapshot?.providers ?? []}
         onRefresh={() => void refresh()}
         refreshing={refreshing}
-        onIngested={() => void load()}
         onClose={() => setSettingsOpen(false)}
       />
+      <SiteFooter />
     </>
   );
 }

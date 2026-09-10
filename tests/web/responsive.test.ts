@@ -18,5 +18,8 @@ describe("responsive rules", () => {
     expect(css).toMatch(
       /main > \.dashboard:first-child > section:first-of-type > \.section-head/
     );
+    expect(css).toMatch(/\.alert \{[^}]*font-size: var\(--t-3\)/);
+    expect(css).not.toMatch(/font-size: 13\.5px/);
+    expect(css).toMatch(/\.recB \{[^}]*padding: var\(--s3\) var\(--s5\) var\(--s4\)/);
   });
 });

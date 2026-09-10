@@ -28,7 +28,7 @@ export function readiness(provider: ProviderView): Readiness {
   if (!isKnownProvider(provider.id)) {
     return {
       status: "Sign in first",
-      detail: `Add readings for ${name} with manual ingest, then re-poll. ${credentialNote}`,
+      detail: `QuotaCap has no live adapter for ${name}.`,
     };
   }
   if (provider.lastAttempt?.failureCategory === "auth") {

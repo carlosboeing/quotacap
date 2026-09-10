@@ -80,22 +80,24 @@ export function FaultBanner({
             className="alert"
           >
             <svg
-              width="18"
-              height="18"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.2"
+              strokeWidth="2.3"
               strokeLinecap="round"
-              strokeLinejoin="round"
               aria-hidden="true"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <path d="M12 8v5" />
+              <path d="M12 16.5v.01" />
+              <circle cx="12" cy="12" r="9" />
             </svg>
             <span>
-              <strong>{displayName(p.id)}</strong> {bannerVerb(p)}. {age ? `Last read ${age} ago; ` : ""}
+              <strong>
+                {displayName(p.id)} {bannerVerb(p)}.
+              </strong>{" "}
+              {age ? `Last read ${age} ago; ` : ""}
               excluded from ranking. {repair.text}
             </span>
             <button

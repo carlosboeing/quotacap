@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ProviderView } from "../state.js";
 import { displayName } from "../names.js";
-import { paceBadge, resetCountdown, timeLeft } from "./PaceBar.js";
+import { paceBadge, resetClock, resetCountdown, timeLeft } from "./PaceBar.js";
 
 export const RAIL_DAYS = 7;
 const RAIL_MS = RAIL_DAYS * 24 * 60 * 60 * 1000;
@@ -236,12 +236,7 @@ function pinPace(provider: ProviderView | undefined): { cls: string; color: stri
 }
 
 function pinWhen(resetsAt: string): string {
-  const ms = Date.parse(resetsAt);
-  if (!Number.isFinite(ms)) return "";
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(undefined, { weekday: "short" });
-  const time = when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `${day} ${time}`;
+  return resetClock(resetsAt) ?? "";
 }
 
 function dayLabels(asOfMs: number): string[] {

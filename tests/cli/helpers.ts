@@ -25,6 +25,7 @@ export function stripWarnings(stderr: string): string {
 export async function runCli(
   home: string,
   args: string[],
+  extraEnv: NodeJS.Dict<string> = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
     const { stdout, stderr } = await exec(
@@ -35,6 +36,7 @@ export async function runCli(
           ...process.env,
           NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --no-warnings`.trim(),
           QUOTACAP_HOME: home,
+          ...extraEnv,
         },
       },
     );

@@ -6,19 +6,17 @@ import {
   Badge,
   PaceBar,
   isEstimated,
-  timeLeft,
+  resetClock,
   resetCountdown,
+  timeLeft,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 function resetsDate(provider: ProviderView): string | null {
   if (!provider.quota) return null;
-  const ms = Date.parse(provider.quota.resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(undefined, { weekday: "short" });
-  const time = when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `Resets ${day} · ${time}${isEstimated(provider) ? " (est.)" : ""}`;
+  const clock = resetClock(provider.quota.resetsAt);
+  if (!clock) return null;
+  return `Resets ${clock}${isEstimated(provider) ? " (est.)" : ""}`;
 }
 
 export function ProviderCard({

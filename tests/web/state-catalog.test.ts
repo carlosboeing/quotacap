@@ -138,6 +138,8 @@ describe("state catalog: server-rendered components", () => {
         providers: s.providers,
         recommendation: s.recommendation,
         asOf: s.asOf,
+        lastCompletedPollAt: s.runtime.lastCompletedPollAt,
+        polling: s.runtime.polling,
         onSelectProvider: () => {},
       })
     );
@@ -185,9 +187,14 @@ describe("state catalog: server-rendered components", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const codex = s.providers.find((p) => p.id === "codex")!;
     const drawer = renderToString(
-      React.createElement(ProviderDrawer, { provider: codex, onClose: () => {} })
+      React.createElement(ProviderDrawer, {
+        provider: codex,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
     );
-    expect(drawer).toContain("Window avg");
+    expect(drawer).toMatch(/averaged over|Window avg|Measured/);
     expect(drawer).toContain("(est.)");
     expect(drawer).not.toContain("Session reset");
     const first = {

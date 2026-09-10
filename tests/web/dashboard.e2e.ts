@@ -355,7 +355,7 @@ test("provider drawer traps focus, closes on esc and scrim, and returns focus", 
       await card.click();
       const drawer = page.getByTestId("provider-drawer");
       await expect(drawer).toBeVisible();
-      await expect(drawer).toContainText("Window avg");
+      await expect(drawer).toContainText(/averaged over|Window avg|Measured/);
       await shot(page, `provider-drawer-1440-${theme}.png`);
       // A reverse tab from the freshly focused dialog container stays inside.
       await page.keyboard.press("Shift+Tab");
@@ -471,7 +471,7 @@ test("the projected-unused hatch paints a gradient the browser accepts", async (
   }
 });
 
-test("settings ingest posts unparsed input and renders server errors verbatim", async ({
+test("settings lists adapters only and has no ingest form", async ({
   browser,
 }) => {
   const stub = await stubFor(exampleState());
@@ -481,19 +481,11 @@ test("settings ingest posts unparsed input and renders server errors verbatim", 
     await page.getByTestId("settings-button").click();
     const drawer = page.getByTestId("settings-drawer");
     await expect(drawer).toBeVisible();
+    await expect(drawer.getByText("Kimi Code")).toBeVisible();
+    await expect(drawer.getByText("manual", { exact: true })).toHaveCount(0);
+    await expect(drawer.getByText("Manual Quota Ingest")).toHaveCount(0);
+    await expect(page.getByLabel("Provider id for manual ingest")).toHaveCount(0);
     await shot(page, "settings-drawer-1440-light.png");
-    const text = "Used 45 of 100 requests. Resets in 2 days.";
-    await page.getByLabel("Provider id for manual ingest").fill("my-plan");
-    await page.getByLabel("Usage text for manual ingest").fill(text);
-    await page.getByRole("button", { name: "Send to server" }).click();
-    await expect(page.getByTestId("ingest-saved")).toContainText("Saved.");
-    const posted = stub.requests.filter((r) => r.url === "/api/ingest").pop();
-    expect(posted?.body).toEqual({ provider: "my-plan", text });
-    stub.setIngest({ status: 400, body: { error: "need more detail" } });
-    // Success clears the text, disabling submit; refill for the error case.
-    await page.getByLabel("Usage text for manual ingest").fill(text);
-    await page.getByRole("button", { name: "Send to server" }).click();
-    await expect(page.getByTestId("ingest-error")).toContainText("need more detail");
   } finally {
     await context.close();
   }

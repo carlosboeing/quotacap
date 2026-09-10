@@ -260,7 +260,7 @@ describe("poll coordinator", () => {
           {
             provider: "manual",
             status: "skipped",
-            reason: new Error("manual skipped — use ingest"),
+            reason: new Error("manual skipped"),
           },
         ],
       }),

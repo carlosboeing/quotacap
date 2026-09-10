@@ -621,6 +621,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 }
 .rec-advice-prose strong {
   font-weight: 700;
+  color: var(--ink);
 }
 .rec-advice-prose .rec-exp {
   font-family: var(--font-mono);
@@ -632,6 +633,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .recB {
   display: grid;
   gap: 6px;
+  /* Top is --s3, not 0: concept.html CSS is flush, the signed-off mock is not. */
   padding: var(--s3) var(--s5) var(--s4);
 }
 .recB .lane {
@@ -977,9 +979,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-md);
-  padding: 4px 8px;
+  padding: 3px 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-1);
   font-weight: 500;
   display: inline-flex;
   align-items: center;
@@ -987,13 +989,13 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out);
 }
 .pin.above .pin-tooltip {
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 5px);
   left: 50%;
   transform: translateX(-50%) translateY(3px) scale(0.96);
   transform-origin: bottom center;
 }
 .pin.below .pin-tooltip {
-  top: calc(100% + 6px);
+  top: calc(100% + 5px);
   left: 50%;
   transform: translateX(-50%) translateY(-3px) scale(0.96);
   transform-origin: top center;
@@ -1037,7 +1039,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 }
 .cluster-popover h4 {
   margin: 0 0 var(--s2);
-  font-size: 12px;
+  font-size: var(--t-2);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1063,7 +1065,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   border-radius: var(--r-sm);
   color: var(--ink);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--t-2);
   cursor: pointer;
 }
 .cluster-popover li button:hover {
@@ -1410,7 +1412,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-family: var(--font-mono);
 }
 .cell-s {
-  font-size: 12px;
+  font-size: var(--t-2);
   color: var(--ink-soft);
 }
 
@@ -1540,6 +1542,116 @@ footer.health .dot {
   flex: none;
 }
 
+.sitefoot {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--s4) var(--s5) var(--s6);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  font-size: var(--t-2);
+  color: var(--ink-faint);
+}
+.sitefoot code {
+  font-size: var(--t-2);
+}
+.sitefoot-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.legend-wrap {
+  position: relative;
+  display: inline-block;
+}
+.legend-btn {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.legend-btn:hover {
+  background: var(--hover);
+  border-color: var(--focus);
+  color: var(--ink);
+}
+.legend-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.legend-popover {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 90;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: var(--s4);
+  width: min(380px, calc(100vw - 48px));
+}
+.legend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--s2);
+}
+.legend-head b {
+  font-size: var(--t-3);
+}
+.legend-close {
+  background: none;
+  border: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.legend-close:hover {
+  color: var(--ink);
+}
+.legend-intro {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  margin: 0 0 var(--s3);
+}
+.legend-rows {
+  display: grid;
+  gap: 6px;
+  margin-bottom: var(--s3);
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legend-row .pace {
+  font-size: 11px;
+  padding: 2px 8px;
+  flex: none;
+}
+.legend-row span:last-child {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.legend-foot {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s2);
+  font-size: var(--t-1);
+  color: var(--ink-faint);
+}
+
 /* ==================== DRAWERS & OVERLAYS ==================== */
 .scrim {
   position: fixed;
@@ -1614,6 +1726,20 @@ footer.health .dot {
 .dsec {
   padding: var(--s4) var(--s5);
   border-bottom: 1px solid var(--line);
+}
+.dsec .why-block + .why-block {
+  margin-top: var(--s3);
+}
+.why-block b {
+  display: block;
+  font-size: var(--t-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+.why-block span {
+  font-size: var(--t-3);
 }
 .dsec h3 {
   margin: 0 0 var(--s3);
@@ -1725,18 +1851,17 @@ footer.health .dot {
   margin-top: var(--s3);
 }
 .draw-code {
-  background: var(--canvas);
+  margin: var(--s2) 0 0;
+  padding: var(--s3);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: 8px 10px;
-  font-size: 11px;
+  background: var(--canvas);
   font-family: var(--font-mono);
+  font-size: var(--t-2);
+  line-height: 1.6;
   overflow-x: auto;
-  max-height: 160px;
-  margin: var(--s2) 0 0;
-  color: var(--ink-soft);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  color: var(--ink);
 }
 
 
@@ -1745,12 +1870,13 @@ footer.health .dot {
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
-  background: color-mix(in srgb, var(--danger) 4%, var(--surface));
+  flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
+  background: color-mix(in srgb, var(--danger) 2.5%, var(--surface));
   border-radius: var(--r-sm);
   padding: 9px var(--s4);
   margin-bottom: var(--s4);
-  font-size: 13.5px;
+  font-size: var(--t-3);
   color: var(--ink);
 }
 .alert svg {
@@ -1759,6 +1885,7 @@ footer.health .dot {
 }
 .alert span {
   flex: 1;
+  min-width: 200px;
 }
 
 /* ==================== ONBOARDING ==================== */
@@ -1786,7 +1913,7 @@ footer.health .dot {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: var(--t-2);
   font-weight: 700;
   border: 1px solid var(--line-strong);
   flex: none;
@@ -1799,11 +1926,11 @@ footer.health .dot {
 }
 .steps .t {
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--t-3);
   color: var(--ink);
 }
 .steps .d {
-  font-size: 12px;
+  font-size: var(--t-2);
   color: var(--ink-soft);
   display: block;
 }
@@ -1819,7 +1946,7 @@ footer.health .dot {
 }
 .panel-head h2 {
   margin: var(--s1) 0 var(--s2);
-  font-size: 19px;
+  font-size: var(--t-5);
   letter-spacing: -0.018em;
   font-weight: 700;
   color: var(--ink);
@@ -1828,7 +1955,7 @@ footer.health .dot {
   margin: 0;
   color: var(--ink-soft);
   max-width: 60ch;
-  font-size: 13.5px;
+  font-size: var(--t-3);
 }
 .privacy {
   display: flex;
@@ -1841,11 +1968,11 @@ footer.health .dot {
 }
 .privacy b {
   display: block;
-  font-size: 13.5px;
+  font-size: var(--t-3);
   color: var(--ink);
 }
 .privacy span {
-  font-size: 12.5px;
+  font-size: var(--t-3);
   color: var(--ink-soft);
 }
 .provlist {
@@ -1858,14 +1985,14 @@ footer.health .dot {
   align-items: center;
   padding: var(--s3) var(--s5);
   border-bottom: 1px solid var(--line);
-  font-size: 13.5px;
+  font-size: var(--t-3);
 }
 .provrow b {
   color: var(--ink);
   font-weight: 600;
 }
 .provrow .path {
-  font-size: 12px;
+  font-size: var(--t-2);
   color: var(--ink-soft);
   word-break: break-all;
 }
@@ -1876,7 +2003,7 @@ footer.health .dot {
 .st-ready {
   color: var(--good);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--t-2);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1884,7 +2011,7 @@ footer.health .dot {
 .st-todo {
   color: var(--warn);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--t-2);
   display: inline-flex;
   align-items: center;
   gap: 5px;

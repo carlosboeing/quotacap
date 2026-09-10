@@ -5,7 +5,7 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { hatchGradient, paceBadge } from "../../web/src/components/PaceBar.js";
+import { hatchGradient, paceBadge, resetClock } from "../../web/src/components/PaceBar.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -35,6 +35,14 @@ describe("pace badges", () => {
     expect(paceBadge({ exclusionReason: null, advisory: { status: "on track", urgency: "slow down" } } as any)).toBe(
       "Ahead of pace"
     );
+  });
+});
+
+describe("reset clock", () => {
+  it("formats weekday and 24h time with a space, not a middot", () => {
+    expect(resetClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetClock("2026-09-10T21:00:00+10:00")).not.toContain("·");
+    expect(resetClock("not-a-date")).toBeNull();
   });
 });
 

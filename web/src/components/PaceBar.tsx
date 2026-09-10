@@ -58,6 +58,20 @@ export function isEstimated(provider: ProviderView): boolean {
   return provider.evidence.includes("estimated-reset");
 }
 
+/** Weekday plus 24h clock, e.g. "Thu 21:00". Null when unparseable. */
+export function resetClock(resetsAt: string): string | null {
+  const ms = Date.parse(resetsAt);
+  if (!Number.isFinite(ms)) return null;
+  const when = new Date(ms);
+  const day = when.toLocaleDateString(undefined, { weekday: "short" });
+  const time = when.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${day} ${time}`;
+}
+
 /** "6d 12h" style time left from server timestamps. Null when unparseable. */
 export function timeLeft(resetsAt: string, asOfMs: number): string | null {
   const resetMs = Date.parse(resetsAt);

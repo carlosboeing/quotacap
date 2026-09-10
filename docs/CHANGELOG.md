@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- CLI & MCP (Track D): Terminal commands (`status`, `advise`, `ingest`) and stdio MCP server over shared projection with labeled offline fallback and fixed-clock parity (#34).
+- Dashboard: restyle settings connections, provider/advice drawers, recommendation spacing, and the health/site footer to the signed-off concept.
+- Hide manual ingest (CLI command, HTTP route, and docs) behind a default-off experimental flag until the product design is settled.
+- CLI & MCP (Track D): Terminal commands (`status`, `advise`) and stdio MCP server over shared projection with labeled offline fallback and fixed-clock parity (#34).
 - Dashboard (Track C): Responsive Vite+React dashboard with decision-ranked rows, pace bar, reset rail, provider drawer, and theme switching (#33).
 - Runtime (Track B): Heartbeat-locked single-instance daemon coordinator, coalesced poller, and macOS login service (#32).
 - Store & Advisory (Track A): Idempotent schema migration for session percentage, per-adapter attempt tracking, rolling pace estimation, and shared snapshot projection (#31).

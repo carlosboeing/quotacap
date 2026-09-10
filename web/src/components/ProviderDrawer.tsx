@@ -5,10 +5,20 @@ import type {
   FailureCategory,
   PaceSource,
   ProviderView,
+  RecommendationView,
 } from "../state.js";
 import { ageDuration } from "../state.js";
 import { displayName } from "../names.js";
-import { Badge, evidenceLabels, paceBadge, type PaceBadge } from "./PaceBar.js";
+import {
+  Badge,
+  PaceBar,
+  barGeometry,
+  isEstimated,
+  paceBadge,
+  resetClock,
+  timeLeft,
+  type PaceBadge,
+} from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export interface DrawerModel {
@@ -112,23 +122,138 @@ export function drawerModel(provider: ProviderView): DrawerModel {
   return model;
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+export function sourceLabel(source: string | undefined | null): string {
+  switch (source) {
+    case "cli":
+      return "Live CLI";
+    case "api":
+      return "Live API";
+    case "tui":
+      return "Live TUI";
+    case "scrape":
+      return "Live scrape";
+    case "manual":
+      return "Manual ingest";
+    default:
+      return source || "unknown";
+  }
+}
+
+export function paceBasis(provider: ProviderView, asOfMs?: number): string {
+  const advisory = provider.advisory;
+  if (!advisory || advisory.paceSource === "unknown") return "No current reading";
+  const start = provider.quota ? Date.parse(provider.quota.periodStart) : NaN;
+  if (Number.isFinite(start) && Number.isFinite(asOfMs) && (asOfMs as number) > start) {
+    const days = ((asOfMs as number) - start) / 86_400_000;
+    if (days >= 0.1) return `averaged over ${days.toFixed(1)} days of this window`;
+  }
+  if (provider.evidence.includes("measured") || advisory.burnMeasured) return "Measured";
+  if (advisory.paceSource === "window-average" || provider.evidence.includes("window-average")) {
+    return "Window avg";
+  }
+  return "No current reading";
+}
+
+export function credentialLabel(provider: ProviderView): string {
+  const source = provider.quota?.source;
+  if (source === "cli" || source === "tui") return `handled by ${displayName(provider.id)}`;
+  return "not stored by QuotaCap";
+}
+
+export function pacingStatusToken(provider: ProviderView): string {
+  switch (paceBadge(provider)) {
+    case "Behind pace":
+      return "behind";
+    case "On track":
+      return "ontrack";
+    case "Ahead of pace":
+      return "ahead";
+    case "Cap risk":
+      return "cap";
+    case "Not reporting":
+      return "out";
+  }
+}
+
+export function resetStamp(provider: ProviderView): string | null {
+  if (!provider.quota) return null;
+  const clock = resetClock(provider.quota.resetsAt);
+  if (!clock) return null;
+  return `${clock}${isEstimated(provider) ? " (est.)" : ""}`;
+}
+
+export function resetUnderline(provider: ProviderView, asOfMs: number): string | null {
+  const stamp = resetStamp(provider);
+  if (!stamp || !provider.quota) return null;
+  const left = timeLeft(provider.quota.resetsAt, asOfMs);
+  return left ? `Resets ${stamp} · in ${left}` : `Resets ${stamp}`;
+}
+
+export function rankingCopy(
+  provider: ProviderView,
+  recommendation: RecommendationView | null
+): { known: string; pace: string; decision: string } {
+  const name = displayName(provider.id);
+  const quota = provider.quota;
+  const advisory = provider.advisory;
+  const stamp = resetStamp(provider);
+  const known = quota
+    ? `${name} reports ${quota.usedPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
+    : "No reading yet.";
+  let pace: string;
+  if (!advisory || advisory.paceSource === "unknown" || advisory.burnRate === null) {
+    pace = modelFailure(provider) ?? "No current pace.";
+  } else if (advisory.status === "at risk") {
+    pace = `${advisory.burnRate.toFixed(1)}%/day so far this window, against a ${advisory.idealRate.toFixed(1)}%/day target.`;
+  } else {
+    pace = `${advisory.burnRate.toFixed(1)}%/day so far this window. Finishing it needs ${advisory.idealRate.toFixed(1)}%/day.`;
+  }
+  let decision: string;
+  if (provider.exclusionReason) {
+    decision = "Excluded before ranking.";
+  } else if (recommendation && recommendation.use === provider.id && recommendation.reason) {
+    decision = recommendation.reason;
+  } else if (advisory?.status === "at risk") {
+    decision = "Forecast to hit the cap before reset; flagged to ease off.";
+  } else if (advisory?.urgency === "slow down") {
+    decision = "Burning faster than the window; ease off.";
+  } else if (advisory?.urgency === "on track") {
+    decision = "Pace matches the window.";
+  } else {
+    decision = "Unused quota in this reset window.";
+  }
+  return { known, pace, decision };
+}
+
+function modelFailure(provider: ProviderView): string | null {
+  const words = failureWords(provider.lastAttempt?.failureCategory ?? null);
+  return words ? `No current pace. ${words}.` : null;
+}
+
+export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<string, unknown> {
+  const quota = provider.quota;
+  const { elapsedPct } = barGeometry(provider, asOfMs);
+  return {
+    provider: provider.id,
+    plan: quota?.plan ? quota.plan.split(" · ")[0] : null,
+    usedPct: quota?.usedPct ?? null,
+    elapsedPct: elapsedPct !== null ? Math.round(elapsedPct) : null,
+    resetsAt: quota?.resetsAt ?? null,
+    source: quota?.source ?? null,
+    pacingStatus: pacingStatusToken(provider),
+    reporting: provider.reporting,
+  };
 }
 
 export function ProviderDrawer({
   provider,
+  asOf,
+  recommendation,
   onClose,
 }: {
   provider: ProviderView | null;
+  asOf: string;
+  recommendation: RecommendationView | null;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -175,7 +300,16 @@ export function ProviderDrawer({
   if (!provider) return null;
   const model = drawerModel(provider);
   const titleId = "provider-drawer-title";
+  const asOfMs = Date.parse(asOf);
   const updated = ageDuration(model.ageMs);
+  const underline = resetUnderline(provider, asOfMs);
+  const why = rankingCopy(provider, recommendation);
+  const record = compactSnapshot(provider, asOfMs);
+  const recordJson = JSON.stringify(record, null, 2);
+  const planBits = [provider.quota?.plan, sourceLabel(provider.quota?.source)].filter(
+    (b) => b && b !== "unknown"
+  );
+  const sub = planBits.length ? planBits.join(" · ") : sourceLabel(provider.quota?.source);
 
   return (
     <>
@@ -201,11 +335,8 @@ export function ProviderDrawer({
           </span>
           <div style={{ flex: 1 }}>
             <h2 id={titleId}>{model.name}</h2>
-            <span className="sub">
-              {provider.quota?.plan ? `${provider.quota.plan} · ${provider.id}` : provider.id}
-            </span>
+            <span className="sub">{sub}</span>
           </div>
-          <Badge provider={provider} />
           <button
             className="drawer-close"
             type="button"
@@ -227,116 +358,71 @@ export function ProviderDrawer({
           </button>
         </div>
 
-        {model.exclusionWords && (
-          <div className="alert" role="note" style={{ margin: "var(--s4) var(--s5) 0" }}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            <span>{model.exclusionWords}</span>
+        <section className="dsec" aria-label="Current window">
+          <h3>Current window</h3>
+          <div className="pcard-topline">
+            <Badge provider={provider} />
           </div>
+          {provider.quota ? (
+            <>
+              <PaceBar provider={provider} asOf={asOf} />
+              {underline && <div className="pcard-underline">{underline}</div>}
+            </>
+          ) : (
+            <p className="cell-s">No readings yet.</p>
+          )}
+        </section>
+
+        {model.sessionPct !== undefined && model.sessionPct > 0 && (
+          <section className="dsec" aria-label="Session">
+            <h3>Session</h3>
+            <div className="pcard-topline">
+              <span className="used">{model.sessionPct}% used</span>
+            </div>
+            <div className="track" role="img" aria-label={`${model.sessionPct} percent of session window used`}>
+              <div
+                className="fill"
+                style={{
+                  width: `${Math.min(100, Math.max(0, model.sessionPct))}%`,
+                  background: "var(--fill-ontrack)",
+                  ["--fill-edge" as string]: "var(--edge-ontrack)",
+                }}
+              />
+            </div>
+          </section>
         )}
 
-        <section className="dsec" aria-label="Pacing">
-          <h3>Pacing</h3>
-          {model.paceSource === "unknown" || model.burnRate === null ? (
-            <p style={{ fontSize: "var(--t-3)", color: "var(--ink-soft)", margin: 0 }}>
-              Measuring pace — no rate yet.
-            </p>
-          ) : (
-            <dl className="dkv">
-              <dt>Burn rate</dt>
-              <dd>
-                {model.burnRate.toFixed(1)}%/d {model.paceLabel ? `(${model.paceLabel})` : ""}
-              </dd>
-              <dt>Ideal rate</dt>
-              <dd>{model.idealRate !== null ? `${model.idealRate.toFixed(1)}%/d` : "—"}</dd>
-              {model.daysToExhaust !== null && (
-                <>
-                  <dt>Exhausts in</dt>
-                  <dd>{model.daysToExhaust.toFixed(1)}d</dd>
-                </>
-              )}
-              {model.wastePct !== null && (
-                <>
-                  <dt>Unused at this rate</dt>
-                  <dd>
-                    {Math.round(model.wastePct)}% in {model.daysLeft !== null ? model.daysLeft.toFixed(1) : "—"}d
-                  </dd>
-                </>
-              )}
-            </dl>
-          )}
-          {model.daysLeft !== null && (
-            <p style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)", marginTop: "var(--s3)", marginBottom: 0 }}>
-              {model.remaining !== null ? `${Math.round(model.remaining)}% remains · ` : ""}
-              {model.daysLeft.toFixed(1)}d left
-            </p>
-          )}
-        </section>
-
-        <section className="dsec" aria-label="Window">
-          <h3>Window</h3>
-          <p style={{ fontSize: "var(--t-2)", margin: "0 0 var(--s2)" }}>
-            {formatDateTime(model.periodStart)} → {formatDateTime(model.resetsAt)}
-            {model.estimatedReset ? " (est.)" : ""}
-          </p>
-          {model.sessionPct !== undefined && (
-            <div style={{ marginTop: "var(--s2)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--t-2)", marginBottom: 4 }}>
-                <span style={{ fontWeight: 600 }}>Session use</span>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{model.sessionPct}%</span>
-              </div>
-              <div className="track" role="img" aria-label={`${model.sessionPct} percent of session window used`}>
-                <div
-                  className="fill"
-                  style={{
-                    width: `${Math.min(100, Math.max(0, model.sessionPct))}%`,
-                    background: "var(--fill-ontrack)",
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="dsec" aria-label="Provenance">
-          <h3>Provenance</h3>
+        <section className="dsec" aria-label="Adapter and provenance">
+          <h3>Adapter and provenance</h3>
           <dl className="dkv">
-            <dt>Last success</dt>
-            <dd>{model.lastSuccessAt ? formatDateTime(model.lastSuccessAt) : "never"}</dd>
-            <dt>Reading age</dt>
-            <dd>{updated ? `${updated} ago` : "unknown"}</dd>
-            {model.failureWords && (
-              <>
-                <dt>Last attempt</dt>
-                <dd style={{ color: "var(--danger)" }}>{model.failureWords}</dd>
-              </>
-            )}
-            {evidenceLabels(model.evidence).length > 0 && (
-              <>
-                <dt>Evidence</dt>
-                <dd>{evidenceLabels(model.evidence).join(" · ")}</dd>
-              </>
-            )}
+            <dt>Read by</dt>
+            <dd>{sourceLabel(provider.quota?.source)}</dd>
+            <dt>Credential</dt>
+            <dd>{credentialLabel(provider)}</dd>
+            <dt>Window</dt>
+            <dd>
+              {[
+                provider.quota?.plan && provider.quota.plan !== "unknown" ? provider.quota.plan : null,
+                resetStamp(provider) ? `resets ${resetStamp(provider)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"}
+            </dd>
+            <dt>Pace basis</dt>
+            <dd>{paceBasis(provider, asOfMs)}</dd>
+            <dt>Last read</dt>
+            <dd>
+              {updated ? `${updated} ago` : "unknown"}
+              {model.failureWords ? ` · ${model.failureWords}` : ""}
+            </dd>
           </dl>
           <div className="draw-code-head">
-            <span style={{ fontSize: "var(--t-1)", color: "var(--ink-soft)" }}>Raw JSON snapshot:</span>
+            <span className="cell-s">Raw JSON snapshot:</span>
             <button
               className="btn btn-quiet btn-sm"
               type="button"
               onClick={() => {
-                void navigator.clipboard?.writeText(JSON.stringify(provider, null, 2));
+                void navigator.clipboard?.writeText(recordJson);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
@@ -344,7 +430,23 @@ export function ProviderDrawer({
               {copied ? "Copied!" : "Copy JSON"}
             </button>
           </div>
-          <pre className="draw-code">{JSON.stringify(provider, null, 2)}</pre>
+          <pre className="draw-code">{recordJson}</pre>
+        </section>
+
+        <section className="dsec" aria-label="Ranking rationale">
+          <h3>Ranking rationale</h3>
+          <div className="why-block">
+            <b>Known</b>
+            <span>{why.known}</span>
+          </div>
+          <div className="why-block">
+            <b>Pace</b>
+            <span>{why.pace}</span>
+          </div>
+          <div className="why-block">
+            <b>Decision</b>
+            <span>{why.decision}</span>
+          </div>
         </section>
       </aside>
     </>

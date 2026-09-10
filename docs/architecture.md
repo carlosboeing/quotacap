@@ -28,7 +28,7 @@ Claude Code, Codex, Kimi Code, Grok, and Antigravity can expose multiple concurr
 | Daemon | The poll loop. `pollOnce` every 15 minutes plus jitter. `Promise.allSettled` isolation. Single-instance `O_EXCL` pidfile with stale-steal. Pinned `claude` binary at start. Runs until SIGINT or SIGTERM. | `src/daemon.ts` |
 | Advisory engine | Target daily usage, recent or estimated pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
 | HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `GET /api/token`, `POST /api/refresh`, `/`, `/assets/*`. Bound to `127.0.0.1:8787`. `Host` and `Origin` allowlists. `X-QuotaCap-Token` on mutating routes. Rooted asset serving. | `src/http/server.ts` |
-| CLI | Commander-based surface. Commands: `status`, `advise`, `ingest`, `web`, `daemon`, `init`, `mcp`, `version`. | `src/cli/index.ts` |
+| CLI | Commander-based surface. Commands: `status`, `advise`, `web`, `daemon`, `init`, `mcp`, `version`. | `src/cli/index.ts` |
 | MCP server | stdio JSON-RPC server. Methods: `initialize`, `tools/list`, `tools/call` (`get_quotas`, `get_recommendation`, `forecast`), `ping`. Calls the same HTTP handler and translates a down daemon into a readable error. | `src/mcp/server.ts` |
 | Web dashboard | Vite and React. Summary banner, 7-day strip, quota table, collapsible rows. Built at publish time and embedded into the package. | `web/` |
 | Format layer | Shared table renderer for CLI and MCP. Reset dates as month name plus local time, burn glyphs, alignment. | `src/format/table.ts`, `src/format/parse.ts` |
@@ -43,14 +43,12 @@ flowchart LR
   KM["Kimi Code"]
   GK["Grok"]
   AG["Antigravity / Agy"]
-  MN["manual-paste / any provider"]
 
   CP -->|exec claude -p /usage| AD["Adapters"]
   CX -->|pty codex --no-alt-screen to /status| AD
   KM -->|pty kimi to /usage| AD
   GK -->|pty grok to /usage| AD
   AG -->|exec agy -p /usage| AD
-  MN -->|ingest text| AD
 
   AD -->|normalized quota rows| ST["SQLite ~/.quotacap/quotacap.db"]
   DT["Daemon (15m + jitter, single-instance)"] -->|pollOnce| AD
@@ -89,7 +87,7 @@ snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
 3. Adapter mechanisms — credential-free, no token ownership:
    - `claude`, `agy`: use `execFile` with an argv list. No shell. `claude` is pinned at daemon start via `which claude` (`src/daemon.ts:resolveClaudeExecPath`). `claude` runs `claude -p /usage --output-format json`. `agy` runs `agy -p /usage --output-format json`. `claude` parses week and session percents. `agy` parses `groups[].buckets[]` JSON and emits two rows: `agy` and `agy:3p`. Both use `source: "cli"`.
    - `codex`, `kimi`, `grok`: use `runPty` (`src/adapters/pty.ts`). The runner spawns the CLI in a PTY via `node-pty`. It waits a settle delay (`codex` 2 s, `grok` 5 s) or a readiness regex (`kimi`). It writes `/status` or `/usage` plus `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. Parsers are TUI-fragile. A vendor text change breaks the regex. The row then degrades fail-closed until the pattern is fixed. Poll latency is 2–10 s. It dominates `POST /api/refresh` and the first poll. It does not affect the steady-state 15 m timer. These adapters use `source: "tui"`. They abort fail-closed on trust prompts without auto-trusting.
-   - No adapter reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. No adapter uses `refresh_token` or `grant_type=refresh_token`. No hardcoded `client_id` remains. This is asserted by `tests/adapters/credential-free.test.ts`. No `.qc-bak` or `.qc-lock` writes exist since #14. Manual providers still use `ingest`.
+   - No adapter reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. No adapter uses `refresh_token` or `grant_type=refresh_token`. No hardcoded `client_id` remains. This is asserted by `tests/adapters/credential-free.test.ts`. No `.qc-bak` or `.qc-lock` writes exist since #14.
 4. Snapshots normalize to `Quota` and upsert into `quotas` and `snapshots`.
 5. The advisory engine computes target daily usage (remaining % ÷ days left), recent or estimated pace, early-limit risk, projected unused allowance at reset, and one next-provider estimate.
 6. CLI `advise`, MCP, and the dashboard all read the same `/api/recommendation`.
@@ -100,7 +98,6 @@ snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
 |---|---|---|
 | `status [--json]` | Latest per-provider table: used, left, resets, days left, ideal burn, burn rate, waste. Reads the database; no network. | `quotacap status` |
 | `advise [--task <any\|heavy\|light>]` | "Use X next." HTTP API first, in-process fallback. | `quotacap advise --task heavy` |
-| `ingest --provider <p> --text <t>` | Manual quota paste for providers without an adapter. | `quotacap ingest --provider myplan --text "65% used · resets Sep 1"` |
 | `web [--port <n>]` | Serve the dashboard on :8787 and auto-start the daemon if none is running. | `quotacap web` |
 | `daemon [--foreground]` | Run the daemon in the foreground (default) and poll `enabledProviders`. | `quotacap daemon` |
 | `init` | Write `~/.quotacap/config.json` with defaults. | `quotacap init` |

@@ -17,14 +17,12 @@ export function SettingsDrawer({
   providers,
   onRefresh,
   refreshing,
-  onIngested,
   onClose,
 }: {
   open: boolean;
   providers: ProviderView[];
   onRefresh: () => void;
   refreshing: boolean;
-  onIngested: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>("providers");
@@ -95,7 +93,7 @@ export function SettingsDrawer({
               Settings &amp; Configuration
             </h2>
             <span className="sub">
-              Connected provider adapters, manual ingest, and CLI prompt integration.
+              Connected provider adapters and CLI prompt integration.
             </span>
           </div>
           <button
@@ -149,7 +147,6 @@ export function SettingsDrawer({
               providers={providers}
               onRefresh={onRefresh}
               refreshing={refreshing}
-              onIngested={onIngested}
             />
           )}
           {tab === "cli" && <CliIntegrationPanel />}
