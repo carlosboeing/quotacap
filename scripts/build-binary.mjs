@@ -38,70 +38,103 @@ for (const t of targets) {
   );
   console.log(`built ${binPath}`);
 
-  // Stage pty sidecar for this target
+  // Stage pty sidecar for this target if available
   const [os, arch] = name.split("-");
   const prebuildDir = `prebuilds/${os}-${arch}`;
   const srcPty = "node_modules/node-pty";
-  if (!fs.existsSync(srcPty)) {
+  let hasSidecar = false;
+
+  if (fs.existsSync(srcPty)) {
+    // On Linux, node-pty compiles to build/Release/pty.node rather than prebuilds/
+    const releaseNode = path.join(srcPty, "build", "Release", "pty.node");
+    if (
+      !fs.existsSync(path.join(srcPty, prebuildDir)) &&
+      fs.existsSync(releaseNode) &&
+      os === "linux" &&
+      arch === "x64"
+    ) {
+      fs.mkdirSync(path.join(srcPty, prebuildDir), { recursive: true });
+      fs.copyFileSync(releaseNode, path.join(srcPty, prebuildDir, "pty.node"));
+      try { fs.chmodSync(path.join(srcPty, prebuildDir, "pty.node"), 0o755); } catch {}
+    }
+
+    if (fs.existsSync(path.join(srcPty, prebuildDir))) {
+      hasSidecar = true;
+    } else {
+      console.warn(`skip pty sidecar for ${name}: ${prebuildDir} not found in node-pty`);
+    }
+  } else {
     console.warn(`skip pty sidecar for ${name}: ${srcPty} not found (optionalDependency not installed)`);
-    continue;
-  }
-  if (!fs.existsSync(path.join(srcPty, prebuildDir))) {
-    console.warn(`skip pty sidecar for ${name}: ${prebuildDir} not found in node-pty`);
-    continue;
   }
 
-  const sidecarRoot = `dist-bin/pty-${name}`;
-  const destPty = path.join(sidecarRoot, "node-pty");
-  // Clean previous
-  fs.rmSync(sidecarRoot, { recursive: true, force: true });
-  copyDirSync(srcPty, destPty);
-
-  // Prune prebuilds to only this platform to keep archive small
-  const prebuildsRoot = path.join(destPty, "prebuilds");
-  if (fs.existsSync(prebuildsRoot)) {
-    for (const entry of fs.readdirSync(prebuildsRoot)) {
-      if (entry !== `${os}-${arch}`) {
-        fs.rmSync(path.join(prebuildsRoot, entry), { recursive: true, force: true });
-      }
-    }
-    // Ensure spawn-helper is executable
-    const helper = path.join(prebuildsRoot, `${os}-${arch}`, "spawn-helper");
-    if (fs.existsSync(helper)) {
-      try { fs.chmodSync(helper, 0o755); } catch {}
-    }
-  }
-
-  // Create tarball containing binary + sidecar
-  const tarName = `quotacap-${name}.tar.gz`;
-  const tarPath = `dist-bin/${tarName}`;
-  // The tarball should contain: quotacap (binary) and pty/node-pty/
+  // The tarball should contain: quotacap (binary) and optionally pty/node-pty/
   // We use a temp staging dir to control archive layout
   const stageDir = `dist-bin/stage-${name}`;
   fs.rmSync(stageDir, { recursive: true, force: true });
   fs.mkdirSync(stageDir, { recursive: true });
   fs.copyFileSync(binPath, path.join(stageDir, "quotacap"));
-  // pty sidecar as pty/node-pty relative to binary
-  const stagePty = path.join(stageDir, "pty", "node-pty");
-  copyDirSync(destPty, stagePty);
   try { fs.chmodSync(path.join(stageDir, "quotacap"), 0o755); } catch {}
 
-  console.log(`creating ${tarPath} ...`);
-  execFileSync("tar", ["-czf", path.resolve(tarPath), "-C", path.resolve(stageDir), "quotacap", "pty"], { stdio: "inherit" });
-  console.log(`created ${tarPath}`);
+  if (hasSidecar) {
+    const sidecarRoot = `dist-bin/pty-${name}`;
+    const destPty = path.join(sidecarRoot, "node-pty");
+    // Clean previous
+    fs.rmSync(sidecarRoot, { recursive: true, force: true });
+    copyDirSync(srcPty, destPty);
 
-  // Also keep a plain pty directory alongside binary for local testing (dist-bin/pty/node-pty)
-  const localPty = "dist-bin/pty/node-pty";
-  fs.rmSync(localPty, { recursive: true, force: true });
-  copyDirSync(destPty, localPty);
-  try {
-    const h = path.join(localPty, `prebuilds/${os}-${arch}/spawn-helper`);
-    if (fs.existsSync(h)) fs.chmodSync(h, 0o755);
-  } catch {}
+    // Prune prebuilds to only this platform to keep archive small
+    const prebuildsRoot = path.join(destPty, "prebuilds");
+    if (fs.existsSync(prebuildsRoot)) {
+      for (const entry of fs.readdirSync(prebuildsRoot)) {
+        if (entry !== `${os}-${arch}`) {
+          fs.rmSync(path.join(prebuildsRoot, entry), { recursive: true, force: true });
+        }
+      }
+      // Ensure spawn-helper or native addon is executable
+      const helper = path.join(prebuildsRoot, `${os}-${arch}`, "spawn-helper");
+      if (fs.existsSync(helper)) {
+        try { fs.chmodSync(helper, 0o755); } catch {}
+      }
+      const nodeAddon = path.join(prebuildsRoot, `${os}-${arch}`, "pty.node");
+      if (fs.existsSync(nodeAddon)) {
+        try { fs.chmodSync(nodeAddon, 0o755); } catch {}
+      }
+    }
+
+    // pty sidecar as pty/node-pty relative to binary
+    const stagePty = path.join(stageDir, "pty", "node-pty");
+    copyDirSync(destPty, stagePty);
+
+    // Also keep a plain pty directory alongside binary for local testing (dist-bin/pty/node-pty)
+    const localPty = "dist-bin/pty/node-pty";
+    fs.rmSync(localPty, { recursive: true, force: true });
+    copyDirSync(destPty, localPty);
+    try {
+      const h = path.join(localPty, `prebuilds/${os}-${arch}/spawn-helper`);
+      if (fs.existsSync(h)) fs.chmodSync(h, 0o755);
+      const n = path.join(localPty, `prebuilds/${os}-${arch}/pty.node`);
+      if (fs.existsSync(n)) fs.chmodSync(n, 0o755);
+    } catch {}
+
+    fs.rmSync(sidecarRoot, { recursive: true, force: true });
+  }
+
+  // Create tarball containing binary (+ sidecar if present)
+  const tarName = `quotacap-${name}.tar.gz`;
+  const tarPath = `dist-bin/${tarName}`;
+  console.log(`creating ${tarPath} ...`);
+  const tarArgs = hasSidecar
+    ? ["-czf", path.resolve(tarPath), "-C", path.resolve(stageDir), "quotacap", "pty"]
+    : ["-czf", path.resolve(tarPath), "-C", path.resolve(stageDir), "quotacap"];
+  execFileSync("tar", tarArgs, { stdio: "inherit" });
+  console.log(`created ${tarPath}`);
 
   // Cleanup stage
   fs.rmSync(stageDir, { recursive: true, force: true });
-  fs.rmSync(sidecarRoot, { recursive: true, force: true });
 
-  console.log(`sidecar staged for ${name} at dist-bin/pty/node-pty (prebuild ${os}-${arch})`);
+  if (hasSidecar) {
+    console.log(`sidecar staged for ${name} at dist-bin/pty/node-pty (prebuild ${os}-${arch})`);
+  } else {
+    console.log(`standalone binary packaged for ${name} (no pty sidecar)`);
+  }
 }

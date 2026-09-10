@@ -158,11 +158,14 @@ jobs:
           TAR="dist-bin/quotacap-$(echo "${{ matrix.target }}" | sed s/bun-//).tar.gz"
           test -f "$TAR"
           tar -tzf "$TAR" | grep -q "^quotacap$"
-          tar -tzf "$TAR" | grep -q "pty/node-pty/prebuilds"
-          tar -tzf "$TAR" | grep -q "pty/node-pty/lib/index.js"
           echo "tarball contents verified for ${{ matrix.target }}"
-          test -x dist-bin/pty/node-pty/prebuilds/*/*spawn-helper 2>/dev/null || test -x dist-bin/pty/node-pty/prebuilds/*/*/*.node
-          echo "pty sidecar verified for ${{ matrix.target }}"
+          if tar -tzf "$TAR" | grep -q "pty/node-pty"; then
+            tar -tzf "$TAR" | grep -q "pty/node-pty/lib/index.js"
+            test -x dist-bin/pty/node-pty/prebuilds/*/*spawn-helper 2>/dev/null || test -x dist-bin/pty/node-pty/prebuilds/*/*.node 2>/dev/null
+            echo "pty sidecar verified for ${{ matrix.target }}"
+          else
+            echo "standalone binary in tarball (no pty sidecar for cross-compiled target)"
+          fi
 
           # Only execute binary if host architecture matches target
           RUNNER_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -176,7 +179,9 @@ jobs:
           if [ "$RUNNER_OS" = "$TARGET_OS" ] && [ "$RUNNER_ARCH" = "$TARGET_ARCH" ]; then
             echo "Host matches target ($RUNNER_OS-$RUNNER_ARCH), testing binary execution..."
             "$BIN" --help | grep -q "Usage: quotacap"
-            node -e "require('./dist-bin/pty/node-pty'); console.log('pty sidecar loads in Node')"
+            if [ -d "dist-bin/pty/node-pty" ]; then
+              node -e "require('./dist-bin/pty/node-pty'); console.log('pty sidecar loads in Node')"
+            fi
           else
             echo "Cross-compiled target (${{ matrix.target }}) on host ($RUNNER_OS-$RUNNER_ARCH); skipping native execution check."
           fi
