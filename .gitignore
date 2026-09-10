@@ -19,3 +19,4 @@ dist-bin/
 *.log
 test-results/
 playwright-report/
+.playwright-mcp/

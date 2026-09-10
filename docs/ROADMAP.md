@@ -55,6 +55,7 @@
 
 ## Next
 
+* Fix Bun PTY failures and Grok reset timestamp parsing immediately after provider-error observability ships, before the stable release ([#42](https://github.com/carlosboeing/quotacap/issues/42)). Observability completion does not close these fixes.
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
@@ -70,4 +71,3 @@
 * `tsconfig` split (node vs web) — deferred, DOM lib bleed low risk
 * `package-lock.json` un-ignore — deferred
 * Dashboard Playwright visual regression — deferred
-
