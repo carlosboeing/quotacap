@@ -309,7 +309,7 @@ describe("systemd user service", () => {
       const rec = recorder();
       const d = depsFor(home, rec.run, { platform: "win32" });
       const fn = { install, uninstall, start, stop, restart }[verb];
-      await fn(d);
+      await fn!(d);
       expect(
         (d as unknown as { printed: string[] }).printed.join("\n"),
       ).toMatch(/foreground/);

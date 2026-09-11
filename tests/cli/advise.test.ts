@@ -227,6 +227,7 @@ describe("advise wiring", () => {
     exit: (code: number) => {
       exitCode = code;
     },
+    checkUpdates: async () => null,
     ...over,
   });
 
@@ -369,5 +370,28 @@ describe("advise wiring", () => {
       expect.stringContaining("daemon is older (0.0.0-stale)"),
       OFFLINE_LABEL,
     ]);
+  });
+
+  it("prints the update footer on TTY stderr only, never under --json", async () => {
+    const stale = {
+      checkedAt: new Date().toISOString(),
+      latest: "99.0.0",
+      channel: "standalone",
+      current: VERSION,
+    };
+    const footer = `Update available: ${VERSION} -> 99.0.0. Run 'quotacap update' to upgrade.`;
+    const desc = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      await runWired(["advise"], onlineDeps({ checkUpdates: async () => stale }));
+      expect(errors).toEqual([footer]);
+      logs.length = 0;
+      errors.length = 0;
+      exitCode = undefined;
+      await runWired(["advise", "--json"], onlineDeps({ checkUpdates: async () => stale }));
+      expect(errors).toEqual([]);
+    } finally {
+      if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
+    }
   });
 });

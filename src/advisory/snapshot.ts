@@ -21,6 +21,12 @@ export interface SnapshotOptions {
     polling: "idle" | "in-progress" | "cooldown";
     lastCompletedPollAt: string | null;
     version: string;
+    update?: {
+      current: string;
+      latest: string | null;
+      upToDate: boolean;
+      checkedAt: string | null;
+    };
   };
 }
 

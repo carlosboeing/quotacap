@@ -14,6 +14,7 @@ import {
   type ServiceClient,
 } from "../runtime/client.js";
 import { runServiceCommand } from "../service/index.js";
+import { detectChannel, refreshUpdateCache } from "../runtime/updates.js";
 import {
   checkSkew,
   execSkewWarning,
@@ -48,6 +49,7 @@ export interface RuntimeCommandDeps {
     timeoutMs?: number;
     readToken?: () => string | undefined;
   };
+  checkUpdates?: () => Promise<unknown>;
 }
 
 async function defaultOpenBrowser(url: string): Promise<void> {
@@ -94,6 +96,9 @@ export function registerRuntimeCommands(
     deps?.createClient ?? ((o) => createServiceClient(o));
   const isManaged = deps?.isManaged ?? isServiceManaged;
   const takeoverOpts = deps?.takeoverOpts ?? {};
+  const checkUpdates =
+    deps?.checkUpdates ??
+    (() => refreshUpdateCache({ channel: detectChannel(), current: VERSION }));
 
   program
     .command("daemon")
@@ -117,6 +122,9 @@ export function registerRuntimeCommands(
       const cfg = await readConfig();
       const port = o.port ? parseInt(o.port, 10) : cfg.port;
       const dataDir = path.dirname(getDbPath());
+
+      // Passive daily update signal (writer only; the dashboard badge reads it).
+      await checkUpdates().catch(() => null);
 
       // 1. A healthy service answers: compare skew, take over when newer.
       let health: any = null;

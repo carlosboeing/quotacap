@@ -405,6 +405,17 @@ main {
   font-family: var(--font-mono);
   font-size: var(--t-1);
 }
+.update-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 4px;
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  white-space: nowrap;
+  flex: none;
+  user-select: none;
+}
 @media (min-width: 1340px) {
   .daemon-addr {
     display: inline;

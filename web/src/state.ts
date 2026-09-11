@@ -81,12 +81,20 @@ export interface ProviderView {
   advisory: AdvisoryView | null;
 }
 
+export interface UpdateView {
+  current: string;
+  latest: string | null;
+  upToDate: boolean;
+  checkedAt: string | null;
+}
+
 export interface RuntimeView {
   available: boolean;
   ready: boolean;
   polling: "idle" | "in-progress" | "cooldown";
   lastCompletedPollAt: string | null;
   version: string;
+  update?: UpdateView;
 }
 
 export interface StateSnapshot {

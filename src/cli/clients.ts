@@ -8,6 +8,7 @@ import { registerStatusCommand } from "./status.js";
 import { registerAdviseCommand } from "./advise.js";
 import { registerIngestCommand } from "./ingest.js";
 import type { SleepFn } from "./takeover.js";
+import type { UpdateCache } from "../runtime/updates.js";
 
 export interface CreateClientOptions {
   port: number;
@@ -28,6 +29,7 @@ export interface ClientCommandDeps {
     timeoutMs?: number;
     readToken?: () => string | undefined;
   };
+  checkUpdates?: () => Promise<UpdateCache | null>;
 }
 
 export function registerClientCommands(program: Command, deps?: ClientCommandDeps): void {

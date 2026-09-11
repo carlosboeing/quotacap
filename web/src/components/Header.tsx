@@ -60,6 +60,10 @@ export function Header({
   // A failed request outranks the snapshot: the stored runtime fields describe
   // the last answer, not the current one.
   const pill = unreachable ? "unreachable" : runtime ? pillFor(runtime) : null;
+  // Passive update signal: visible only when an update is known-available,
+  // hidden when up to date or unknown, and never blocking render.
+  const update = runtime?.update;
+  const showBadge = !!update && !update.upToDate && !!update.latest;
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -93,6 +97,17 @@ export function Header({
               <span className="daemon-t">Connecting…</span>
             </span>
           )}
+          {showBadge && update && update.latest ? (
+            <span
+              data-testid="update-badge"
+              role="status"
+              className="update-badge"
+              title="Run 'quotacap update' to upgrade"
+            >
+              <span className="daemon-dot is-polling" aria-hidden="true" />
+              <span className="daemon-t">{`Update ${update.current} to ${update.latest}`}</span>
+            </span>
+          ) : null}
           <div className="topbar-actions">
             <ThemeToggle />
             <button

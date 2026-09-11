@@ -47,6 +47,35 @@ describe("header pill", () => {
     expect(initial).not.toContain("Connecting");
     expect(headerHtml({ runtime: null })).toContain('data-state="connecting"');
   });
+
+  it("shows the update badge only when an update is known-available", () => {
+    const stale = headerHtml({
+      runtime: {
+        ...LIVE_RUNTIME,
+        update: { current: "0.0.22", latest: "0.0.23", upToDate: false, checkedAt: "2026-09-11T00:00:00.000Z" },
+      },
+    });
+    expect(stale).toContain('data-testid="update-badge"');
+    expect(stale).toContain("Update 0.0.22 to 0.0.23");
+    expect(stale).toContain("Run &#x27;quotacap update&#x27; to upgrade");
+
+    const fresh = headerHtml({
+      runtime: {
+        ...LIVE_RUNTIME,
+        update: { current: "0.0.23", latest: "0.0.23", upToDate: true, checkedAt: "2026-09-11T00:00:00.000Z" },
+      },
+    });
+    expect(fresh).not.toContain("update-badge");
+
+    const unknown = headerHtml({
+      runtime: {
+        ...LIVE_RUNTIME,
+        update: { current: "0.0.23", latest: null, upToDate: true, checkedAt: null },
+      },
+    });
+    expect(unknown).not.toContain("update-badge");
+    expect(headerHtml({ runtime: LIVE_RUNTIME })).not.toContain("update-badge");
+  });
 });
 
 describe("fault repair", () => {

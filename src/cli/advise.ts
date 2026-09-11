@@ -8,6 +8,14 @@ import { getDbPath, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
 import { isServiceManaged, runServiceCommand } from "../service/index.js";
+import {
+  detectChannel,
+  printUpdateFooter,
+  readUpdateCache,
+  refreshUpdateCache,
+  updateFooter,
+  type UpdateCache,
+} from "../runtime/updates.js";
 import { ClientError, OFFLINE_LABEL, emptySnapshot, offlineOnlyClient, resolveSnapshot } from "./snapshot-source.js";
 import {
   checkSkew,
@@ -27,6 +35,9 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
     deps.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
   const isManaged = deps.isManaged ?? isServiceManaged;
   const takeoverOpts = deps.takeoverOpts ?? {};
+  const checkUpdates =
+    deps.checkUpdates ??
+    (() => refreshUpdateCache({ channel: detectChannel(), current: VERSION }));
 
   program
     .command("advise")
@@ -85,6 +96,15 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
           }
         }
       }
+      // Passive daily update signal: opportunistically refresh the shared
+      // cache, then surface staleness as a stderr footer (never in --json).
+      let updateCache: UpdateCache | null = null;
+      try {
+        updateCache = await checkUpdates();
+      } catch {
+        updateCache = readUpdateCache();
+      }
+      const footer = updateFooter(VERSION, updateCache?.latest ?? null);
       let resolved;
       try {
         resolved = await resolveSnapshot({
@@ -98,7 +118,10 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
         if (e instanceof ClientError && e.kind === "no-data") {
           const rec = projectRecommendationResponse(emptySnapshot(t), task);
           if (o.json) console.log(JSON.stringify(rec, null, 2));
-          else console.log(`${rec.use}: ${rec.reason}`);
+          else {
+            console.log(`${rec.use}: ${rec.reason}`);
+            printUpdateFooter(o, footer);
+          }
           return;
         }
         console.error(e instanceof Error ? e.message : String(e));
@@ -108,6 +131,9 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
       if (resolved.source === "offline") console.error(OFFLINE_LABEL);
       const rec = projectRecommendationResponse(resolved.snapshot, task);
       if (o.json) console.log(JSON.stringify(rec, null, 2));
-      else console.log(`${rec.use}: ${rec.reason}`);
+      else {
+        console.log(`${rec.use}: ${rec.reason}`);
+        printUpdateFooter(o, footer);
+      }
     });
 }

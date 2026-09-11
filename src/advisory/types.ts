@@ -55,6 +55,13 @@ export interface ProviderSnapshot {
   advisory: Advisory | null;
 }
 
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  upToDate: boolean;
+  checkedAt: string | null;
+}
+
 export interface StateSnapshot {
   asOf: string;
   runtime: {
@@ -63,6 +70,7 @@ export interface StateSnapshot {
     polling: "idle" | "in-progress" | "cooldown";
     lastCompletedPollAt: string | null;
     version: string;
+    update?: UpdateStatus;
   };
   providers: ProviderSnapshot[];
   recommendation: Recommendation;

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { VERSION } from "../version.js";
 import { registerRuntimeCommands } from "./runtime.js";
 import { registerClientCommands } from "./clients.js";
+import { registerUpdateCommand } from "./update.js";
 const program = new Command();
 program.name("quotacap").version(VERSION);
 program.command("version").action(()=> console.log(VERSION));
@@ -17,4 +18,5 @@ program.command("mcp").description("start MCP server (stdio over HTTP)").action(
 });
 registerRuntimeCommands(program);
 registerClientCommands(program);
+registerUpdateCommand(program);
 program.parseAsync();

@@ -13,6 +13,8 @@ import {
 } from "../advisory/snapshot.js";
 import type { StateSnapshot } from "../advisory/types.js";
 import { validateTask } from "../advisory/validate.js";
+import { readUpdateCache } from "../runtime/updates.js";
+import { compareVersions } from "../runtime/versions.js";
 import { parseManualUsage } from "../adapters/manual.js";
 import { upsertQuota } from "../store/quotas.js";
 import {
@@ -119,6 +121,10 @@ export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeCo
 
 function snapshotOf(ctx: RuntimeContext): StateSnapshot {
   const st = ctx.coordinator.getState();
+  // Additive passive update signal: the shared daily cache (written by the
+  // daemon schedule and the CLI) surfaces here for the dashboard badge.
+  // upToDate is true when versions match or the check never succeeded.
+  const cache = readUpdateCache();
   return buildSnapshot(ctx.db, {
     enabledProviders: ctx.enabledProviders,
     now: ctx.now?.() ?? new Date(),
@@ -128,6 +134,12 @@ function snapshotOf(ctx: RuntimeContext): StateSnapshot {
       polling: st.polling,
       lastCompletedPollAt: st.lastCompletedPollAt,
       version: ctx.version,
+      update: {
+        current: ctx.version,
+        latest: cache?.latest ?? null,
+        upToDate: !cache || compareVersions(cache.latest, ctx.version) <= 0,
+        checkedAt: cache?.checkedAt ?? null,
+      },
     },
   });
 }

@@ -71,7 +71,7 @@ async function stubServer(
 function testProgram(deps: Record<string, any>) {
   const prog = new Command();
   prog.exitOverride();
-  registerRuntimeCommands(prog, deps);
+  registerRuntimeCommands(prog, { checkUpdates: async () => null, ...deps });
   return prog;
 }
 
@@ -361,6 +361,30 @@ describe("runtime cli", () => {
     expect(exitCodes).toEqual([]);
     const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(msg).toContain(`Upgraded daemon from 0.0.0-stale to ${VERSION} (daemon restarted)`);
+  });
+
+  it("(m) web refreshes the daily update cache as a writer", async () => {
+    isolatedHome();
+    const { port } = await stubServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({ ok: true, ready: true, version: VERSION, exec: process.execPath }),
+      );
+    });
+    let checks = 0;
+    const prog = testProgram({
+      exit: () => {},
+      openBrowser: async () => {},
+      startService: async () => {
+        throw new Error("must not start");
+      },
+      checkUpdates: async () => {
+        checks++;
+        return null;
+      },
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(checks).toBe(1);
   });
 
   it("(l) managed takeover failure exits 1 without opening", async () => {
