@@ -331,6 +331,7 @@ describe("update npm", () => {
     const spawns: string[][] = [];
     const r = await runUpdate([], {
       channelEnv: npmEnv,
+      homeDir: home,
       fetchFn: releaseFetch(),
       spawnNpm: async (args: string[]) => {
         spawns.push(args);
@@ -341,6 +342,8 @@ describe("update npm", () => {
     });
     expect(spawns).toEqual([["install", "-g", "quotacap@latest"]]);
     expect(r.errors.join("\n")).toMatch(/may shadow this npm install/);
+    // The warning names the fixture shadow, never the real ~/.local/bin.
+    expect(r.errors.join("\n")).toContain(path.join(home, ".local", "bin", "quotacap"));
     expect(r.logs[0]).toBe(`Updated ${VERSION} to 99.0.0`);
     expect(r.exitCodes).toEqual([]);
   });
@@ -350,6 +353,7 @@ describe("update npm", () => {
     const spawns: string[][] = [];
     const r = await runUpdate(["--version", "0.0.21"], {
       channelEnv: npmEnv,
+      homeDir: home,
       fetchFn: releaseFetch(),
       spawnNpm: async (args: string[]) => {
         spawns.push(args);
