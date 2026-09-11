@@ -6,7 +6,7 @@
 import type { Command } from "commander";
 import path from "node:path";
 import { VERSION } from "../version.js";
-import { getDbPath, readConfig } from "../config.js";
+import { ensureConfig, getDbPath } from "../config.js";
 import {
   createServiceClient,
   ServiceError,
@@ -361,7 +361,7 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
       }
 
       // Applied upgrades below: standalone swaps in place, npm reinstalls.
-      const cfg = await readConfig();
+      const { config: cfg } = await ensureConfig();
       const port = cfg.port;
       const dataDir = path.dirname(getDbPath());
       const postOpts = {

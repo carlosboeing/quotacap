@@ -16,7 +16,7 @@ import { createCoordinator, type Coordinator } from "./poll.js";
 import { killAll } from "./spawn.js";
 import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
-import { getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
+import { ensureConfig, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
@@ -135,7 +135,10 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
     throw err instanceof Error ? err : new Error(String(err));
   };
 
-  // 1. Strict config first, so invalid config leaves no residue.
+  // 1. Provision config when absent, then strict validation (a present-but-
+  // invalid file still fails naming the field). The daemon always leaves a
+  // real file behind.
+  await ensureConfig().catch((e) => fail(e));
   const config: Config = await readServiceConfig().catch((e) => fail(e));
   const port = opts?.port ?? config.port;
   const dataDir = opts?.dataDir ?? path.dirname(getDbPath());

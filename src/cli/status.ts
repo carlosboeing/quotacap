@@ -3,7 +3,7 @@
 // data contract with the offline label on stderr.
 import type { Command } from "commander";
 import { projectQuotasResponse } from "../advisory/snapshot.js";
-import { getDbPath, readConfig } from "../config.js";
+import { ensureConfig, getDbPath } from "../config.js";
 import { renderCompact, renderNarrow, renderWide } from "../format/terminal.js";
 import { assertValidSortKey, type SortKey } from "../format/rows.js";
 import { createServiceClient } from "../runtime/client.js";
@@ -65,7 +65,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
       const t = now();
       const compact = !!o.compact;
       const timeoutMs = compact ? 1000 : 2000;
-      const cfg = await readConfig();
+      const { config: cfg } = await ensureConfig();
       let client = createClient({ port: cfg.port, timeoutMs });
       // Skew pre-check: warn on exec-only and older-CLI skew, take the
       // managed path when newer, and never spawn a foreground daemon here —

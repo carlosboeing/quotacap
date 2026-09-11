@@ -39,21 +39,19 @@ npm install -g quotacap
 ```
 
 The binary is a self-contained executable from GitHub Releases (shipped as `quotacap-<os>-<arch>.tar.gz` with a `pty` sidecar for Kimi/Codex/Grok); `install.sh` handles the tarball and sidecar transparently.
+One command takes you from zero to a running tracker: the installer verifies checksums, provisions config, registers the background login service, and opens the dashboard. Re-running it upgrades in place with no flags. Pass `--no-service` (foreground only) or `--no-open` (SSH sessions) to skip steps.
 The npm package runs the same CLI on Node. To run without a global install, replace `quotacap` with `npx quotacap` in any command, for example `npx quotacap web`.
 
 ## Quick start
 
 ```bash
-# Terminal 1: leave this running
-quotacap init                 # writes ~/.quotacap/config.json
-quotacap web                  # dashboard at http://localhost:8787
-
-# Terminal 2: after the dashboard table fills
+quotacap            # opens the dashboard, starting the service if needed
 quotacap status
 quotacap advise
+quotacap update     # upgrade to the latest release
 ```
 
-`web` stays in the foreground and starts the daemon.
+No setup ceremony: config is provisioned on first use, and bare `quotacap` is the dashboard launcher. `quotacap web --foreground` and `quotacap daemon` keep the old hold-the-terminal mode for SSH, containers, and supervisors.
 
 ## MCP
 

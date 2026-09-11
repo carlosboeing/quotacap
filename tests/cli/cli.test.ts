@@ -12,7 +12,7 @@ describe("cli contract", () => {
     const { stdout } = await exec("node", ["dist/cli/index.js", "--help"], {
       env: { ...process.env, QUOTACAP_EXPERIMENTAL_INGEST: "0" },
     });
-    for (const cmd of ["status", "advise", "init", "version", "mcp", "daemon", "web", "service"]) {
+    for (const cmd of ["status", "advise", "init", "version", "mcp", "daemon", "web", "service", "update"]) {
       expect(stdout).toMatch(new RegExp(`\\b${cmd}\\b`));
     }
     expect(stdout).not.toMatch(/\bingest\b/);

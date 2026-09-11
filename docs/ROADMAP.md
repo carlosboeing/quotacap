@@ -53,9 +53,16 @@
 
 * `test.yml` CI — vitest + bun-runtime tests on every PR and push to main
 
+## Recently shipped — install & update lifecycle
+
+* One-command install: provision config, register login service, wait for readiness, open dashboard; upgrades re-run flag-free
+* `web` launcher, bare `quotacap`, on-demand config, `init` JSON contract with `--quiet`/`--force`
+* `quotacap update` with channel detection, passive daily signals, CLI footer + API + dashboard badge
+* Daemon takeover on version skew, wedged recovery without PID killing, Linux systemd user unit
+* Bun PTY genuine terminal and Grok reset parsing ([#42](https://github.com/carlosboeing/quotacap/issues/42)), npm `postinstall` removal
+
 ## Next
 
-* Fix Bun PTY failures and Grok reset timestamp parsing immediately after provider-error observability ships, before the stable release ([#42](https://github.com/carlosboeing/quotacap/issues/42)). Observability completion does not close these fixes.
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)

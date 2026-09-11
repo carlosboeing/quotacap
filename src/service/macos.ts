@@ -11,7 +11,7 @@ import {
   readServiceMetadata,
   writeServiceMetadata,
 } from "../config.js";
-import { readConfig } from "../config.js";
+import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
 
 export const SERVICE_LABEL = "quotacap";
@@ -37,6 +37,8 @@ export interface ServiceDeps {
   print?: (msg: string) => void;
   error?: (msg: string) => void;
   now?: () => Date;
+  sleep?: (ms: number) => Promise<void>;
+  bootstrapTimeoutMs?: number;
 }
 
 export function foregroundGuidance(verb: string, platform: string): string {
@@ -270,6 +272,46 @@ function bootoutTarget(uid: number): string {
   return `gui/${uid}/${SERVICE_LABEL}`;
 }
 
+// Bootstrap retries across launchd's teardown window. `launchctl bootout`
+// returns before the service record clears, so an immediate bootstrap fails
+// with "Bootstrap failed: 5" — the same error an already-loaded job gives.
+// On error 5 we ask launchd which case it is: a loaded job the caller did
+// not just stop means the goal is already met (idempotent start), while a
+// missing record after a bootout means teardown is still in flight, so we
+// wait and retry until the deadline instead of failing the install.
+async function bootstrapWithRetry(
+  run: (args: string[]) => string,
+  uid: number,
+  plistFile: string,
+  opts: {
+    expectReplace: boolean;
+    sleep: (ms: number) => Promise<void>;
+    timeoutMs: number;
+  },
+): Promise<void> {
+  const deadline = Date.now() + opts.timeoutMs;
+  for (;;) {
+    try {
+      run(["bootstrap", `gui/${uid}`, plistFile]);
+      return;
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (!/Bootstrap failed:\s*5\b/.test(msg) || Date.now() >= deadline) {
+        throw e;
+      }
+      let loaded = false;
+      try {
+        run(["print", `gui/${uid}/${SERVICE_LABEL}`]);
+        loaded = true;
+      } catch {
+        loaded = false;
+      }
+      if (loaded && !opts.expectReplace) return;
+      await opts.sleep(500);
+    }
+  }
+}
+
 function bootoutQuiet(
   run: (args: string[]) => string,
   uid: number,
@@ -294,6 +336,8 @@ function resolved(deps: ServiceDeps = {}) {
     print: deps.print ?? console.log,
     run: deps.runLaunchctl ?? defaultRunLaunchctl,
     lint: deps.lintPlist ?? defaultLintPlist,
+    sleep: deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms))),
+    bootstrapTimeoutMs: deps.bootstrapTimeoutMs ?? 10000,
   };
 }
 
@@ -303,7 +347,10 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
     (deps.print ?? console.log)(foregroundGuidance("install", platform));
     return;
   }
-  const { home, uid, dataDir, print, run, lint } = resolved(deps);
+  const { home, uid, dataDir, print, run, lint, sleep, bootstrapTimeoutMs } = resolved(deps);
+  // Provision beside the data dir the service will use (identical to the
+  // QUOTACAP_HOME path in production; hermetic under injected test dirs).
+  await ensureConfig(path.join(dataDir, "config.json"));
 
   const { argv, entry } = resolveServiceExec(deps);
   const providerPaths = resolveProviderPaths(deps);
@@ -351,7 +398,11 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
         (bin) => (meta.providerPaths?.[bin] ?? null) === providerPaths[bin],
       );
     if (samePlist && samePaths && meta?.version === VERSION) {
-      run(["bootstrap", `gui/${uid}`, plistFile]);
+      await bootstrapWithRetry(run, uid, plistFile, {
+        expectReplace: false,
+        sleep,
+        timeoutMs: bootstrapTimeoutMs,
+      });
       run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
       print("service already installed and up to date; ensured loaded");
       return;
@@ -385,7 +436,11 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   fs.writeFileSync(plistFile, plist, "utf8");
   lint(plistFile);
-  run(["bootstrap", `gui/${uid}`, plistFile]);
+  await bootstrapWithRetry(run, uid, plistFile, {
+    expectReplace: existing !== null,
+    sleep,
+    timeoutMs: bootstrapTimeoutMs,
+  });
   run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
   print(existing !== null ? "service upgraded and loaded" : "service installed and loaded");
 }
@@ -432,9 +487,13 @@ export async function start(deps: ServiceDeps = {}): Promise<void> {
     (deps.print ?? console.log)(foregroundGuidance("start", platform));
     return;
   }
-  const { home, uid, dataDir, print, run } = resolved(deps);
+  const { home, uid, dataDir, print, run, sleep, bootstrapTimeoutMs } = resolved(deps);
   const plistFile = plistFileFor(home);
-  run(["bootstrap", `gui/${uid}`, plistFile]);
+  await bootstrapWithRetry(run, uid, plistFile, {
+    expectReplace: false,
+    sleep,
+    timeoutMs: bootstrapTimeoutMs,
+  });
   run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
   const waitReady = deps.waitReady ?? defaultWaitReady;
   const cfg = await readConfig();
