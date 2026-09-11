@@ -408,7 +408,7 @@ describe("macos login service", () => {
     const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");
     for (const verb of ["install", "uninstall", "start", "stop", "restart"]) {
       const rec = recorder();
-      const d = depsFor(home, rec.run, { platform: "linux" });
+      const d = depsFor(home, rec.run, { platform: "win32" });
       const code = await runServiceCommand(
         [verb],
         {},
@@ -418,10 +418,14 @@ describe("macos login service", () => {
       expect(
         (d as unknown as { printed: string[] }).printed.join("\n"),
       ).toMatch(/foreground/);
+      expect(
+        (d as unknown as { printed: string[] }).printed.join("\n"),
+      ).toMatch(/macOS and Linux/);
       expect(rec.calls).toEqual([]);
       expect(fs.existsSync(plistFile)).toBe(false);
     }
-    expect(serviceSupported("linux")).toBe(false);
+    expect(serviceSupported("win32")).toBe(false);
     expect(serviceSupported("darwin")).toBe(true);
+    expect(serviceSupported("linux")).toBe(true);
   });
 });

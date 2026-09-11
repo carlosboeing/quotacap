@@ -90,6 +90,11 @@ export interface RuntimeContext {
   canWrite?: () => boolean;
   /** Off unless experimental ingest is enabled. Unset means off. */
   ingestEnabled?: boolean;
+  /**
+   * Graceful-stop hook for POST /api/restart. The service wires this to its
+   * normal SIGTERM path; unset in tests that only assert the response.
+   */
+  onRestart?: (info: { version?: string; exec?: string }) => void;
 }
 
 // Ingest writes outside the poll path, so it needs the same fence the
@@ -206,6 +211,34 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
         error: String(e?.message ?? e),
       };
     }
+  });
+
+  // Graceful-stop request for CLI-driven takeovers. The endpoint restarts
+  // nothing by itself: it responds 202, then the service follows its normal
+  // SIGTERM path while the CLI spawns the successor after the port releases.
+  app.post("/api/restart", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+    const body = (req.body ?? {}) as any;
+    const info = {
+      version: typeof body?.version === "string" ? body.version : undefined,
+      exec: typeof body?.exec === "string" ? body.exec : undefined,
+    };
+    if (info.version || info.exec) {
+      console.log(`[quotacap] restart requested by CLI version ${info.version ?? "?"} exec ${info.exec ?? "?"}`);
+    } else {
+      console.log("[quotacap] restart requested");
+    }
+    // The 202 must flush before shutdown begins; the CLI keys its successor
+    // off this response, and a reset connection would read as failure.
+    reply.raw.once("finish", () => {
+      setImmediate(() => ctx.onRestart?.(info));
+    });
+    return reply
+      .status(202)
+      .send({ ok: true, restarting: true, version: ctx.version, pid: process.pid });
   });
 
   if (ctx.ingestEnabled) {

@@ -135,10 +135,15 @@ describe("runtime cli", () => {
     expect(exitCodes).toEqual([]);
   });
 
-  it("(d) version-mismatch service exits 2 naming executable, version and port", async () => {
+  it("(d) CLI newer than an old unmanaged daemon that 404s restart exits 2 with recovery", async () => {
     isolatedHome();
-    const { port } = await stubServer((_req, res) => {
+    const { port } = await stubServer((req, res) => {
       res.setHeader("content-type", "application/json");
+      if (req.method === "POST") {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
       res.end(
         JSON.stringify({
           ok: true,
@@ -159,18 +164,20 @@ describe("runtime cli", () => {
         started++;
         throw new Error("must not start");
       },
+      isManaged: async () => false,
+      takeoverOpts: { readToken: () => "tok" },
     });
     await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
     expect(exitCodes).toEqual([2]);
     const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
-    expect(msg).toContain("0.0.0-stale");
-    expect(msg).toContain("/other/quotacap");
+    expect(msg).toMatch(/mismatch/);
     expect(msg).toContain(String(port));
+    expect(msg).toContain("in its own terminal");
     expect(opened).toEqual([]);
     expect(started).toBe(0);
   });
 
-  it("(e) web --port against an owner on another port exits 2", async () => {
+  it("(e) fresh claim with no listener prints managed recovery and exits 2", async () => {
     const home = isolatedHome();
     const claim = await acquireClaim(path.join(home, ".quotacap"));
     claims.push(claim);
@@ -185,6 +192,34 @@ describe("runtime cli", () => {
         started++;
         throw new Error("must not start");
       },
+      isManaged: async () => true,
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(exitCodes).toEqual([2]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toMatch(/mismatch/);
+    expect(msg).toContain(String(port));
+    expect(msg).toContain("quotacap service restart");
+    expect(started).toBe(0);
+    expect(claim.info.pid).toBe(process.pid);
+  });
+
+  it("(e2) fresh claim with no listener prints unmanaged recovery and exits 2", async () => {
+    const home = isolatedHome();
+    const claim = await acquireClaim(path.join(home, ".quotacap"));
+    claims.push(claim);
+    const port = await getFreePort();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let started = 0;
+    const exitCodes: number[] = [];
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async () => {},
+      startService: async () => {
+        started++;
+        throw new Error("must not start");
+      },
+      isManaged: async () => false,
     });
     await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
     expect(exitCodes).toEqual([2]);
@@ -192,7 +227,167 @@ describe("runtime cli", () => {
     expect(msg).toMatch(/mismatch/);
     expect(msg).toContain(claim.info.version);
     expect(msg).toContain(String(port));
+    expect(msg).toContain(`ps -p ${claim.info.pid}`);
     expect(started).toBe(0);
+  });
+
+  it("(g) same version with different exec warns and opens", async () => {
+    isolatedHome();
+    const { port } = await stubServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          ok: true,
+          ready: true,
+          version: VERSION,
+          exec: "/other/quotacap",
+        }),
+      );
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const opened: string[] = [];
+    const exitCodes: number[] = [];
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async (url: string) => opened.push(url),
+      startService: async () => {
+        throw new Error("must not start");
+      },
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(opened).toEqual([`http://127.0.0.1:${port}`]);
+    expect(exitCodes).toEqual([]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain("/other/quotacap");
+    expect(msg).toContain("versions match");
+  });
+
+  it("(i) older CLI than daemon warns and opens read-only", async () => {
+    isolatedHome();
+    const { port } = await stubServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          ok: true,
+          ready: true,
+          version: "99.0.0",
+          exec: "/new/quotacap",
+        }),
+      );
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const opened: string[] = [];
+    const exitCodes: number[] = [];
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async (url: string) => opened.push(url),
+      startService: async () => {
+        throw new Error("must not start");
+      },
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(opened).toEqual([`http://127.0.0.1:${port}`]);
+    expect(exitCodes).toEqual([]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain("daemon is newer (99.0.0)");
+    expect(msg).toContain("quotacap update");
+  });
+
+  it("(j) managed takeover restarts the service, then opens", async () => {
+    isolatedHome();
+    let version = "0.0.0-stale";
+    const { port } = await stubServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({ ok: true, ready: true, version, exec: process.execPath }),
+      );
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const opened: string[] = [];
+    const exitCodes: number[] = [];
+    const restarts: string[][] = [];
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async (url: string) => opened.push(url),
+      startService: async () => {
+        throw new Error("must not start");
+      },
+      isManaged: async () => true,
+      execService: async (args: string[]) => {
+        restarts.push(args);
+        version = VERSION;
+        return 0;
+      },
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(restarts).toEqual([["restart"]]);
+    expect(opened).toEqual([`http://127.0.0.1:${port}`]);
+    expect(exitCodes).toEqual([]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain(`Upgraded daemon from 0.0.0-stale to ${VERSION} (service restarted)`);
+  });
+
+  it("(k) unmanaged takeover stops the old daemon, then foreground-starts and opens", async () => {
+    isolatedHome();
+    const { server, port } = await stubServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      if (req.method === "POST" && req.url === "/api/restart") {
+        res.statusCode = 202;
+        res.end(JSON.stringify({ ok: true, restarting: true }));
+        server.close();
+        return;
+      }
+      res.end(
+        JSON.stringify({ ok: true, ready: true, version: "0.0.0-stale", exec: "/old/q" }),
+      );
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const opened: string[] = [];
+    const exitCodes: number[] = [];
+    let startedWith: any = null;
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async (url: string) => opened.push(url),
+      startService: async (opts: any) => {
+        startedWith = opts;
+        return { port, stop: async () => {}, state: {} };
+      },
+      isManaged: async () => false,
+      takeoverOpts: { readToken: () => "tok" },
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(startedWith).toEqual({ port });
+    expect(opened).toEqual([`http://127.0.0.1:${port}`]);
+    expect(exitCodes).toEqual([]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain(`Upgraded daemon from 0.0.0-stale to ${VERSION} (daemon restarted)`);
+  });
+
+  it("(l) managed takeover failure exits 1 without opening", async () => {
+    isolatedHome();
+    const { port } = await stubServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({ ok: true, ready: true, version: "0.0.0-stale", exec: "/old/q" }),
+      );
+    });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const opened: string[] = [];
+    const exitCodes: number[] = [];
+    const prog = testProgram({
+      exit: (c: number) => exitCodes.push(c),
+      openBrowser: async (url: string) => opened.push(url),
+      startService: async () => {
+        throw new Error("must not start");
+      },
+      isManaged: async () => true,
+      execService: async () => 1,
+    });
+    await prog.parseAsync(["web", "--port", String(port)], { from: "user" });
+    expect(exitCodes).toEqual([1]);
+    const msg = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain("daemon upgrade failed");
+    expect(opened).toEqual([]);
   });
 
   it("(f) browser-open failure prints the URL and keeps the service", async () => {

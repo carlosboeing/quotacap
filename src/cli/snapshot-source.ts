@@ -29,6 +29,16 @@ export class ClientError extends Error {
 // stderr label for labeled offline fallback (stdout stays a pure data contract).
 export const OFFLINE_LABEL = "offline: showing stored readings (service unreachable)";
 
+// A client that always fails transport: forces resolveSnapshot down the
+// labeled offline path without touching the network. Used when the daemon
+// is reachable but too old for an unmanaged takeover.
+export function offlineOnlyClient(): ServiceClient {
+  const fail = async (): Promise<never> => {
+    throw new ServiceUnavailable("service unavailable: skew fallback to stored readings");
+  };
+  return { get: fail, post: fail };
+}
+
 const NO_DATA_HINT = "no quotas yet - start the service (quotacap web)";
 
 function unreadableMessage(dbPath: string): string {

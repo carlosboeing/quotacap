@@ -11,8 +11,21 @@ import {
   createServiceClient,
   ServiceError,
   ServiceUnavailable,
+  type ServiceClient,
 } from "../runtime/client.js";
 import { runServiceCommand } from "../service/index.js";
+import {
+  checkSkew,
+  execSkewWarning,
+  formatWedged,
+  isServiceManaged,
+  olderCliWarning,
+  takeoverManaged,
+  takeoverUnmanaged,
+  upgradedMessage,
+  WedgedError,
+  type SleepFn,
+} from "./takeover.js";
 
 export type StartServiceFn = (opts?: StartServiceOptions) => ReturnType<
   typeof startService
@@ -28,6 +41,13 @@ export interface RuntimeCommandDeps {
   openBrowser?: OpenBrowserFn;
   execService?: ExecServiceFn;
   exit?: (code: number) => void;
+  createClient?: (opts: { port: number; token?: string; timeoutMs: number }) => ServiceClient;
+  isManaged?: () => Promise<boolean>;
+  takeoverOpts?: {
+    sleep?: SleepFn;
+    timeoutMs?: number;
+    readToken?: () => string | undefined;
+  };
 }
 
 async function defaultOpenBrowser(url: string): Promise<void> {
@@ -70,6 +90,10 @@ export function registerRuntimeCommands(
   const execService: ExecServiceFn =
     deps?.execService ??
     ((args, opts) => runServiceCommand(args, opts ?? {}, {}));
+  const createClient =
+    deps?.createClient ?? ((o) => createServiceClient(o));
+  const isManaged = deps?.isManaged ?? isServiceManaged;
+  const takeoverOpts = deps?.takeoverOpts ?? {};
 
   program
     .command("daemon")
@@ -94,10 +118,10 @@ export function registerRuntimeCommands(
       const port = o.port ? parseInt(o.port, 10) : cfg.port;
       const dataDir = path.dirname(getDbPath());
 
-      // 1. A healthy service answers: open it, never replace it.
+      // 1. A healthy service answers: compare skew, take over when newer.
       let health: any = null;
       try {
-        health = await createServiceClient({ port }).get("/health");
+        health = await createClient({ port, timeoutMs: 2000 }).get("/health");
       } catch (e) {
         if (!(e instanceof ServiceUnavailable) && !(e instanceof ServiceError)) {
           throw e;
@@ -105,30 +129,69 @@ export function registerRuntimeCommands(
         health = null;
       }
       if (health?.ok) {
-        if (
-          health.version !== VERSION ||
-          (typeof health.exec === "string" &&
-            health.exec !== process.execPath)
-        ) {
-          console.error(
-            `existing service mismatch: ${health.exec ?? "unknown executable"} version ${health.version ?? "unknown"} on port ${port} (this CLI: ${process.execPath} version ${VERSION})`,
-          );
-          exit(2);
+        const skew = checkSkew(health, VERSION, process.execPath);
+        if (skew === "match") {
+          await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
           return;
         }
-        await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
+        if (skew === "exec-only") {
+          console.error(execSkewWarning(String(health.exec)));
+          await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
+          return;
+        }
+        if (skew === "cli-older") {
+          console.error(olderCliWarning(String(health.version ?? "unknown")));
+          await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
+          return;
+        }
+        // CLI newer than daemon: take over, then open.
+        const managed = await isManaged().catch(() => false);
+        if (managed) {
+          try {
+            const r = await takeoverManaged({
+              port,
+              health,
+              createClient,
+              execService,
+              ...takeoverOpts,
+            });
+            console.error(r.message);
+          } catch (e) {
+            console.error(e instanceof Error ? e.message : String(e));
+            exit(1);
+            return;
+          }
+          await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
+          return;
+        }
+        try {
+          const r = await takeoverUnmanaged({
+            port,
+            health,
+            dataDir,
+            createClient,
+            ...takeoverOpts,
+          });
+          console.error(upgradedMessage(r.oldVersion, VERSION, "daemon"));
+        } catch (e) {
+          console.error(e instanceof Error ? e.message : String(e));
+          exit(e instanceof WedgedError ? 2 : 1);
+          return;
+        }
+        // Unmanaged successor: foreground-start the new daemon and open it.
+        const started = await start(o.port ? { port } : undefined);
+        await openDashboard(`http://127.0.0.1:${started.port}`, openBrowser);
         return;
       }
 
       // 2. Nothing healthy on the target port, but another owner holds the
-      // installation: report, never create a second poller.
+      // installation: wedged — print recovery, never create a second poller.
       const claim = readClaim(dataDir);
       const fresh =
         !!claim && Date.now() - new Date(claim.lastBeat).getTime() < 30000;
       if (fresh && claim) {
-        console.error(
-          `existing service mismatch: installation owned by ${claim.exec} version ${claim.version} (pid ${claim.pid}, started ${claim.startedAt}); no healthy service on port ${port}`,
-        );
+        const managed = await isManaged().catch(() => false);
+        console.error(formatWedged({ claim, port, managed }));
         exit(2);
         return;
       }
