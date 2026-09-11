@@ -42,6 +42,7 @@
     "build:bin": "node scripts/build-binary.mjs",
     "pretest": "npm run build",
     "test": "vitest run",
+    "test:smoke": "playwright test -c tests/smoke/playwright.config.ts",
     "prepublishOnly": "npm run build",
     "dev": "tsx src/cli/index.ts"
   },
