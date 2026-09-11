@@ -53,7 +53,7 @@
 
 * `test.yml` CI — vitest + bun-runtime tests on every PR and push to main
 
-## Recently shipped — install & update lifecycle
+## Recently shipped — 0.0.23 — 2026-09-11 (install & update lifecycle)
 
 * One-command install: provision config, register login service, wait for readiness, open dashboard; upgrades re-run flag-free
 * `web` launcher, bare `quotacap`, on-demand config, `init` JSON contract with `--quiet`/`--force`
