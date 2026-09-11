@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.23
 
 - Install: one command from zero to dashboard — `install.sh` verifies checksums, provisions config, registers the background login service, waits for readiness, and opens the browser, with `upgrading existing install` re-runs, `--no-service`/`--no-open` flags, a PATH-shadow warning, and a `loginctl enable-linger` hint on Linux.
 - Launcher: bare `quotacap` opens the dashboard through the shared `web` launcher (healthy daemons open, registered services start, last resort foreground-starts with a service suggestion); `init` keeps stdout JSON with guidance on stderr plus `--quiet` and `--force`; config provisions on demand everywhere.
