@@ -31,7 +31,6 @@
   "files": [
     "dist/",
     "web/dist/",
-    "scripts/fix-pty-perms.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -41,7 +40,6 @@
   "scripts": {
     "build": "vite build --config web/vite.config.ts && node scripts/build-embed.mjs && tsc && cp -R dist/src/* dist/ && chmod +x dist/cli/index.js",
     "build:bin": "node scripts/build-binary.mjs",
-    "postinstall": "node scripts/fix-pty-perms.mjs",
     "pretest": "npm run build",
     "test": "vitest run",
     "prepublishOnly": "npm run build",

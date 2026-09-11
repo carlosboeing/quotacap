@@ -44,14 +44,78 @@ function regexTest(re: RegExp, s: string): boolean {
   return fresh.test(s);
 }
 
+export interface SpawnHelperRepair {
+  helper: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Lazy replacement for the removed postinstall: best-effort `chmod 0o755`
+ * over every prebuilds entry `spawn-helper` under the given node-pty roots.
+ * Missing roots, missing prebuild dirs, and missing helpers are skipped
+ * silently; only attempted repairs are recorded.
+ */
+export function repairSpawnHelpers(
+  roots: string[],
+  chmod: (p: string, mode: number) => void = fs.chmodSync,
+): SpawnHelperRepair[] {
+  const outcomes: SpawnHelperRepair[] = [];
+  const seen = new Set<string>();
+  for (const root of roots) {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(path.join(root, "prebuilds"));
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const helper = path.join(root, "prebuilds", entry, "spawn-helper");
+      if (seen.has(helper)) continue;
+      seen.add(helper);
+      try {
+        if (!fs.existsSync(helper)) continue;
+      } catch {
+        continue;
+      }
+      try {
+        chmod(helper, 0o755);
+        outcomes.push({ helper, ok: true });
+      } catch (e: any) {
+        outcomes.push({ helper, ok: false, error: String(e?.message ?? e) });
+      }
+    }
+  }
+  return outcomes;
+}
+
+/**
+ * Human diagnostic for failed repairs, or null when nothing failed.
+ * Load-bearing for root-owned trees (e.g. `sudo` global installs) where the
+ * invoking user cannot repair: without it the failure would go opaque again.
+ */
+export function describeSpawnHelperRepairs(outcomes: SpawnHelperRepair[]): string | null {
+  const failed = outcomes.filter((o) => !o.ok);
+  if (failed.length === 0) return null;
+  const lines = failed.map((o) => `could not make ${o.helper} executable (${o.error ?? "unknown error"})`);
+  return (
+    `${lines.join("; ")} — the install tree is likely root-owned (e.g. installed with sudo); ` +
+    `reinstall without sudo or fix the install's ownership so the invoking user can write it`
+  );
+}
+
+function nodePtyPackageRoot(resolvedEntry: string): string {
+  const dir = path.dirname(resolvedEntry);
+  // node-pty's main entry is lib/index.js; the package root is two levels up.
+  if (path.basename(dir) === "lib" && /^index\.[cm]?js$/.test(path.basename(resolvedEntry))) {
+    return path.dirname(dir);
+  }
+  return dir;
+}
+
 let ptyMod: any | null = null;
 function getPty(): any {
   if (ptyMod) return ptyMod;
-  try {
-    const require = createRequire(import.meta.url);
-    ptyMod = require("node-pty");
-    if (ptyMod?.spawn) return ptyMod;
-  } catch {}
   // Compiled binary (bun --compile) has no node_modules; try sidecar locations
   const execDir = path.dirname(process.execPath);
   const platformArch = `${process.platform}-${process.arch}`;
@@ -63,6 +127,24 @@ function getPty(): any {
     path.join(os.homedir(), ".local", "share", "quotacap", "pty", platformArch, "node-pty"),
     path.join(os.homedir(), ".quotacap", "pty", "node-pty"),
   ];
+  // Best-effort +x before requiring: the resolvable npm root (when present)
+  // plus every existing sidecar root. Successful repairs stay silent.
+  const repairRoots: string[] = [];
+  try {
+    const require0 = createRequire(import.meta.url);
+    repairRoots.push(nodePtyPackageRoot(require0.resolve("node-pty")));
+  } catch {}
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) repairRoots.push(c);
+    } catch {}
+  }
+  const repairs = repairSpawnHelpers(repairRoots);
+  try {
+    const require = createRequire(import.meta.url);
+    ptyMod = require("node-pty");
+    if (ptyMod?.spawn) return ptyMod;
+  } catch {}
   for (const c of candidates) {
     try {
       if (!fs.existsSync(c)) continue;
@@ -84,8 +166,10 @@ function getPty(): any {
       }
     } catch {}
   }
+  const repairNote = describeSpawnHelperRepairs(repairs);
   throw new Error(
-    "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only; for compiled binaries, ensure the pty sidecar is installed alongside the binary (see install.sh)",
+    "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only; for compiled binaries, ensure the pty sidecar is installed alongside the binary (see install.sh)" +
+      (repairNote ? `; ${repairNote}` : ""),
   );
 }
 
@@ -117,6 +201,11 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   let exited = false;
   let exitCode: number | undefined;
 
+  // Genuine PTY via the Bun.spawn `terminal` option (verified on Bun 1.3.11):
+  // the child's stdin, stdout, and stderr are all the PTY slave, input goes
+  // through proc.terminal.write, and merged output arrives in `data`.
+  // proc.stdin/stdout/stderr are null in this mode.
+  const decoder = new TextDecoder();
   const proc: any = BunGlobal.spawn([opts.file, ...(opts.args ?? [])], {
     cwd: opts.cwd ?? process.cwd(),
     env: {
@@ -124,23 +213,26 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       ...(opts.env ?? {}),
       TERM: "xterm-256color",
     },
-    stdin: "pipe",
-    pty: { cols, rows },
+    terminal: {
+      cols,
+      rows,
+      data(_term: any, chunk: any) {
+        try {
+          transcript += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+        } catch {}
+      },
+    },
   });
-
-  // Capture stdout (pty merges stdout+stderr)
-  const decoder = new TextDecoder();
-  const reader = proc.stdout.getReader();
-  let reading = true;
-  const readLoop = (async () => {
+  if (!proc.terminal) {
+    // Old Bun runtimes silently ignore the unknown `terminal` option, so an
+    // absent proc.terminal is the fail-loud signal — never run half-attached.
     try {
-      while (reading) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) transcript += decoder.decode(value);
-      }
+      proc.kill();
     } catch {}
-  })();
+    throw new Error(
+      "pty: Bun runtime lacks terminal (PTY) support (Bun.spawn terminal option unavailable) — rebuild the standalone binary with a newer Bun version",
+    );
+  }
 
   // Poll for exit
   const exitPoll = (async () => {
@@ -150,6 +242,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       exitCode = code;
     } catch {}
   })();
+  void exitPoll;
 
   const checkCap = () => {
     if (Buffer.byteLength(transcript, "utf8") > maxBytes) {
@@ -180,6 +273,9 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   const unregisterChild = registerTrackedChild(() => {
     try {
       proc.kill();
+    } catch {}
+    try {
+      proc.terminal?.close();
     } catch {}
   }, opts.label ?? opts.file);
 
@@ -220,8 +316,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
 
     if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
     try {
-      proc.stdin.write(opts.input);
-      if (typeof proc.stdin.flush === "function") proc.stdin.flush();
+      proc.terminal.write(opts.input);
     } catch (e) {
       throw new Error(`pty write failed: ${(e as Error).message}`);
     }
@@ -264,9 +359,15 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     }
 
     await kill();
-    reading = false;
-    try { reader.cancel(); } catch {}
-    await Promise.race([readLoop, delay(200)]);
+    // Drain late `data` callbacks, then close the terminal and flush the
+    // streamed decoder before the final checks.
+    await delay(200);
+    try {
+      proc.terminal.close();
+    } catch {}
+    try {
+      transcript += decoder.decode();
+    } catch {}
     checkCap();
     checkAborted();
     const finalClean = stripAnsi(transcript);
@@ -275,9 +376,10 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     teardownAbort();
     return transcript;
   } catch (e) {
-    reading = false;
-    try { reader.cancel(); } catch {}
     await kill();
+    try {
+      proc.terminal.close();
+    } catch {}
     unregisterChild();
     teardownAbort();
     throw e;
