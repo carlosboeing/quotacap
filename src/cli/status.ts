@@ -9,6 +9,14 @@ import { assertValidSortKey, type SortKey } from "../format/rows.js";
 import { createServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
 import { isServiceManaged, runServiceCommand } from "../service/index.js";
+import {
+  detectChannel,
+  printUpdateFooter,
+  readUpdateCache,
+  refreshUpdateCache,
+  updateFooter,
+  type UpdateCache,
+} from "../runtime/updates.js";
 import { ClientError, OFFLINE_LABEL, offlineOnlyClient, resolveSnapshot } from "./snapshot-source.js";
 import {
   checkSkew,
@@ -32,6 +40,9 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
     deps.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
   const isManaged = deps.isManaged ?? isServiceManaged;
   const takeoverOpts = deps.takeoverOpts ?? {};
+  const checkUpdates =
+    deps.checkUpdates ??
+    (() => refreshUpdateCache({ channel: detectChannel(), current: VERSION }));
 
   program
     .command("status")
@@ -94,6 +105,15 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
           }
         }
       }
+      // Passive daily update signal: opportunistically refresh the shared
+      // cache, then surface staleness as a stderr footer (never in --json).
+      let updateCache: UpdateCache | null = null;
+      try {
+        updateCache = await checkUpdates();
+      } catch {
+        updateCache = readUpdateCache();
+      }
+      const footer = updateFooter(VERSION, updateCache?.latest ?? null);
       let resolved;
       try {
         resolved = await resolveSnapshot({
@@ -111,9 +131,11 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
           }
           if (compact) {
             console.log("(use: none)");
+            printUpdateFooter(o, footer);
             return;
           }
           console.log(e.message);
+          printUpdateFooter(o, footer);
           return;
         }
         console.error(e instanceof Error ? e.message : String(e));
@@ -128,6 +150,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
       }
       if (compact) {
         console.log(renderCompact(snapshot, t));
+        printUpdateFooter(o, footer);
         return;
       }
       const { columns, tty } = resolveWidth();
@@ -139,5 +162,6 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
           ? renderWide(snapshot, { now: t, ascii, color, sort })
           : renderNarrow(snapshot, { now: t, ascii, color, sort }),
       );
+      printUpdateFooter(o, footer);
     });
 }

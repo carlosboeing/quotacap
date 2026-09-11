@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { buildApp, testCtx } from "../../src/http/server.js";
 import { createCoordinator } from "../../src/runtime/poll.js";
 import { getLatestByProvider } from "../../src/store/quotas.js";
@@ -336,5 +339,47 @@ describe("http runtime context", () => {
     expect(infos).toHaveLength(1);
     expect(infos[0].version).toBeUndefined();
     expect(infos[0].exec).toBeUndefined();
+  });
+
+  it("GET /api/state carries the additive update field from the daily cache", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-state-update-"));
+    const saved = process.env.QUOTACAP_HOME;
+    process.env.QUOTACAP_HOME = home;
+    try {
+      const db = buildFixtureDb();
+      const app = buildApp(ctxWith(db, { version: "9.9.9" }));
+      const plain = await app.inject({ method: "GET", url: "/api/state" });
+      expect(JSON.parse(plain.body).runtime.update).toEqual({
+        current: "9.9.9",
+        latest: null,
+        upToDate: true,
+        checkedAt: null,
+      });
+      fs.mkdirSync(path.join(home, ".quotacap"), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, ".quotacap", "updates.json"),
+        JSON.stringify({
+          checkedAt: "2026-09-11T00:00:00.000Z",
+          latest: "9.9.10",
+          channel: "standalone",
+          current: "9.9.9",
+        }),
+      );
+      const stale = await app.inject({ method: "GET", url: "/api/state" });
+      expect(JSON.parse(stale.body).runtime.update).toEqual({
+        current: "9.9.9",
+        latest: "9.9.10",
+        upToDate: false,
+        checkedAt: "2026-09-11T00:00:00.000Z",
+      });
+      // Unparseable dev versions never report stale: string order keeps them quiet.
+      const dev = buildApp(ctxWith(db));
+      const devRes = await dev.inject({ method: "GET", url: "/api/state" });
+      expect(JSON.parse(devRes.body).runtime.update.upToDate).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.QUOTACAP_HOME;
+      else process.env.QUOTACAP_HOME = saved;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });

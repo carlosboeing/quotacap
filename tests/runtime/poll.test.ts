@@ -458,4 +458,38 @@ describe("poll coordinator", () => {
     expect(logged).toHaveLength(calls);
     expect(logged.every((l) => l.includes("database write failed"))).toBe(true);
   });
+
+  it("scheduled ticks fire onSettled after settling, even on failure", async () => {
+    const db = freshDb();
+    const settled: string[] = [];
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["claude"],
+        pollFn: async () => [
+          { provider: "claude", status: "fulfilled", value: fakeQuota("claude", 10, Date.now()) },
+        ],
+        onSettled: () => {
+          settled.push("ok");
+        },
+      }),
+    );
+    await coord.scheduledTick();
+    expect(settled).toEqual(["ok"]);
+
+    const failing = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["claude"],
+        pollFn: async () => {
+          throw new Error("poll exploded");
+        },
+        onSettled: () => {
+          settled.push("failed-tick");
+        },
+      }),
+    );
+    await failing.scheduledTick();
+    expect(settled).toEqual(["ok", "failed-tick"]);
+  });
 });

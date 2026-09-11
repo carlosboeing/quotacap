@@ -48,6 +48,8 @@ export interface CoordinatorOptions {
   cooldownMs?: number;
   ownershipVerify?: () => boolean;
   onOwnershipLost?: () => void;
+  /** Fired after each scheduled tick settles (success or failure). The daemon refreshes its daily update cache here. */
+  onSettled?: () => void;
 }
 
 export interface Coordinator {
@@ -110,6 +112,7 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
   const cooldownMs = opts.cooldownMs ?? 60000;
   const ownershipVerify = opts.ownershipVerify;
   const onOwnershipLost = opts.onOwnershipLost ?? (() => process.exit(1));
+  const onSettled = opts.onSettled;
 
   let inFlight: Promise<RefreshResult> | null = null;
   let lastResult: RefreshResult | null = null;
@@ -249,6 +252,11 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
       // Rearming stays outside the failure path: one bad generation must not
       // end the schedule.
       if (!closing && started) arm();
+      if (!closing) {
+        try {
+          onSettled?.();
+        } catch {}
+      }
     }
   }
 

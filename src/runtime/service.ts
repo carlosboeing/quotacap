@@ -18,6 +18,7 @@ import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
 import { getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
+import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
 
@@ -194,6 +195,15 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       db,
       enabledProviders: config.enabledProviders,
       ownershipVerify: () => claim.verify(),
+      // Passive daily update signal: refresh the shared cache on schedule.
+      // Background and best-effort — never blocks or fails a poll.
+      onSettled: () => {
+        void refreshUpdateCache({
+          channel: detectChannel(),
+          current: VERSION,
+          timeoutMs: 3000,
+        }).catch(() => {});
+      },
     });
     app = buildApp({
       db,
