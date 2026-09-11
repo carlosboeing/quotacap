@@ -420,7 +420,7 @@ test("every dashboard control matches the prototype click targets", async ({ bro
     await page.getByRole("button", { name: "Close advice" }).click();
     await expect(advice).toBeHidden();
 
-    await page.getByTestId("provider-card-kimi").getByRole("button", { name: "Inspect" }).click();
+    await page.getByTestId("provider-card-kimi").click();
     await expect(page.getByTestId("provider-drawer")).toBeVisible();
     await expect(page.getByTestId("advice-drawer")).toHaveCount(0);
     await page.keyboard.press("Escape");
