@@ -403,6 +403,116 @@ describe("macos login service", () => {
     ]);
   });
 
+  it("upgrade retries bootstrap across the teardown window, then loads", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");
+    fs.mkdirSync(path.dirname(plistFile), { recursive: true });
+    fs.writeFileSync(
+      plistFile,
+      buildPlist({
+        label: SERVICE_LABEL,
+        argv: ["/old/quotacap", "daemon", "--foreground"],
+        workingDirectory: dataDir,
+        path: "/usr/bin:/bin",
+        logFile: path.join(dataDir, "logs", "service.log"),
+        stdoutPath: path.join(dataDir, "logs", "service.log"),
+        stderrPath: path.join(dataDir, "logs", "service.log"),
+      }),
+    );
+    // bootout returns before the record clears: the first bootstrap hits
+    // error 5 while `print` already reports the job gone, so the retry wins.
+    const calls: string[][] = [];
+    let bootstraps = 0;
+    const run = (args: string[]): string => {
+      calls.push(args);
+      if (args[0] === "bootstrap") {
+        bootstraps += 1;
+        if (bootstraps === 1) throw new Error("launchctl bootstrap failed: Bootstrap failed: 5: Input/output error");
+        return "";
+      }
+      if (args[0] === "print") throw new Error("Could not find service");
+      return "";
+    };
+    const sleeps: number[] = [];
+    await install(
+      depsFor(home, run, {
+        sleep: async (ms: number) => {
+          sleeps.push(ms);
+        },
+      }),
+    );
+    expect(bootstraps).toBe(2);
+    expect(sleeps.length).toBe(1);
+    expect(calls).toContainEqual(["bootout", "gui/501/quotacap"]);
+    expect(calls).toContainEqual(["print", "gui/501/quotacap"]);
+    expect(calls).toContainEqual(["enable", "gui/501/quotacap"]);
+    expect(fs.readFileSync(plistFile, "utf8")).toContain("/stable/quotacap");
+  });
+
+  it("start treats an already-loaded bootstrap failure as success", async () => {
+    const home = mkHome();
+    // Error 5 with the job loaded is the steady state (start ran twice):
+    // no retry storm, just enable and report ready.
+    const calls: string[][] = [];
+    const run = (args: string[]): string => {
+      calls.push(args);
+      if (args[0] === "bootstrap") throw new Error("launchctl bootstrap failed: Bootstrap failed: 5: Input/output error");
+      return "";
+    };
+    const sleeps: number[] = [];
+    const d = depsFor(home, run, {
+      waitReady: async () => true,
+      sleep: async (ms: number) => {
+        sleeps.push(ms);
+      },
+    });
+    await start(d);
+    expect(calls).toEqual([
+      ["bootstrap", "gui/501", path.join(home, "Library/LaunchAgents/quotacap.plist")],
+      ["print", "gui/501/quotacap"],
+      ["enable", "gui/501/quotacap"],
+    ]);
+    expect(sleeps).toEqual([]);
+    expect((d as unknown as { printed: string[] }).printed.join("\n")).toContain(
+      "service started and ready",
+    );
+  });
+
+  it("persistent bootstrap failure exhausts the deadline and throws", async () => {
+    const home = mkHome();
+    const run = (args: string[]): string => {
+      if (args[0] === "bootstrap") throw new Error("launchctl bootstrap failed: Bootstrap failed: 5: Input/output error");
+      if (args[0] === "print") throw new Error("Could not find service");
+      return "";
+    };
+    await expect(
+      start(
+        depsFor(home, run, {
+          waitReady: async () => true,
+          sleep: async () => {},
+          bootstrapTimeoutMs: 60,
+        }),
+      ),
+    ).rejects.toThrow(/Bootstrap failed: 5/);
+  });
+
+  it("non-5 bootstrap errors throw immediately without probing", async () => {
+    const home = mkHome();
+    const calls: string[][] = [];
+    const run = (args: string[]): string => {
+      calls.push(args);
+      if (args[0] === "bootstrap") throw new Error("launchctl bootstrap failed: Bootstrap failed: 110: Data flop");
+      return "";
+    };
+    await expect(
+      start(depsFor(home, run, { waitReady: async () => true, sleep: async () => {} })),
+    ).rejects.toThrow(/Bootstrap failed: 110/);
+    expect(calls).toEqual([
+      ["bootstrap", "gui/501", path.join(home, "Library/LaunchAgents/quotacap.plist")],
+    ]);
+  });
+
   it("(i) unsupported platform prints guidance and touches nothing", async () => {
     const home = mkHome();
     const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");

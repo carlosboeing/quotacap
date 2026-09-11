@@ -84,6 +84,38 @@ const ServiceConfigSchema = z.object({
   experimentalIngest: z.boolean().optional(),
 });
 
+export function defaultConfig(): Config {
+  return ConfigSchema.parse({});
+}
+
+export interface EnsureConfigResult {
+  path: string;
+  created: boolean;
+  config: Config;
+}
+
+// On-demand provisioning: create schema defaults when absent, never overwrite
+// when present. Exclusive create keeps two concurrent first-run commands from
+// clobbering each other; on EEXIST it re-reads and reports not-created.
+export async function ensureConfig(p?: string): Promise<EnsureConfigResult> {
+  const file = getConfigPath(p);
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  } catch {}
+  try {
+    const fd = await fs.open(file, "wx");
+    try {
+      await fd.writeFile(JSON.stringify(defaultConfig(), null, 2), "utf8");
+    } finally {
+      await fd.close();
+    }
+    return { path: file, created: true, config: defaultConfig() };
+  } catch (e: any) {
+    if (e?.code !== "EEXIST") throw e;
+    return { path: file, created: false, config: await readConfig(p) };
+  }
+}
+
 export async function readServiceConfig(p?: string): Promise<Config> {
   const file = getConfigPath(p);
   let text: string;

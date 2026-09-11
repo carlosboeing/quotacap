@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Install: one command from zero to dashboard — `install.sh` verifies checksums, provisions config, registers the background login service, waits for readiness, and opens the browser, with `upgrading existing install` re-runs, `--no-service`/`--no-open` flags, a PATH-shadow warning, and a `loginctl enable-linger` hint on Linux.
+- Launcher: bare `quotacap` opens the dashboard through the shared `web` launcher (healthy daemons open, registered services start, last resort foreground-starts with a service suggestion); `init` keeps stdout JSON with guidance on stderr plus `--quiet` and `--force`; config provisions on demand everywhere.
+- Update: `quotacap update` with install-channel detection (standalone swap, npm reinstall, print-only brew/pnpm/yarn guidance), `--check`/`--json`, a passive daily `updates.json` signal surfaced in CLI footers, `/api/state`, and a dashboard badge — never silent auto-update.
+- Runtime: CLI newer than the daemon takes over via managed restart or graceful `/api/restart` handoff instead of exit 2; wedged daemons print PID-free recovery instructions; Linux gains a systemd user unit mirroring the macOS LaunchAgent; bootstrap retries across the launchd teardown window.
+- PTY: Bun-spawned adapters get a genuine terminal (`terminal` option verified on Bun 1.3.11), fixing `stdin is not a terminal` (#42); Grok reset timestamps parse without a space after the comma; npm `postinstall` removed with best-effort `spawn-helper` permission repair at load.
+
 ## 0.0.22
 
 - Dashboard: restyle settings connections, provider/advice drawers, recommendation spacing, and the health/site footer to the signed-off concept (#36).

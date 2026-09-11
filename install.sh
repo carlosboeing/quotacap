@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
-# install.sh — download the quotacap binary (and pty sidecar) from GitHub Releases onto your PATH.
+# install.sh — download the quotacap binary (and pty sidecar) from GitHub Releases,
+# register the background login service, and open the dashboard. One step, no flags needed.
 #
 # Usage:  curl -fsSL https://raw.githubusercontent.com/carlosboeing/quotacap/main/install.sh | sh
-#         install.sh [--bin-dir <dir>] [--version <v>] [--yes]
+#         install.sh [--bin-dir <dir>] [--version <v>] [--no-service] [--no-open]
 
 set -euo pipefail
 
 BIN_DIR="${QUOTACAP_BIN_DIR:-$HOME/.local/bin}"
 VERSION="${QUOTACAP_VERSION:-latest}"
-ASSUME_YES=0
+NO_SERVICE=0
+NO_OPEN=0
 
 while (( $# )); do
   case "$1" in
     --bin-dir) BIN_DIR="${2:?--bin-dir needs a path}"; shift 2 ;;
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
-    --yes|-y) ASSUME_YES=1; shift ;;
+    --no-service) NO_SERVICE=1; shift ;;
+    --no-open) NO_OPEN=1; shift ;;
+    --yes|-y) shift ;;
     --help|-h)
-      echo "usage: install.sh [--bin-dir <dir>] [--version <v>] [--yes]"
+      echo "usage: install.sh [--bin-dir <dir>] [--version <v>] [--no-service] [--no-open]"
+      echo "  --no-service  skip background service registration (foreground only)"
+      echo "  --no-open     skip opening the dashboard browser"
       exit 0 ;;
     *) echo "error  unknown option: $1" >&2; exit 1 ;;
   esac
@@ -62,9 +68,8 @@ fi
 SUMS_URL="${BASE_URL}/SHA256SUMS"
 TARGET="$BIN_DIR/quotacap"
 
-if [[ -e "$TARGET" && "$ASSUME_YES" != "1" ]]; then
-  echo "error  $TARGET already exists. Re-run with --yes to replace it." >&2
-  exit 1
+if [[ -e "$TARGET" ]]; then
+  echo "upgrading existing install at $TARGET"
 fi
 
 mkdir -p "$BIN_DIR"
@@ -147,8 +152,97 @@ if [[ ! -x "$TARGET" ]]; then
 fi
 
 echo "installed $TARGET"
-if ! command -v quotacap >/dev/null 2>&1; then
+
+# dashboard_url prints the daemon endpoint, resolved from the installed config.
+dashboard_url() {
+  local url
+  url="$("$TARGET" service status 2>/dev/null | grep -o 'http://127\.0\.0\.1:[0-9]*' | head -1 || true)"
+  if [[ -z "$url" ]]; then url="http://127.0.0.1:8787"; fi
+  echo "$url"
+}
+
+# Step 1: provision config (idempotent; warn-only on failure).
+if ! "$TARGET" init --quiet; then
+  echo "warning  config provisioning failed; continuing (commands provision lazily)" >&2
+fi
+
+# Step 2: register the login background service (idempotent).
+SERVICE_OK=0
+if [[ "$NO_SERVICE" == "1" ]]; then
+  echo "skipping background service registration (--no-service)"
+elif ! "$TARGET" service install; then
+  echo "warning  service install failed; run 'quotacap daemon' in the foreground instead" >&2
+else
+  SERVICE_OK=1
+fi
+
+# Step 3: wait up to 15s for daemon readiness.
+READY=0
+if [[ "$SERVICE_OK" == "1" ]]; then
+  echo "waiting for daemon readiness (up to 15s)"
+  for ((i = 0; i < 15; i++)); do
+    if "$TARGET" service status 2>/dev/null | grep -q "^Readiness: ready"; then READY=1; break; fi
+    sleep 1
+  done
+  if [[ "$READY" != "1" ]]; then
+    echo "warning  service not ready within 15s; continuing" >&2
+  fi
+fi
+
+# Step 4: open the dashboard (only against a ready daemon, so it can never hang).
+OPENED=0
+DASHBOARD_URL="$(dashboard_url)"
+if [[ "$NO_OPEN" == "1" ]]; then
+  echo "skipping dashboard open (--no-open)"
+elif [[ "$READY" == "1" ]]; then
+  if "$TARGET" web; then OPENED=1; fi
+else
+  echo "Dashboard: $DASHBOARD_URL"
+  echo "Run 'quotacap web' to open the dashboard once the service is ready."
+fi
+
+# Step 5: PATH check plus shadow warning.
+if command -v quotacap >/dev/null 2>&1; then
+  EXISTING="$(command -v quotacap)"
+  if [[ "$EXISTING" != "$TARGET" ]]; then
+    echo "warning  $EXISTING shadows this install ($TARGET); remove one of them to avoid version confusion" >&2
+  fi
+else
   echo "$BIN_DIR is not on your PATH. Add this to your shell profile:"
   echo "  export PATH=\"$BIN_DIR:\$PATH\""
 fi
-echo "try: quotacap init"
+
+# Linux linger hint: without it the user service dies on logout.
+if [[ "$OS" == "linux" && "$NO_SERVICE" != "1" && "$SERVICE_OK" == "1" ]] && command -v loginctl >/dev/null 2>&1; then
+  LINGER_USER="${USER:-$(id -un)}"
+  LINGER_STATE="$(loginctl show-user "$LINGER_USER" -p Linger 2>/dev/null || true)"
+  if [[ "$LINGER_STATE" != *"yes"* ]]; then
+    echo "hint  run 'loginctl enable-linger $LINGER_USER' to keep the service running after logout"
+  fi
+fi
+
+# Summary.
+INSTALLED_VERSION="$("$TARGET" version 2>/dev/null || echo "$VERSION")"
+if [[ "$SERVICE_OK" == "1" && "$READY" == "1" && "$OPENED" == "1" ]]; then
+  echo "✓ QuotaCap v${INSTALLED_VERSION} installed and running in background"
+  echo "✓ Dashboard opened at ${DASHBOARD_URL}"
+elif [[ "$SERVICE_OK" == "1" && "$READY" == "1" && "$NO_OPEN" == "1" ]]; then
+  echo "✓ QuotaCap v${INSTALLED_VERSION} installed and running in background"
+  echo "- Dashboard ready at ${DASHBOARD_URL} (skipped open: --no-open)"
+elif [[ "$NO_SERVICE" == "1" ]]; then
+  echo "- QuotaCap v${INSTALLED_VERSION} installed (no background service; foreground only)"
+  echo "  Dashboard: ${DASHBOARD_URL} (run 'quotacap web' to open it)"
+else
+  echo "! QuotaCap v${INSTALLED_VERSION} installed but the background service is not running"
+  if [[ "$READY" == "1" ]]; then
+    echo "  Dashboard ready at ${DASHBOARD_URL}"
+  else
+    echo "  Dashboard: ${DASHBOARD_URL} (run 'quotacap web' once the service is ready)"
+  fi
+fi
+echo ""
+echo "Useful commands:"
+echo "  quotacap status    View current quota table"
+echo "  quotacap advise    Show next-provider recommendation"
+echo "  quotacap update    Check for and apply updates"
+echo "  quotacap web       Re-open dashboard"

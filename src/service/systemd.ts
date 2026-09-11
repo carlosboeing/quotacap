@@ -13,7 +13,7 @@ import {
   readServiceMetadata,
   writeServiceMetadata,
 } from "../config.js";
-import { readConfig } from "../config.js";
+import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
 import {
   SERVICE_LABEL,
@@ -174,6 +174,9 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
     return;
   }
   const { home, dataDir, print, run } = resolved(deps);
+  // Provision beside the data dir the service will use (identical to the
+  // QUOTACAP_HOME path in production; hermetic under injected test dirs).
+  await ensureConfig(path.join(dataDir, "config.json"));
 
   const { argv, entry } = resolveServiceExec(deps);
   const providerPaths = resolveProviderPaths(deps);

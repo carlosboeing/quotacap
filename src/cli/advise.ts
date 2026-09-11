@@ -4,7 +4,7 @@
 import type { Command } from "commander";
 import { projectRecommendationResponse } from "../advisory/snapshot.js";
 import { validateTask } from "../advisory/validate.js";
-import { getDbPath, readConfig } from "../config.js";
+import { ensureConfig, getDbPath } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
 import { isServiceManaged, runServiceCommand } from "../service/index.js";
@@ -56,7 +56,7 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
         return;
       }
       const t = now();
-      const cfg = await readConfig();
+      const { config: cfg } = await ensureConfig();
       let client = createClient({ port: cfg.port, timeoutMs: 2000 });
       // Skew pre-check mirrors status: warn on exec-only and older-CLI skew,
       // take the managed path when newer, and never spawn a foreground daemon

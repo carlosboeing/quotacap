@@ -59,6 +59,24 @@ export function serviceSupported(platform: string = process.platform): boolean {
   return platform === "darwin" || platform === "linux";
 }
 
+// Installed means a registration artifact exists, whether or not the
+// supervisor currently has it loaded. The web launcher uses this to decide
+// between `service start` and a foreground fallback.
+export async function isServiceInstalled(deps: ServiceDeps = {}): Promise<boolean> {
+  const platform = deps.platform ?? process.platform;
+  try {
+    if (platform === "darwin") {
+      return (await collectStatusMacos(deps)).registration.installed;
+    }
+    if (platform === "linux") {
+      return (await collectStatusSystemd(deps)).registration.installed;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 // Managed means a registered job that the supervisor currently has loaded.
 // Takeover uses this to choose between `service restart` and /api/restart.
 export async function isServiceManaged(deps: ServiceDeps = {}): Promise<boolean> {
