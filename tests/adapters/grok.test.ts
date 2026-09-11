@@ -78,6 +78,17 @@ describe("parseGrokTui", () => {
     expect(dt.getFullYear()).toBe(2027);
   });
 
+  it("parses the no-space reset form (September 14,10:22)", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const txt = grokFixture({ reset: "Resets: September 14,10:22" });
+    const q = parseGrokTui(txt, now);
+    const dt = new Date(q.resetsAt);
+    expect(dt.getMonth()).toBe(8);
+    expect(dt.getDate()).toBe(14);
+    expect(dt.getHours() === 10 || dt.getUTCHours() === 10).toBe(true);
+    expect(q.resetsAtEstimated).toBeUndefined();
+  });
+
   it("throws when weekly limit absent (fail-closed)", () => {
     const txt = `Credits: $4.85\nResets: September 7, 10:22\n`;
     expect(() => parseGrokTui(txt, new Date())).toThrow(/weekly percent|weekly limit/i);

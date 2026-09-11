@@ -13,7 +13,7 @@ const ABBR_MONTHS: Record<string, number> = {
 };
 
 function parseGrokReset(raw: string, now: Date): string | null {
-  const m = raw.trim().match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{1,2}):(\d{2})$/);
+  const m = raw.trim().match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})$/);
   if (!m) return null;
   const monStr = m[1].toLowerCase();
   const day = parseInt(m[2], 10);
@@ -65,7 +65,7 @@ export function parseGrokTui(text: string, now = new Date()): ParsedQuota {
     const v = parseFloat(mCred[1]);
     if (Number.isFinite(v) && v >= 0) creditsUsd = v;
   }
-  const mReset = cleaned.match(/Resets:\s*([A-Za-z]+\s+\d+,\s+\d+:\d+)/i);
+  const mReset = cleaned.match(/Resets:\s*([A-Za-z]+\s+\d+,\s*\d+:\d+)/i);
   let resetsAt: string | null = null;
   let estimated = false;
   if (mReset) {
