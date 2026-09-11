@@ -41,7 +41,7 @@ export interface ServiceDeps {
 
 export function foregroundGuidance(verb: string, platform: string): string {
   return (
-    `service ${verb} is only supported on macOS (this platform: ${platform}); ` +
+    `service ${verb} is only supported on macOS and Linux (this platform: ${platform}); ` +
     `run 'quotacap daemon' in the foreground instead`
   );
 }
@@ -84,7 +84,7 @@ export function defaultLintPlist(plistFile: string): void {
   }
 }
 
-async function defaultWaitReady(port: number, timeoutMs = 15000): Promise<boolean> {
+export async function defaultWaitReady(port: number, timeoutMs = 15000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   const client = createServiceClient({ port, timeoutMs: 1000 });
   while (Date.now() < deadline) {
@@ -458,6 +458,7 @@ export async function restart(deps: ServiceDeps = {}): Promise<void> {
 }
 
 export interface ServiceStatus {
+  backend: "launchd" | "systemd";
   registration: {
     installed: boolean;
     loaded: boolean;
@@ -507,6 +508,7 @@ export async function collectStatus(deps: ServiceDeps = {}): Promise<ServiceStat
   const plistFile = plistFileFor(home);
 
   const status: ServiceStatus = {
+    backend: "launchd",
     registration: {
       installed: false,
       loaded: false,
@@ -638,7 +640,7 @@ export function formatStatus(st: ServiceStatus): string {
     lines.push(`Registration: loaded (pid ${r.pid}, last exit ${r.lastExitStatus ?? "n/a"})`);
   }
   if (r.error) lines.push(`  error: ${r.error}`);
-  lines.push(`  plist: ${r.plist ?? "(unknown)"}`);
+  lines.push(`  ${st.backend === "systemd" ? "unit" : "plist"}: ${r.plist ?? "(unknown)"}`);
 
   const h = st.readiness;
   if (h.ok) {
@@ -650,7 +652,7 @@ export function formatStatus(st: ServiceStatus): string {
   }
   if (st.version.skew) {
     lines.push(
-      `  version skew: service ${st.version.service} differs from CLI ${st.version.cli} — reinstall the service to fix (never auto-fixed)`,
+      `  version skew: service ${st.version.service} differs from CLI ${st.version.cli} — commands auto-restart the service on next use (or run 'quotacap service restart' now)`,
     );
   }
 

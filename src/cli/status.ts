@@ -7,7 +7,16 @@ import { getDbPath, readConfig } from "../config.js";
 import { renderCompact, renderNarrow, renderWide } from "../format/terminal.js";
 import { assertValidSortKey, type SortKey } from "../format/rows.js";
 import { createServiceClient } from "../runtime/client.js";
-import { ClientError, OFFLINE_LABEL, resolveSnapshot } from "./snapshot-source.js";
+import { VERSION } from "../version.js";
+import { isServiceManaged, runServiceCommand } from "../service/index.js";
+import { ClientError, OFFLINE_LABEL, offlineOnlyClient, resolveSnapshot } from "./snapshot-source.js";
+import {
+  checkSkew,
+  execSkewWarning,
+  olderCliWarning,
+  takeoverManaged,
+  unmanagedSkewWarning,
+} from "./takeover.js";
 import type { ClientCommandDeps, CreateClientOptions } from "./clients.js";
 
 const WIDE_COLUMNS = 100;
@@ -19,6 +28,10 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
     deps.resolveWidth ?? (() => ({ columns: process.stdout.columns, tty: !!process.stdout.isTTY }));
   const now = deps.now ?? (() => new Date());
   const exit = deps.exit ?? process.exit;
+  const execService =
+    deps.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
+  const isManaged = deps.isManaged ?? isServiceManaged;
+  const takeoverOpts = deps.takeoverOpts ?? {};
 
   program
     .command("status")
@@ -42,7 +55,45 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
       const compact = !!o.compact;
       const timeoutMs = compact ? 1000 : 2000;
       const cfg = await readConfig();
-      const client = createClient({ port: cfg.port, timeoutMs });
+      let client = createClient({ port: cfg.port, timeoutMs });
+      // Skew pre-check: warn on exec-only and older-CLI skew, take the
+      // managed path when newer, and never spawn a foreground daemon here —
+      // unmanaged skew serves the stored snapshot instead of failing.
+      let health: any = null;
+      try {
+        health = await client.get("/health");
+      } catch {
+        health = null;
+      }
+      if (health?.ok) {
+        const skew = checkSkew(health, VERSION, process.execPath);
+        if (skew === "exec-only") {
+          console.error(execSkewWarning(String(health.exec)));
+        } else if (skew === "cli-older") {
+          console.error(olderCliWarning(String(health.version ?? "unknown")));
+        } else if (skew === "cli-newer") {
+          const managed = await isManaged().catch(() => false);
+          if (managed) {
+            try {
+              const r = await takeoverManaged({
+                port: cfg.port,
+                health,
+                createClient,
+                execService,
+                ...takeoverOpts,
+              });
+              console.error(r.message);
+            } catch (e) {
+              console.error(e instanceof Error ? e.message : String(e));
+              exit(1);
+              return;
+            }
+          } else {
+            console.error(unmanagedSkewWarning(String(health.version ?? "unknown")));
+            client = offlineOnlyClient();
+          }
+        }
+      }
       let resolved;
       try {
         resolved = await resolveSnapshot({

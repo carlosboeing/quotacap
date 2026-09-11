@@ -204,6 +204,10 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       exec: process.execPath,
       canWrite: () => claim.verify(),
       ingestEnabled: isExperimentalIngestEnabled(config),
+      // POST /api/restart follows the normal SIGTERM path (onSignal is a
+      // hoisted declaration below; it can only fire after listen, so the
+      // shutdown bindings it closes over are initialized by then).
+      onRestart: () => onSignal(),
     });
 
     // 6. Bind; unwind on failure without polling.

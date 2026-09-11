@@ -11,6 +11,7 @@ import { upsertQuota } from "../../src/store/quotas.js";
 import { recordAttempt } from "../../src/store/attempts.js";
 import { registerClientCommands, type ClientCommandDeps } from "../../src/cli/clients.js";
 import { OFFLINE_LABEL } from "../../src/cli/snapshot-source.js";
+import { VERSION } from "../../src/version.js";
 import { ENABLED, FIXED_NOW, RT, exampleStateSnapshot, exampleStateSnapshotJson } from "../fixtures/stable-state.js";
 import { seedFileDb, runCli } from "./helpers.js";
 
@@ -311,5 +312,62 @@ describe("advise wiring", () => {
     expect(exitCode).toBe(1);
     expect(logs).toEqual([]);
     expect(errors[0]).toMatch(/service-error/);
+  });
+
+  it("takes the managed path when newer, then advises online", async () => {
+    let version = "0.0.0-stale";
+    const restarts: string[][] = [];
+    await runWired(
+      ["advise"],
+      onlineDeps({
+        createClient: () => ({
+          get: async (p: string) =>
+            p === "/health"
+              ? { ok: true, ready: true, version, exec: "/old/q" }
+              : servedState(),
+          post: async () => {
+            throw new Error("unused");
+          },
+        }),
+        isManaged: async () => true,
+        execService: async (args: string[]) => {
+          restarts.push(args);
+          version = VERSION;
+          return 0;
+        },
+        takeoverOpts: { sleep: async () => {}, timeoutMs: 1000 },
+      }),
+    );
+    expect(restarts).toEqual([["restart"]]);
+    expect(exitCode).toBeUndefined();
+    expect(logs).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`Upgraded daemon from 0.0.0-stale to ${VERSION} (service restarted)`);
+  });
+
+  it("serves stored readings on unmanaged skew instead of failing", async () => {
+    seedFileDb(path.join(home, ".quotacap", "quotacap.db"));
+    await runWired(
+      ["advise"],
+      onlineDeps({
+        createClient: () => ({
+          get: async (p: string) =>
+            p === "/health"
+              ? { ok: true, ready: true, version: "0.0.0-stale", exec: "/old/q" }
+              : servedState(),
+          post: async () => {
+            throw new Error("unused");
+          },
+        }),
+        isManaged: async () => false,
+        openDb: undefined,
+      }),
+    );
+    expect(exitCode).toBeUndefined();
+    expect(logs).toHaveLength(1);
+    expect(errors).toEqual([
+      expect.stringContaining("daemon is older (0.0.0-stale)"),
+      OFFLINE_LABEL,
+    ]);
   });
 });

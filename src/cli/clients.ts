@@ -7,6 +7,7 @@ import { isExperimentalIngestEnabled } from "../config.js";
 import { registerStatusCommand } from "./status.js";
 import { registerAdviseCommand } from "./advise.js";
 import { registerIngestCommand } from "./ingest.js";
+import type { SleepFn } from "./takeover.js";
 
 export interface CreateClientOptions {
   port: number;
@@ -20,6 +21,13 @@ export interface ClientCommandDeps {
   resolveWidth?: () => { columns: number | undefined; tty: boolean };
   now?: () => Date;
   exit?: (code: number) => void;
+  execService?: (args: string[], opts?: Record<string, any>) => Promise<number>;
+  isManaged?: () => Promise<boolean>;
+  takeoverOpts?: {
+    sleep?: SleepFn;
+    timeoutMs?: number;
+    readToken?: () => string | undefined;
+  };
 }
 
 export function registerClientCommands(program: Command, deps?: ClientCommandDeps): void {

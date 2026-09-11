@@ -1,16 +1,26 @@
-// Platform dispatch for service commands. Only macOS is supported; other
-// platforms get foreground guidance and no artifacts.
+// Platform dispatch for service commands: macOS goes to launchd, Linux to
+// systemd, everything else gets foreground guidance and no artifacts.
 import {
-  install,
-  uninstall,
-  start,
-  stop,
-  restart,
-  status,
+  install as installMacos,
+  uninstall as uninstallMacos,
+  start as startMacos,
+  stop as stopMacos,
+  restart as restartMacos,
+  status as statusMacos,
+  collectStatus as collectStatusMacos,
   foregroundGuidance,
-  serviceSupported as macosSupported,
-  type ServiceDeps,
+  type ServiceDeps as MacosDeps,
 } from "./macos.js";
+import {
+  install as installSystemd,
+  uninstall as uninstallSystemd,
+  start as startSystemd,
+  stop as stopSystemd,
+  restart as restartSystemd,
+  status as statusSystemd,
+  collectStatus as collectStatusSystemd,
+  type SystemdDeps,
+} from "./systemd.js";
 
 export {
   buildPlist,
@@ -19,6 +29,8 @@ export {
   resolveProviderPaths,
   formatMissingProviders,
   buildChildPath,
+  defaultWaitReady,
+  defaultWhich,
   install,
   uninstall,
   start,
@@ -30,12 +42,40 @@ export {
   foregroundGuidance,
   SERVICE_LABEL,
   PROVIDER_BINS,
-  type ServiceDeps,
   type ServiceStatus,
 } from "./macos.js";
 
+export {
+  buildUnit,
+  isOurUnit,
+  SERVICE_UNIT,
+  type SystemdDeps,
+} from "./systemd.js";
+
+// Merged deps: every field is optional, so one object satisfies both backends.
+export type ServiceDeps = MacosDeps & SystemdDeps;
+
 export function serviceSupported(platform: string = process.platform): boolean {
-  return macosSupported(platform);
+  return platform === "darwin" || platform === "linux";
+}
+
+// Managed means a registered job that the supervisor currently has loaded.
+// Takeover uses this to choose between `service restart` and /api/restart.
+export async function isServiceManaged(deps: ServiceDeps = {}): Promise<boolean> {
+  const platform = deps.platform ?? process.platform;
+  try {
+    if (platform === "darwin") {
+      const st = await collectStatusMacos(deps);
+      return st.registration.installed && st.registration.loaded;
+    }
+    if (platform === "linux") {
+      const st = await collectStatusSystemd(deps);
+      return st.registration.installed && st.registration.loaded;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 export async function runServiceCommand(
@@ -51,25 +91,43 @@ export async function runServiceCommand(
     print(foregroundGuidance(verb ?? "service", platform));
     return 2;
   }
+  const backend =
+    platform === "darwin"
+      ? {
+        install: installMacos,
+        uninstall: uninstallMacos,
+        start: startMacos,
+        stop: stopMacos,
+        restart: restartMacos,
+        status: statusMacos,
+      }
+      : {
+        install: installSystemd,
+        uninstall: uninstallSystemd,
+        start: startSystemd,
+        stop: stopSystemd,
+        restart: restartSystemd,
+        status: statusSystemd,
+      };
   try {
     switch (verb) {
       case "install":
-        await install(deps);
+        await backend.install(deps);
         break;
       case "uninstall":
-        await uninstall(deps);
+        await backend.uninstall(deps);
         break;
       case "start":
-        await start(deps);
+        await backend.start(deps);
         break;
       case "stop":
-        await stop(deps);
+        await backend.stop(deps);
         break;
       case "restart":
-        await restart(deps);
+        await backend.restart(deps);
         break;
       case "status":
-        await status(deps, { json: !!opts.json });
+        await backend.status(deps, { json: !!opts.json });
         break;
       default:
         error(`unknown service command: ${verb ?? "(none)"}`);

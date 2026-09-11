@@ -298,4 +298,43 @@ describe("http runtime context", () => {
     });
     expect(api.statusCode).toBe(404);
   });
+
+  it("(g) POST /api/restart responds 202, then runs the graceful-stop hook", async () => {
+    const db = buildFixtureDb();
+    const infos: any[] = [];
+    const app = buildApp(ctxWith(db, { onRestart: (info: any) => infos.push(info) }));
+
+    const anon = await app.inject({ method: "POST", url: "/api/restart" });
+    expect(anon.statusCode).toBe(401);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/restart",
+      headers: { "x-quotacap-token": TOKEN },
+      payload: { version: "0.0.23", exec: "/new/quotacap" },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.body);
+    expect(body).toMatchObject({ ok: true, restarting: true, version: "9.9.9-test" });
+    expect(body.pid).toBe(process.pid);
+    // The hook fires after the response flushes, not before it.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(infos).toEqual([{ version: "0.0.23", exec: "/new/quotacap" }]);
+  });
+
+  it("POST /api/restart accepts an empty body", async () => {
+    const db = buildFixtureDb();
+    const infos: any[] = [];
+    const app = buildApp(ctxWith(db, { onRestart: (info: any) => infos.push(info) }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/restart",
+      headers: { "x-quotacap-token": TOKEN },
+    });
+    expect(res.statusCode).toBe(202);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(infos).toHaveLength(1);
+    expect(infos[0].version).toBeUndefined();
+    expect(infos[0].exec).toBeUndefined();
+  });
 });
