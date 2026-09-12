@@ -30,6 +30,8 @@
   },
   "files": [
     "dist/",
+    "!dist/tests/",
+    "!dist/src/",
     "web/dist/",
     "README.md",
     "LICENSE"
