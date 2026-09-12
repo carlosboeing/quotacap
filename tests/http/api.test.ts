@@ -1,8 +1,27 @@
-import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 import { webAssets } from "../../src/webAssets.js";
+
+let tempHome: string;
+const oldHome = process.env.QUOTACAP_HOME;
+
+beforeAll(() => {
+  tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "qc-http-api-"));
+  process.env.QUOTACAP_HOME = tempHome;
+});
+
+afterAll(() => {
+  if (oldHome === undefined) delete process.env.QUOTACAP_HOME;
+  else process.env.QUOTACAP_HOME = oldHome;
+  try {
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  } catch {}
+});
 
 function appWithDb() {
   const db = openDb(":memory:");
@@ -423,6 +442,57 @@ describe("http token auth and mutating routes", () => {
       expect(muse.displayName).toBe("Muse");
       expect(muse.builtinName).toBe("Muse");
     });
+
+    it("persists override to explicit configPath when provided", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const testConfigPath = path.join(tempHome, "explicit-config.json");
+      fs.writeFileSync(testConfigPath, JSON.stringify({ port: 8787, customFlag: true }));
+
+      const app = buildApp(
+        testCtx(db, {
+          token: "secret",
+          configPath: testConfigPath,
+        }),
+      );
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "Persistent Claude" },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const saved = JSON.parse(fs.readFileSync(testConfigPath, "utf8"));
+      expect(saved.port).toBe(8787);
+      expect(saved.customFlag).toBe(true);
+      expect(saved.providerNames).toEqual({ claude: "Persistent Claude" });
+    });
+
+    it("returns 500 when persist to configPath fails", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      // Point configPath to an invalid path that cannot be written
+      const invalidPath = path.join(tempHome, "a-file-not-a-dir", "config.json");
+      fs.writeFileSync(path.join(tempHome, "a-file-not-a-dir"), "not a directory");
+
+      const app = buildApp(
+        testCtx(db, {
+          token: "secret",
+          configPath: invalidPath,
+        }),
+      );
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "Should Fail" },
+      });
+      expect(res.statusCode).toBe(500);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain("failed to persist configuration");
+    });
   });
 });
+
 

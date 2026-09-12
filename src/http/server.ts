@@ -26,7 +26,7 @@ import {
 import { classifyFailure } from "../diagnostics/failure.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { providerIdentity } from "../advisory/provider-names.js";
-import { readConfig, writeConfig } from "../config.js";
+import { setProviderNameOverride } from "../config.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -284,19 +284,18 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       ctx.providerNames[id] = validatedName;
     }
 
-    // Persist to config.json
-    try {
-      const cfg = await readConfig(ctx.configPath);
-      cfg.providerNames = { ...(cfg.providerNames ?? {}) };
-      if (validatedName === null) {
-        delete cfg.providerNames[id];
-      } else {
-        cfg.providerNames[id] = validatedName;
+    // Persist to config.json when configPath is explicitly configured
+    if (ctx.configPath) {
+      try {
+        await setProviderNameOverride(id, validatedName, ctx.configPath);
+      } catch (err: any) {
+        console.warn(`[quotacap] failed to persist providerNames to config: ${String(err)}`);
+        return reply.status(500).send({
+          error: `failed to persist configuration: ${err?.message ?? String(err)}`,
+        });
       }
-      await writeConfig(cfg, ctx.configPath);
-    } catch (err) {
-      console.warn(`[quotacap] failed to persist providerNames to config: ${String(err)}`);
     }
+
 
     const identity = providerIdentity(id, ctx.providerNames);
     return {

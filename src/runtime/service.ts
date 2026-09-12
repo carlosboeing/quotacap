@@ -16,7 +16,7 @@ import { createCoordinator, type Coordinator } from "./poll.js";
 import { killAll } from "./spawn.js";
 import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
-import { ensureConfig, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
+import { ensureConfig, getConfigPath, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
@@ -219,6 +219,7 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       exec: process.execPath,
       canWrite: () => claim.verify(),
       ingestEnabled: isExperimentalIngestEnabled(config),
+      configPath: getConfigPath(),
       // POST /api/restart follows the normal SIGTERM path (onSignal is a
       // hoisted declaration below; it can only fire after listen, so the
       // shutdown bindings it closes over are initialized by then).

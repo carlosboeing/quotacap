@@ -392,7 +392,67 @@ export function ProviderDrawer({
             <ProviderIcon id={provider.id} title={model.name} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {isEditing ? (
+            <h2
+              id={titleId}
+              onClick={!isEditing ? () => setIsEditing(true) : undefined}
+              title={!isEditing ? "Click to rename" : undefined}
+              style={
+                isEditing
+                  ? {
+                      position: "absolute",
+                      width: 1,
+                      height: 1,
+                      padding: 0,
+                      margin: -1,
+                      overflow: "hidden",
+                      clip: "rect(0, 0, 0, 0)",
+                      border: 0,
+                    }
+                  : {
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "var(--s1)",
+                    }
+              }
+            >
+              <span>{model.name}</span>
+              {!isEditing && (
+                <button
+                  type="button"
+                  className="btn-icon"
+                  aria-label={`Rename ${model.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: "2px",
+                    cursor: "pointer",
+                    color: "var(--ink-soft)",
+                    display: "inline-flex",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                  </svg>
+                </button>
+              )}
+            </h2>
+            {isEditing && (
               <form
                 onSubmit={handleSubmitRename}
                 style={{
@@ -460,52 +520,6 @@ export function ProviderDrawer({
                   </span>
                 )}
               </form>
-            ) : (
-              <h2
-                id={titleId}
-                onClick={() => setIsEditing(true)}
-                title="Click to rename"
-                style={{
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "var(--s1)",
-                }}
-              >
-                <span>{model.name}</span>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  aria-label={`Rename ${model.name}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsEditing(true);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: "2px",
-                    cursor: "pointer",
-                    color: "var(--ink-soft)",
-                    display: "inline-flex",
-                    verticalAlign: "middle",
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                  </svg>
-                </button>
-              </h2>
             )}
             {provider.builtinName && provider.displayName !== provider.builtinName && (
               <div

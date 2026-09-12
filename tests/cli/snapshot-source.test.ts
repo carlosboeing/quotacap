@@ -253,6 +253,22 @@ describe("offline fallback (D3, D10)", () => {
     expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
     expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
   });
+
+  it("applies providerNames in offline snapshot resolution", async () => {
+    const dbPath = seedFileDb(tmpDb("overrides.db"));
+    const port = await closedPort();
+    const resolved = await resolveSnapshot({
+      client: createServiceClient({ port, timeoutMs: 1000 }),
+      dbPath,
+      enabledProviders: ENABLED,
+      providerNames: { claude: "Work Claude" },
+      now: FIXED_NOW,
+    });
+    expect(resolved.source).toBe("offline");
+    const claude = resolved.snapshot.providers.find((p) => p.id === "claude")!;
+    expect(claude.displayName).toBe("Work Claude");
+    expect(claude.builtinName).toBe("Claude");
+  });
 });
 
 describe("live-service failures never fall back", () => {

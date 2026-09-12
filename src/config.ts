@@ -166,6 +166,73 @@ export async function writeConfig(c: Config, p?: string): Promise<void> {
   await fs.writeFile(getConfigPath(p), JSON.stringify(c, null, 2));
 }
 
+/**
+ * Safe mutation of providerNames in config.json.
+ * Reads raw JSON without round-tripping through ConfigSchema, preserving
+ * all unknown keys and custom configuration, and fails loudly if the file is corrupt.
+ */
+export async function setProviderNameOverride(
+  id: string,
+  displayName: string | null,
+  p?: string,
+): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider names: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  const names: Record<string, string> =
+    typeof rawObj.providerNames === "object" && rawObj.providerNames !== null && !Array.isArray(rawObj.providerNames)
+      ? { ...rawObj.providerNames }
+      : {};
+
+  if (displayName === null) {
+    delete names[id];
+  } else {
+    names[id] = displayName;
+  }
+
+  rawObj.providerNames = names;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
+export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider names: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  rawObj.providerNames = {};
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
+
 // Private service metadata: install identity plus resolved provider paths
 // only — never tokens, secrets, or environment dumps.
 export interface ServiceMetadata {

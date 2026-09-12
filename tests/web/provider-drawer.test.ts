@@ -171,6 +171,10 @@ describe("provider drawer", () => {
     );
     expect(html).toContain("Rename Kimi");
     expect(html).toContain("title=\"Click to rename\"");
+    expect(html).toMatch(/aria-labelledby="(provider-drawer-title)"/);
+    const match = html.match(/aria-labelledby="([^"]+)"/);
+    const titleId = match ? match[1] : "";
+    expect(html).toContain(`id="${titleId}"`);
   });
 
   it("renameProvider sends PATCH /api/providers/:id with token and displayName", async () => {

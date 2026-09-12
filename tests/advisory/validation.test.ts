@@ -42,4 +42,22 @@ describe("validateDisplayName", () => {
     expect(() => validateDisplayName("\x1b[2JClear")).toThrow();
     expect(() => validateDisplayName("Provider\x1b[HHome")).toThrow();
   });
+
+  it("rejects names containing bidirectional override or invisible characters", () => {
+    // Right-to-Left Override (RLO)
+    expect(() => validateDisplayName("claude\u202Ecodex")).toThrow(/bidirectional override or invisible/i);
+    // Left-to-Right Override (LRO)
+    expect(() => validateDisplayName("claude\u202Dcodex")).toThrow(/bidirectional override or invisible/i);
+    // Bidi marks (LRM / RLM)
+    expect(() => validateDisplayName("claude\u200E")).toThrow(/bidirectional override or invisible/i);
+    expect(() => validateDisplayName("claude\u200F")).toThrow(/bidirectional override or invisible/i);
+    // Zero-width space, joiner, non-joiner
+    expect(() => validateDisplayName("claude\u200Bcodex")).toThrow(/bidirectional override or invisible/i);
+    expect(() => validateDisplayName("claude\u200Ccodex")).toThrow(/bidirectional override or invisible/i);
+    expect(() => validateDisplayName("claude\u200Dcodex")).toThrow(/bidirectional override or invisible/i);
+    // Byte-order mark / zero-width no-break space
+    expect(() => validateDisplayName("\uFEFFclaude")).toThrow(/bidirectional override or invisible/i);
+    // Invisible math/format chars
+    expect(() => validateDisplayName("claude\u2060codex")).toThrow(/bidirectional override or invisible/i);
+  });
 });

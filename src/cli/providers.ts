@@ -1,6 +1,6 @@
 // CLI command group for provider display names and user overrides.
 import type { Command } from "commander";
-import { readConfig, writeConfig } from "../config.js";
+import { readConfig, resetAllProviderNameOverrides, setProviderNameOverride } from "../config.js";
 import { REGISTRY, providerIdentity } from "../advisory/provider-names.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { ServiceError, ServiceUnavailable, createServiceClient } from "../runtime/client.js";
@@ -74,14 +74,12 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           displayName: validatedName,
         });
       } catch (e) {
-        if (e instanceof ServiceUnavailable) {
-          // Daemon is offline; update local config directly
-          const current = await readConfig();
-          current.providerNames = {
-            ...(current.providerNames ?? {}),
-            [id]: validatedName,
-          };
-          await writeConfig(current);
+        if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
+          // Daemon is offline or older version without PATCH /api/providers; update config directly
+          await setProviderNameOverride(id, validatedName);
+          if (e instanceof ServiceError && e.status === 404) {
+            console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
+          }
         } else if (e instanceof ServiceError) {
           console.error(e.message);
           exit(1);
@@ -120,16 +118,19 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
             });
           }
         } catch (e) {
-          if (e instanceof ServiceUnavailable) {
-            const current = await readConfig();
-            current.providerNames = {};
-            await writeConfig(current);
+          if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
+            await resetAllProviderNameOverrides();
+            if (e instanceof ServiceError && e.status === 404) {
+              console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
+            }
           } else if (e instanceof ServiceError) {
             console.error(e.message);
             exit(1);
+            return;
           } else {
             console.error(String(e));
             exit(1);
+            return;
           }
         }
         console.log("reset all provider display name overrides");
@@ -143,11 +144,10 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
             displayName: null,
           });
         } catch (e) {
-          if (e instanceof ServiceUnavailable) {
-            const current = await readConfig();
-            if (current.providerNames && id in current.providerNames) {
-              delete current.providerNames[id];
-              await writeConfig(current);
+          if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
+            await setProviderNameOverride(id, null);
+            if (e instanceof ServiceError && e.status === 404) {
+              console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
             }
           } else if (e instanceof ServiceError) {
             console.error(e.message);
@@ -163,3 +163,4 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
       }
     });
 }
+
