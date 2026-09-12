@@ -516,6 +516,59 @@ describe("update cache", () => {
     }
   });
 
+  it("a late failure never clobbers an intervening successful write", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-race-");
+    try {
+      const p = path.join(dir, "updates.json");
+      writeUpdateCache(
+        {
+          checkedAt: new Date(Date.now() - 25 * 3600 * 1000).toISOString(),
+          latest: "0.0.24",
+          channel: "standalone",
+          current: "0.0.22",
+        },
+        p,
+      );
+      let releaseA!: () => void;
+      const gateA = new Promise<void>((r) => {
+        releaseA = r;
+      });
+      const slowFail = (async () => {
+        await gateA;
+        throw new Error("down");
+      }) as unknown as typeof fetch;
+      const okFetch = (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ tag_name: "v0.0.26", html_url: "https://x" }),
+      })) as unknown as typeof fetch;
+
+      // A starts first and blocks in the network; B runs to completion first.
+      const pendingA = refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: slowFail,
+      });
+      const b = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: okFetch,
+      });
+      expect(b?.latest).toBe("0.0.26");
+      releaseA();
+      const a = await pendingA;
+      // A's late failure preserves B's successful write, stamp-free.
+      expect(a?.latest).toBe("0.0.26");
+      expect(a).not.toHaveProperty("lastFailureAt");
+      expect(readUpdateCache(p)).toEqual(a);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("retries the network once the floor expires and clears the stamp on success", async () => {
     process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     const dir = tmpDir("qc-negretry-");

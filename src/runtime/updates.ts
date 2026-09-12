@@ -359,6 +359,13 @@ export async function refreshUpdateCache(
   });
   if (!latest) {
     if (!existing) return existing;
+    // Re-read before stamping: a concurrent refresh may have succeeded while
+    // our request was in flight, and stamping our stale snapshot would
+    // clobber its newer write and suppress retries for the floor.
+    const current = readUpdateCache(cachePath);
+    if (current && JSON.stringify(current) !== JSON.stringify(existing)) {
+      return current;
+    }
     const stamped: UpdateCache = { ...existing, lastFailureAt: now.toISOString() };
     writeUpdateCache(stamped, cachePath);
     return stamped;

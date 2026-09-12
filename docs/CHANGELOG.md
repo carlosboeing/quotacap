@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Update checks without the API bucket: `resolveLatestVersion` reads the latest tag from the releases-page redirect `Location` instead of the anonymous GitHub API, whose 60/hour budget is shared with every other API consumer on the machine; the JSON behaviour stays behind `QUOTACAP_RELEASE_BASE_URL` for hermetic tests and mirrors.
-- Negative update cache: failed `refreshUpdateCache` attempts stamp `lastFailureAt` and suppress further network calls for 30 minutes while the previously cached `latest` keeps being served; `checkedAt` is untouched so the daily check is unaffected, success clears the stamp, and the field is optional so existing `updates.json` files keep loading.
+- Negative update cache: failed `refreshUpdateCache` attempts stamp `lastFailureAt` and suppress further network calls for 30 minutes while the previously cached `latest` keeps being served; `checkedAt` is untouched so the daily check is unaffected, success clears the stamp, the field is optional so existing `updates.json` files keep loading, and a late failure re-reads before stamping so it never clobbers a newer successful write.
 - Pinned updates reachable: `quotacap update --version <v>` never worked — the global `--version` flag shadowed it — so the option is renamed to `update --to <version>`, which also pins past an unresolvable release.
 - Rate-limit diagnosis: `quotacap update` names an exhausted anonymous API bucket with its reset time and points at the `--to` escape hatch; genuine network failures keep the generic message.
 
