@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Provider auto-enable: new `knownProviders` config key records which adapters the daemon has already considered; at every start each registered adapter (minus `manual`) absent from it is resolved on PATH and appended to both `enabledProviders` and `knownProviders` when found, so newly shipped adapters light up on upgrade whatever the channel. Absent binaries stay unknown for the next start, known-but-disabled providers are never re-added, and configs predating the key backfill the pre-0.0.24 five so `muse` reads as new. Raw-JSON persistence preserves unknown keys and writes only on change.
+- Post-update registration refresh: managed `quotacap update` takeovers reinstall the login service instead of only restarting it, regenerating the supervisor PATH from current provider locations via `install`'s existing idempotent comparison; the target version travels with the call because the update runs in the old binary.
+
 ## 0.0.24
 
 - Naming: one server-side provider registry gives every row a `displayName` (the dashboard now reads `Antigravity` and `Antigravity 3P`), carries `vendor`, `harness` and `description` additively on `/api/state` and MCP `get_quotas`, and moves the CLI wide/narrow tables and MCP Markdown labels off raw ids; compact statuslines stay id-based. A CLI newer than a still-running daemon falls back to raw ids at the ingest boundary instead of crashing in the column-width calculation.
