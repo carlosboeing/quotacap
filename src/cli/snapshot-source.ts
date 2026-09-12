@@ -36,7 +36,7 @@ export function offlineOnlyClient(): ServiceClient {
   const fail = async (): Promise<never> => {
     throw new ServiceUnavailable("service unavailable: skew fallback to stored readings");
   };
-  return { get: fail, post: fail };
+  return { get: fail, post: fail, patch: fail };
 }
 
 const NO_DATA_HINT = "no quotas yet - start the service (quotacap web)";

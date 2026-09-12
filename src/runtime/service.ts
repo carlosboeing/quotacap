@@ -214,6 +214,7 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       token,
       coordinator,
       enabledProviders: config.enabledProviders,
+      providerNames: config.providerNames,
       version: VERSION,
       exec: process.execPath,
       canWrite: () => claim.verify(),

@@ -27,6 +27,7 @@ export interface ServiceClientOptions {
 export interface ServiceClient {
   get(path: string): Promise<any>;
   post(path: string, body?: unknown): Promise<any>;
+  patch?(path: string, body?: unknown): Promise<any>;
 }
 
 export interface BaseClientOptions {
@@ -89,5 +90,25 @@ export function createServiceClientForBase(baseUrl: string, opts: BaseClientOpti
     return parse(res);
   }
 
-  return { get, post };
+  async function patch(path: string, body?: unknown): Promise<any> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (opts.token) headers["x-quotacap-token"] = opts.token;
+    let res: Response;
+    try {
+      res = await fetch(`${base}${path}`, {
+        method: "PATCH",
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      if (e instanceof ServiceError) throw e;
+      throw new ServiceUnavailable(
+        `service unavailable at ${base}: ${(e as Error)?.message ?? String(e)}`,
+      );
+    }
+    return parse(res);
+  }
+
+  return { get, post, patch };
 }

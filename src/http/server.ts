@@ -24,6 +24,9 @@ import {
   type RejectedAttempt,
 } from "../runtime/poll.js";
 import { classifyFailure } from "../diagnostics/failure.js";
+import { validateDisplayName } from "../advisory/validation.js";
+import { providerIdentity } from "../advisory/provider-names.js";
+import { readConfig, writeConfig } from "../config.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -83,6 +86,7 @@ export interface RuntimeContext {
   token: string;
   coordinator: Coordinator;
   enabledProviders: string[];
+  providerNames?: Record<string, string>;
   version: string;
   exec: string;
   now?: () => Date;
@@ -99,6 +103,7 @@ export interface RuntimeContext {
    * normal SIGTERM path; unset in tests that only assert the response.
    */
   onRestart?: (info: { version?: string; exec?: string }) => void;
+  configPath?: string;
 }
 
 // Ingest writes outside the poll path, so it needs the same fence the
@@ -114,6 +119,7 @@ export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeCo
     token: "test-token",
     coordinator: createCoordinator({ db, enabledProviders: [] }),
     enabledProviders: [],
+    providerNames: {},
     version: "test",
     exec: "test",
     ingestEnabled: false,
@@ -129,6 +135,7 @@ function snapshotOf(ctx: RuntimeContext): StateSnapshot {
   const cache = readUpdateCache();
   return buildSnapshot(ctx.db, {
     enabledProviders: ctx.enabledProviders,
+    providerNames: ctx.providerNames,
     now: ctx.now?.() ?? new Date(),
     runtime: {
       available: true,
@@ -237,6 +244,67 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
         error: diagnosis.errorDetail,
       };
     }
+  });
+
+  app.patch("/api/providers/:id", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+
+    const { id } = req.params;
+    if (!id || typeof id !== "string") {
+      return reply.status(400).send({ error: "invalid-argument: provider id is required" });
+    }
+
+    const body = (req.body ?? {}) as any;
+    if (typeof body !== "object" || body === null || !("displayName" in body)) {
+      return reply.status(400).send({ error: "invalid-argument: body must contain displayName" });
+    }
+
+    const { displayName } = body;
+    if (displayName !== null && typeof displayName !== "string") {
+      return reply.status(400).send({ error: "invalid-argument: displayName must be a string or null" });
+    }
+
+    let validatedName: string | null = null;
+    if (typeof displayName === "string") {
+      try {
+        validatedName = validateDisplayName(displayName);
+      } catch (e: any) {
+        return reply.status(400).send({ error: e?.message ?? String(e) });
+      }
+    }
+
+    // Update in-memory ctx
+    ctx.providerNames = { ...(ctx.providerNames ?? {}) };
+    if (validatedName === null) {
+      delete ctx.providerNames[id];
+    } else {
+      ctx.providerNames[id] = validatedName;
+    }
+
+    // Persist to config.json
+    try {
+      const cfg = await readConfig(ctx.configPath);
+      cfg.providerNames = { ...(cfg.providerNames ?? {}) };
+      if (validatedName === null) {
+        delete cfg.providerNames[id];
+      } else {
+        cfg.providerNames[id] = validatedName;
+      }
+      await writeConfig(cfg, ctx.configPath);
+    } catch {
+      // In-memory update succeeded; config write best-effort if path not writable in test
+    }
+
+    const identity = providerIdentity(id, ctx.providerNames);
+    return {
+      ok: true,
+      id,
+      displayName: validatedName,
+      effectiveName: identity.displayName,
+    };
   });
 
   // Graceful-stop request for CLI-driven takeovers. The endpoint restarts

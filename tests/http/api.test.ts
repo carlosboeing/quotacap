@@ -256,5 +256,155 @@ describe("http token auth and mutating routes", () => {
     const body2 = JSON.parse(res2.body);
     expect(body2.lastPollAt).toBe(body1.lastPollAt);
   }, 15000);
+
+  describe("PATCH /api/providers/:id", () => {
+    it("rejects request without token header (401)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret" }));
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        payload: { displayName: "My Claude" },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects request with invalid token header (401)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret" }));
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "wrong" },
+        payload: { displayName: "My Claude" },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects cross-origin request with foreign origin (403)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret" }));
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: {
+          host: "localhost:8787",
+          origin: "http://evil.com",
+          "x-quotacap-token": "secret",
+        },
+        payload: { displayName: "My Claude" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("rejects invalid displayName values (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret" }));
+
+      // empty string
+      const r1 = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "   " },
+      });
+      expect(r1.statusCode).toBe(400);
+
+      // ANSI escape
+      const r2 = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "\x1b[31mRed\x1b[0m" },
+      });
+      expect(r2.statusCode).toBe(400);
+
+      // longer than 32 chars
+      const r3 = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "a".repeat(33) },
+      });
+      expect(r3.statusCode).toBe(400);
+
+      // non-string / non-null
+      const r4 = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/claude",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: 123 },
+      });
+      expect(r4.statusCode).toBe(400);
+    });
+
+    it("sets override for registered provider and updates GET /api/state", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret", enabledProviders: ["muse"] }));
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/muse",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "Work Muse" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body).toMatchObject({ ok: true, id: "muse", displayName: "Work Muse" });
+
+      const stateRes = await app.inject({ method: "GET", url: "/api/state" });
+      const state = JSON.parse(stateRes.body);
+      const muse = state.providers.find((p: any) => p.id === "muse");
+      expect(muse).toBeDefined();
+      expect(muse.displayName).toBe("Work Muse");
+      expect(muse.builtinName).toBe("Muse");
+    });
+
+    it("accepts override for unregistered provider id", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { token: "secret", enabledProviders: [] }));
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/custom-unregistered",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: "My Custom" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body).toMatchObject({ ok: true, id: "custom-unregistered", displayName: "My Custom" });
+    });
+
+    it("clears override with null displayName, restoring built-in", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(
+        testCtx(db, {
+          token: "secret",
+          enabledProviders: ["muse"],
+          providerNames: { muse: "Work Muse" },
+        }),
+      );
+
+      // Verify initial overridden state
+      const initial = JSON.parse((await app.inject({ method: "GET", url: "/api/state" })).body);
+      expect(initial.providers.find((p: any) => p.id === "muse").displayName).toBe("Work Muse");
+
+      // Clear override
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/providers/muse",
+        headers: { "x-quotacap-token": "secret" },
+        payload: { displayName: null },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body).toMatchObject({ ok: true, id: "muse", displayName: null });
+
+      // Verify restored built-in in GET /api/state
+      const stateRes = await app.inject({ method: "GET", url: "/api/state" });
+      const state = JSON.parse(stateRes.body);
+      const muse = state.providers.find((p: any) => p.id === "muse");
+      expect(muse.displayName).toBe("Muse");
+      expect(muse.builtinName).toBe("Muse");
+    });
+  });
 });
 
