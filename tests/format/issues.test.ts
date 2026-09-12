@@ -9,6 +9,10 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
     runtime: RT,
     providers: providers.map((p) => ({
       id: "unknown",
+      displayName: p.displayName ?? p.id ?? "unknown",
+      vendor: null,
+      harness: null,
+      description: null,
       enabled: true,
       reporting: true,
       quota: null,
