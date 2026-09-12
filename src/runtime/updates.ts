@@ -150,6 +150,34 @@ export function releasesApiUrl(): string {
   return "https://api.github.com/repos/carlosboeing/quotacap/releases/latest";
 }
 
+// Default version endpoint: the releases page answers 302 to the latest tag
+// and sits outside the anonymous API rate-limit bucket shared with every
+// other API consumer on the machine.
+export function releasesPageUrl(): string {
+  return "https://github.com/carlosboeing/quotacap/releases/latest";
+}
+
+// Header read that tolerates real Headers and the plain-object headers that
+// hermetic fetch mocks use.
+function responseHeader(res: Response, name: string): string | null {
+  const headers = (res as { headers?: unknown }).headers;
+  if (!headers) return null;
+  if (typeof (headers as Headers).get === "function") {
+    return (headers as Headers).get(name);
+  }
+  if (typeof headers === "object") {
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === name && typeof v === "string") return v;
+    }
+  }
+  return null;
+}
+
+function tagFromReleaseUrl(location: string): string {
+  const m = /\/releases\/tag\/([^/?#]+)/.exec(location);
+  return m ? m[1] : "";
+}
+
 export function releaseDownloadBase(version: string): string {
   const base = process.env.QUOTACAP_RELEASE_BASE_URL?.replace(/\/+$/, "");
   if (base) return `${base}/download`;
@@ -158,31 +186,76 @@ export function releaseDownloadBase(version: string): string {
     : `https://github.com/carlosboeing/quotacap/releases/download/v${version}`;
 }
 
+export type LatestVersionResolution =
+  | { status: "ok"; release: ReleaseInfo }
+  | { status: "rate-limited"; resetsAtMs: number | null }
+  | { status: "unavailable" };
+
+function rateLimitOrUnavailable(res: Response): LatestVersionResolution {
+  if (responseHeader(res, "x-ratelimit-remaining") === "0") {
+    const reset = responseHeader(res, "x-ratelimit-reset");
+    const secs = reset !== null && reset.trim() !== "" ? Number(reset) : NaN;
+    return {
+      status: "rate-limited",
+      resetsAtMs: Number.isFinite(secs) ? secs * 1000 : null,
+    };
+  }
+  return { status: "unavailable" };
+}
+
+// Full resolution outcome: the release, a rate-limited response carrying its
+// reset time, or an undifferentiated failure. Never throws.
+export async function resolveLatestVersionDetailed(
+  opts: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
+): Promise<LatestVersionResolution> {
+  const fetchFn = opts.fetchFn ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const base = process.env.QUOTACAP_RELEASE_BASE_URL?.replace(/\/+$/, "");
+  try {
+    if (base) {
+      const res = await fetchFn(releasesApiUrl(), {
+        headers: { accept: "application/vnd.github+json" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as any;
+        const tag = typeof body?.tag_name === "string" ? body.tag_name : "";
+        const version = tag.startsWith("v") ? tag.slice(1) : tag;
+        if (parseVersion(version)) {
+          const url =
+            typeof body?.html_url === "string" && body.html_url
+              ? body.html_url
+              : "https://github.com/carlosboeing/quotacap/releases/latest";
+          return { status: "ok", release: { version, url } };
+        }
+      }
+      return rateLimitOrUnavailable(res);
+    }
+    const res = await fetchFn(releasesPageUrl(), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = responseHeader(res, "location") ?? "";
+      const tag = tagFromReleaseUrl(location);
+      const version = tag.startsWith("v") ? tag.slice(1) : tag;
+      if (tag && parseVersion(version)) {
+        return { status: "ok", release: { version, url: location } };
+      }
+    }
+    return rateLimitOrUnavailable(res);
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 // Latest published version, or null when the release cannot be resolved
-// (network failure, non-200, bad JSON, unparseable tag). Never throws.
+// (network failure, non-redirect, bad JSON, unparseable tag). Never throws.
 export async function resolveLatestVersion(
   opts: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<ReleaseInfo | null> {
-  const fetchFn = opts.fetchFn ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 10000;
-  try {
-    const res = await fetchFn(releasesApiUrl(), {
-      headers: { accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as any;
-    const tag = typeof body?.tag_name === "string" ? body.tag_name : "";
-    const version = tag.startsWith("v") ? tag.slice(1) : tag;
-    if (!parseVersion(version)) return null;
-    const url =
-      typeof body?.html_url === "string" && body.html_url
-        ? body.html_url
-        : "https://github.com/carlosboeing/quotacap/releases/latest";
-    return { version, url };
-  } catch {
-    return null;
-  }
+  const r = await resolveLatestVersionDetailed(opts);
+  return r.status === "ok" ? r.release : null;
 }
 
 export interface UpdateCache {
@@ -190,6 +263,9 @@ export interface UpdateCache {
   latest: string;
   channel: string;
   current: string;
+  // Last failed refresh attempt, for negative caching. Optional so caches
+  // written before it existed keep loading.
+  lastFailureAt?: string;
 }
 
 export function updatesCachePath(): string {
@@ -214,6 +290,13 @@ export function readUpdateCache(p: string = updatesCachePath()): UpdateCache | n
     if (typeof parsed.channel !== "string" || typeof parsed.current !== "string") {
       return null;
     }
+    if (
+      parsed.lastFailureAt !== undefined &&
+      (typeof parsed.lastFailureAt !== "string" ||
+        Number.isNaN(new Date(parsed.lastFailureAt).getTime()))
+    ) {
+      return null;
+    }
     return parsed as UpdateCache;
   } catch {
     return null;
@@ -235,13 +318,21 @@ export function writeUpdateCache(cache: UpdateCache, p: string = updatesCachePat
 
 export const UPDATE_CACHE_TTL_MS = 24 * 3600 * 1000;
 
+// Negative-cache floor: a failed refresh suppresses further network attempts
+// for this long. Short against the daily TTL so a recovered endpoint is
+// re-probed soon, long enough that status/advise/poll storms back off.
+export const UPDATE_FAILURE_RETRY_MS = 30 * 60 * 1000;
+
 export function updateCacheStale(cache: UpdateCache | null, nowMs: number = Date.now()): boolean {
   if (!cache) return true;
   return nowMs - new Date(cache.checkedAt).getTime() >= UPDATE_CACHE_TTL_MS;
 }
 
-// Refresh the daily cache when older than 24 hours or absent. Network failure
-// keeps the old cache silently; the result is the cache to read from.
+// Refresh the daily cache when older than 24 hours or absent. A failure
+// inside the retry floor performs no network call and keeps serving the
+// previously cached latest; a fresh failure stamps lastFailureAt so the next
+// attempt backs off. checkedAt is never stamped on failure, so the daily
+// check is unaffected. The result is the cache to read from.
 export async function refreshUpdateCache(
   opts: {
     channel: string;
@@ -256,11 +347,29 @@ export async function refreshUpdateCache(
   const existing = readUpdateCache(cachePath);
   const now = opts.now?.() ?? new Date();
   if (!updateCacheStale(existing, now.getTime())) return existing;
+  if (
+    existing?.lastFailureAt &&
+    now.getTime() - new Date(existing.lastFailureAt).getTime() < UPDATE_FAILURE_RETRY_MS
+  ) {
+    return existing;
+  }
   const latest = await resolveLatestVersion({
     fetchFn: opts.fetchFn,
     timeoutMs: opts.timeoutMs ?? 3000,
   });
-  if (!latest) return existing;
+  if (!latest) {
+    if (!existing) return existing;
+    // Re-read before stamping: a concurrent refresh may have succeeded while
+    // our request was in flight, and stamping our stale snapshot would
+    // clobber its newer write and suppress retries for the floor.
+    const current = readUpdateCache(cachePath);
+    if (current && JSON.stringify(current) !== JSON.stringify(existing)) {
+      return current;
+    }
+    const stamped: UpdateCache = { ...existing, lastFailureAt: now.toISOString() };
+    writeUpdateCache(stamped, cachePath);
+    return stamped;
+  }
   const fresh: UpdateCache = {
     checkedAt: now.toISOString(),
     latest: latest.version,

@@ -9,7 +9,10 @@ import {
   printUpdateFooter,
   readUpdateCache,
   refreshUpdateCache,
+  releasesPageUrl,
   resolveLatestVersion,
+  resolveLatestVersionDetailed,
+  UPDATE_FAILURE_RETRY_MS,
   updateCacheStale,
   updateFooter,
   updateNpm,
@@ -185,14 +188,83 @@ describe("resolveLatestVersion", () => {
     return (async () => ({ ok, status, json: async () => body })) as unknown as typeof fetch;
   }
 
-  it("strips the leading v and keeps the release URL", async () => {
+  it("reads the tag from the redirect Location without following it", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const seen: Array<{ url: string; init: any }> = [];
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v0.0.25";
+    const r = await resolveLatestVersion({
+      fetchFn: (async (url: any, init: any) => {
+        seen.push({ url: String(url), init });
+        return { ok: false, status: 302, headers: { location } };
+      }) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ version: "0.0.25", url: location });
+    expect(seen).toHaveLength(1);
+    expect(seen[0].url).toBe(releasesPageUrl());
+    expect(seen[0].url).not.toContain("api.github.com");
+    expect(seen[0].init?.redirect).toBe("manual");
+  });
+
+  it("accepts real Headers and any 3xx with a tag Location", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v1.2.3";
+    const r = await resolveLatestVersion({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 301,
+        headers: new Headers({ location }),
+      })) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ version: "1.2.3", url: location });
+  });
+
+  it("returns null when the redirect is unusable, never throwing", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const redirectFetch = (status: number, location?: string) =>
+      (async () => ({
+        ok: status >= 200 && status < 300,
+        status,
+        headers: location ? { location } : {},
+      })) as unknown as typeof fetch;
+    // 200 with no redirect.
+    expect(await resolveLatestVersion({ fetchFn: redirectFetch(200) })).toBeNull();
+    // Redirect without a Location.
+    expect(await resolveLatestVersion({ fetchFn: redirectFetch(302) })).toBeNull();
+    // Location that is not a release tag.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: redirectFetch(302, "https://github.com/carlosboeing/quotacap"),
+      }),
+    ).toBeNull();
+    // Tag that is not a version.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: redirectFetch(
+          302,
+          "https://github.com/carlosboeing/quotacap/releases/tag/not-a-version",
+        ),
+      }),
+    ).toBeNull();
+    // Network failure.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: (async () => {
+          throw new Error("boom");
+        }) as unknown as typeof fetch,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps the JSON behaviour when QUOTACAP_RELEASE_BASE_URL is set", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     const r = await resolveLatestVersion({
       fetchFn: fakeFetch({ tag_name: "v0.0.23", html_url: "https://x/notes" }),
     });
     expect(r).toEqual({ version: "0.0.23", url: "https://x/notes" });
   });
 
-  it("returns null when the release cannot be resolved", async () => {
+  it("returns null on the JSON path when the release cannot be resolved", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     expect(await resolveLatestVersion({ fetchFn: fakeFetch({}) })).toBeNull();
     expect(
       await resolveLatestVersion({ fetchFn: fakeFetch({ tag_name: "not-a-version" }) }),
@@ -220,6 +292,75 @@ describe("resolveLatestVersion", () => {
       timeoutMs: 100,
     });
     expect(seen).toEqual(["http://127.0.0.1:9/api/releases/latest"]);
+  });
+});
+
+describe("resolveLatestVersionDetailed", () => {
+  const RESET = 1786840560; // fixed unix seconds; expectations derive from it
+
+  function rateLimitedFetch(extraHeaders: Record<string, string> = {}) {
+    return (async () => ({
+      ok: false,
+      status: 403,
+      headers: {
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": String(RESET),
+        ...extraHeaders,
+      },
+    })) as unknown as typeof fetch;
+  }
+
+  it("reports ok with the parsed release", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v1.2.3";
+    const r = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 302,
+        headers: { location },
+      })) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ status: "ok", release: { version: "1.2.3", url: location } });
+  });
+
+  it("reports rate-limited with the reset time from headers", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const r = await resolveLatestVersionDetailed({ fetchFn: rateLimitedFetch() });
+    expect(r).toEqual({ status: "rate-limited", resetsAtMs: RESET * 1000 });
+  });
+
+  it("reports rate-limited without a reset when the header is missing or bad", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const missing = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 403,
+        headers: { "x-ratelimit-remaining": "0" },
+      })) as unknown as typeof fetch,
+    });
+    expect(missing).toEqual({ status: "rate-limited", resetsAtMs: null });
+    const bad = await resolveLatestVersionDetailed({
+      fetchFn: rateLimitedFetch({ "x-ratelimit-reset": "soon" }),
+    });
+    expect(bad).toEqual({ status: "rate-limited", resetsAtMs: null });
+  });
+
+  it("reports unavailable for generic failures, never throwing", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const notFound = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })) as unknown as typeof fetch,
+    });
+    expect(notFound).toEqual({ status: "unavailable" });
+    const down = await resolveLatestVersionDetailed({
+      fetchFn: (async () => {
+        throw new Error("boom");
+      }) as unknown as typeof fetch,
+    });
+    expect(down).toEqual({ status: "unavailable" });
   });
 });
 
@@ -261,6 +402,7 @@ describe("update cache", () => {
   });
 
   it("refresh skips fresh caches, writes new ones, keeps old on failure", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     const dir = tmpDir("qc-refresh-");
     try {
       const p = path.join(dir, "updates.json");
@@ -294,7 +436,7 @@ describe("update cache", () => {
       expect(next?.latest).toBe("0.0.24");
       expect(readUpdateCache(p)?.latest).toBe("0.0.24");
 
-      // Failure keeps the old cache silently.
+      // Failure keeps the old latest and stamps the attempt for backoff.
       writeUpdateCache(old, p);
       const kept = await refreshUpdateCache({
         channel: "standalone",
@@ -302,7 +444,162 @@ describe("update cache", () => {
         cachePath: p,
         fetchFn: failFetch,
       });
-      expect(kept).toEqual(old);
+      expect(kept).toMatchObject({ latest: old.latest, checkedAt: old.checkedAt });
+      expect(kept?.lastFailureAt).toBeDefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("loads caches that predate lastFailureAt, rejects malformed stamps", () => {
+    const dir = tmpDir("qc-cache-compat-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const legacy = {
+        checkedAt: new Date().toISOString(),
+        latest: "0.0.23",
+        channel: "standalone",
+        current: "0.0.22",
+      };
+      fs.writeFileSync(p, JSON.stringify(legacy));
+      expect(readUpdateCache(p)).toEqual(legacy);
+      fs.writeFileSync(p, JSON.stringify({ ...legacy, lastFailureAt: "not-a-date" }));
+      expect(readUpdateCache(p)).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("backs off failed refreshes inside the retry floor without losing latest", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-negcache-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const stale = {
+        checkedAt: new Date(Date.now() - 25 * 3600 * 1000).toISOString(),
+        latest: "0.0.23",
+        channel: "standalone",
+        current: "0.0.22",
+      };
+      writeUpdateCache(stale, p);
+      let calls = 0;
+      const failFetch = (async () => {
+        calls++;
+        throw new Error("down");
+      }) as unknown as typeof fetch;
+      const now = new Date();
+      const first = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: failFetch,
+        now: () => now,
+      });
+      expect(calls).toBe(1);
+      // checkedAt and latest untouched; only the failure stamp recorded.
+      expect(first).toMatchObject({ checkedAt: stale.checkedAt, latest: "0.0.23" });
+      expect(first?.lastFailureAt).toBe(now.toISOString());
+      expect(readUpdateCache(p)).toEqual(first);
+
+      // Second attempt inside the floor: no network call at all, latest kept.
+      const second = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: failFetch,
+        now: () => new Date(now.getTime() + 60 * 1000),
+      });
+      expect(calls).toBe(1);
+      expect(second).toEqual(first);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a late failure never clobbers an intervening successful write", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-race-");
+    try {
+      const p = path.join(dir, "updates.json");
+      writeUpdateCache(
+        {
+          checkedAt: new Date(Date.now() - 25 * 3600 * 1000).toISOString(),
+          latest: "0.0.24",
+          channel: "standalone",
+          current: "0.0.22",
+        },
+        p,
+      );
+      let releaseA!: () => void;
+      const gateA = new Promise<void>((r) => {
+        releaseA = r;
+      });
+      const slowFail = (async () => {
+        await gateA;
+        throw new Error("down");
+      }) as unknown as typeof fetch;
+      const okFetch = (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ tag_name: "v0.0.26", html_url: "https://x" }),
+      })) as unknown as typeof fetch;
+
+      // A starts first and blocks in the network; B runs to completion first.
+      const pendingA = refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: slowFail,
+      });
+      const b = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: okFetch,
+      });
+      expect(b?.latest).toBe("0.0.26");
+      releaseA();
+      const a = await pendingA;
+      // A's late failure preserves B's successful write, stamp-free.
+      expect(a?.latest).toBe("0.0.26");
+      expect(a).not.toHaveProperty("lastFailureAt");
+      expect(readUpdateCache(p)).toEqual(a);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries the network once the floor expires and clears the stamp on success", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-negretry-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const now = Date.now();
+      writeUpdateCache(
+        {
+          checkedAt: new Date(now - 25 * 3600 * 1000).toISOString(),
+          latest: "0.0.23",
+          channel: "standalone",
+          current: "0.0.22",
+          lastFailureAt: new Date(now - UPDATE_FAILURE_RETRY_MS - 1000).toISOString(),
+        },
+        p,
+      );
+      const okFetch = (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ tag_name: "v0.0.24", html_url: "https://x" }),
+      })) as unknown as typeof fetch;
+      const next = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: okFetch,
+        now: () => new Date(now),
+      });
+      expect(next?.latest).toBe("0.0.24");
+      expect(next).not.toHaveProperty("lastFailureAt");
+      expect(readUpdateCache(p)).toEqual(next);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -16,6 +16,7 @@ import { acquireClaim, type Claim } from "../../src/runtime/owner.js";
 import { VERSION } from "../../src/version.js";
 
 const savedHome = process.env.QUOTACAP_HOME;
+const savedReleaseBase = process.env.QUOTACAP_RELEASE_BASE_URL;
 const dirs: string[] = [];
 const claims: Claim[] = [];
 
@@ -30,6 +31,8 @@ afterEach(() => {
   }
   if (savedHome === undefined) delete process.env.QUOTACAP_HOME;
   else process.env.QUOTACAP_HOME = savedHome;
+  if (savedReleaseBase === undefined) delete process.env.QUOTACAP_RELEASE_BASE_URL;
+  else process.env.QUOTACAP_RELEASE_BASE_URL = savedReleaseBase;
   vi.restoreAllMocks();
 });
 
@@ -37,6 +40,10 @@ function isolatedHome(): string {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "qc-update-"));
   dirs.push(d);
   process.env.QUOTACAP_HOME = d;
+  // CLI tests exercise the hermetic JSON resolution path; the redirect path
+  // is covered in tests/runtime/updates.test.ts. The host is never dialled —
+  // every test injects fetchFn.
+  process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
   return d;
 }
 
@@ -163,6 +170,33 @@ describe("update --check", () => {
     const bad = await runUpdate(["--check"], { channelEnv, fetchFn: failingFetch() });
     expect(bad.exitCodes).toEqual([1]);
     expect(bad.errors.join("\n")).toMatch(/could not resolve/);
+  });
+
+  it("diagnoses a rate-limited response with its reset time", async () => {
+    const home = isolatedHome();
+    const { channelEnv } = standaloneEnv(home);
+    const reset = 1786840560;
+    const limited = (async () => ({
+      ok: false,
+      status: 403,
+      headers: {
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": String(reset),
+      },
+    })) as unknown as typeof fetch;
+    const d = new Date(reset * 1000);
+    const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const r = await runUpdate(["--check"], { channelEnv, fetchFn: limited });
+    expect(r.exitCodes).toEqual([1]);
+    expect(r.errors.join("\n")).toContain("rate limit");
+    expect(r.errors.join("\n")).toContain(`resets ${hhmm}`);
+    expect(r.errors.join("\n")).toContain("quotacap update --to <version>");
+
+    const json = await runUpdate(["--check", "--json"], { channelEnv, fetchFn: limited });
+    expect(JSON.parse(json.logs.join("\n"))).toMatchObject({
+      latest: null,
+      error: expect.stringContaining("rate limit"),
+    });
   });
 });
 
@@ -348,10 +382,10 @@ describe("update npm", () => {
     expect(r.exitCodes).toEqual([]);
   });
 
-  it("pins --version and reports spawn failures", async () => {
+  it("pins --to and reports spawn failures", async () => {
     const home = isolatedHome();
     const spawns: string[][] = [];
-    const r = await runUpdate(["--version", "0.0.21"], {
+    const r = await runUpdate(["--to", "0.0.21"], {
       channelEnv: npmEnv,
       homeDir: home,
       fetchFn: releaseFetch(),
@@ -364,6 +398,63 @@ describe("update npm", () => {
     expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
     expect(r.exitCodes).toEqual([1]);
     expect(r.errors.join("\n")).toContain("exited 3");
+    expect(home).toBeTruthy();
+  });
+
+  it("--to reaches the subcommand despite the global --version flag", async () => {
+    const home = isolatedHome();
+    const spawns: string[][] = [];
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const exitCodes: number[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: any[]) => {
+      logs.push(a.join(" "));
+    });
+    vi.spyOn(console, "error").mockImplementation((...a: any[]) => {
+      errors.push(a.join(" "));
+    });
+    // Same global wiring as src/cli/index.ts: a global --version flag that
+    // used to swallow the subcommand's own --version option.
+    const prog = new Command();
+    prog.exitOverride();
+    prog.name("quotacap").version(VERSION);
+    registerUpdateCommand(prog, {
+      channelEnv: npmEnv,
+      homeDir: home,
+      fetchFn: releaseFetch(),
+      spawnNpm: async (args: string[]) => {
+        spawns.push(args);
+        return 0;
+      },
+      createClient: downClient(),
+      isManaged: async () => false,
+      exit: (c: number) => exitCodes.push(c),
+    });
+    await prog.parseAsync(["update", "--to", "0.0.21"], { from: "user" });
+    expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
+    expect(logs[0]).toBe(`Updated ${VERSION} to 0.0.21`);
+    expect(errors).toEqual([]);
+    expect(exitCodes).toEqual([]);
+    expect(home).toBeTruthy();
+  });
+
+  it("pins --to past an unresolvable release", async () => {
+    const home = isolatedHome();
+    const spawns: string[][] = [];
+    const r = await runUpdate(["--to", "v0.0.21"], {
+      channelEnv: npmEnv,
+      homeDir: home,
+      fetchFn: failingFetch(),
+      spawnNpm: async (args: string[]) => {
+        spawns.push(args);
+        return 0;
+      },
+      createClient: downClient(),
+      isManaged: async () => false,
+    });
+    expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
+    expect(r.exitCodes).toEqual([]);
+    expect(r.logs[0]).toBe(`Updated ${VERSION} to 0.0.21`);
     expect(home).toBeTruthy();
   });
 });

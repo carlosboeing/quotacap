@@ -122,6 +122,7 @@ adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL,
 - npm package `quotacap` (`npx quotacap` or `npm i -g quotacap`). The dashboard is embedded, so a single package gives you the CLI, MCP, daemon, and dashboard with no extra install.
 - Bun single-file binary via `npm run build:bin`. Same embedded bundle; nothing on disk besides the user data directory. `node-pty` is an `optionalDependency`. Exec adapters (`claude`, `agy`) work without it. PTY adapters (`codex`, `kimi`, `grok`, `muse`) report `node-pty not available` and degrade gracefully.
 - `quotacap update` refreshes the service registration on managed post-update takeover (`takeoverManaged` with `refreshRegistration` in `src/cli/takeover.ts`) instead of only restarting, so the supervisor unit regenerates its provider PATH; the target version travels with the call because the update runs in the old binary. Version-skew takeovers from other commands keep restarting.
+- Version resolution reads the latest tag from the releases-page redirect (`resolveLatestVersion` in `src/runtime/updates.ts`) instead of the anonymous API bucket, with the JSON behaviour kept behind `QUOTACAP_RELEASE_BASE_URL` for hermetic tests and mirrors. `refreshUpdateCache` negative-caches failures for 30 minutes (`lastFailureAt`) while serving the cached `latest`, without touching `checkedAt`. `quotacap update` pins via `--to <version>` — the old `--version` spelling never worked, shadowed by the global flag — and diagnoses an exhausted bucket with its reset time.
 
 ## Security model
 
