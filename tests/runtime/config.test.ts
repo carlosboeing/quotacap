@@ -38,7 +38,7 @@ describe("strict service config", () => {
     expect(cfg).toEqual({
       port: 8787,
       pollMinutes: 15,
-      enabledProviders: ["claude", "codex", "kimi", "grok", "agy"],
+      enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
     });
   });
 
@@ -54,6 +54,7 @@ describe("strict service config", () => {
       "kimi",
       "grok",
       "agy",
+      "muse",
     ]);
   });
 
@@ -100,7 +101,7 @@ describe("strict service config", () => {
     );
     expect(String(err.message)).toMatch(/invalid config: enabledProviders/);
     expect(String(err.message)).toContain("bogus");
-    for (const id of ["claude", "codex", "kimi", "grok", "agy", "manual"]) {
+    for (const id of ["claude", "codex", "kimi", "grok", "agy", "manual", "muse"]) {
       expect(String(err.message)).toContain(id);
     }
 

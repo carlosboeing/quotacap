@@ -23,8 +23,26 @@ export interface PtyRunOptions {
   rows?: number;
   readyRegex?: RegExp;
   readyTimeoutMs?: number;
+  /**
+   * Settle delay after spawn (no readyRegex) or after readiness (with
+   * readyRegex). The post-ready default stays 200ms; pass an explicit value
+   * (e.g. muse's 1000ms) only when the TUI needs longer after signalling.
+   */
   settleDelayMs?: number;
   input: string;
+  /**
+   * Second-phase input, written `submitAfterMs` after `input`. Both must be
+   * set for the second write to happen; absent by default, which keeps the
+   * historical single-write behaviour for existing adapters.
+   */
+  submitInput?: string;
+  submitAfterMs?: number;
+  /**
+   * Opt-in terminal-query responder: answers DSR, DA1 and OSC 4/10/11
+   * capability queries the child emits. Off by default; TUIs that never
+   * query (codex, kimi, grok) are unaffected either way.
+   */
+  respondToQueries?: boolean;
   completionRegex?: RegExp;
   /** If matched, abort immediately with a clear error (e.g. trust prompts). */
   abortOn?: RegExp;
@@ -43,6 +61,58 @@ function delay(ms: number): Promise<void> {
 function regexTest(re: RegExp, s: string): boolean {
   const fresh = new RegExp(re.source, re.flags.replace("g", ""));
   return fresh.test(s);
+}
+
+export interface TerminalQueryRule {
+  /** Non-global pattern; must match the complete query including terminator. */
+  match: RegExp;
+  reply: (m: RegExpMatchArray) => string;
+}
+
+/**
+ * Canned answers to terminal capability queries, table-driven so a future
+ * query type is a one-line row. Replies are static: colour answers never
+ * affect parsing because styling is stripped before matching.
+ */
+export const TERMINAL_QUERY_RESPONSES: TerminalQueryRule[] = [
+  // DSR (device status report): cursor position request. Unanswered, some
+  // TUIs exit outright ("cursor position could not be read").
+  { match: /\x1b\[[0-9;]*6n/, reply: () => "\x1b[1;1R" },
+  // DA1 (primary device attributes): `CSI c` is exclusively a DA request.
+  { match: /\x1b\[[0-9;]*c/, reply: () => "\x1b[?1;2c" },
+  // OSC 4/10/11 colour queries, BEL- or ST-terminated. The palette index is
+  // echoed back; 16 OSC 4 queries were measured in a single Muse startup.
+  { match: /\x1b\]4;(\d+);\?(?:\x07|\x1b\\)/, reply: (m) => `\x1b]4;${m[1]};rgb:0000/0000/0000\x07` },
+  { match: /\x1b\]10;\?(?:\x07|\x1b\\)/, reply: () => "\x1b]10;rgb:ffff/ffff/ffff\x07" },
+  { match: /\x1b\]11;\?(?:\x07|\x1b\\)/, reply: () => "\x1b]11;rgb:0000/0000/0000\x07" },
+];
+
+/**
+ * Stateful feeder for `TERMINAL_QUERY_RESPONSES`. Consumes each matched query
+ * from an internal buffer, so a query split across chunks is answered once it
+ * completes and never answered twice. Plain output passes through silently.
+ */
+export function createTerminalQueryResponder(write: (s: string) => void): (chunk: string) => void {
+  let buf = "";
+  return (chunk: string) => {
+    buf += chunk;
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const rule of TERMINAL_QUERY_RESPONSES) {
+        const m = rule.match.exec(buf);
+        if (m?.index !== undefined) {
+          write(rule.reply(m));
+          buf = buf.slice(0, m.index) + buf.slice(m.index + m[0].length);
+          progress = true;
+          break;
+        }
+      }
+    }
+    // Bounded tail: a partial query can only straddle the end of the stream,
+    // and the longest query is well under 64 bytes.
+    if (buf.length > 64) buf = buf.slice(-64);
+  };
 }
 
 export interface SpawnHelperRepair {
@@ -210,6 +280,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   // through proc.terminal.write, and merged output arrives in `data`.
   // proc.stdin/stdout/stderr are null in this mode.
   const decoder = new TextDecoder();
+  let feedQueries: ((chunk: string) => void) | null = null;
   const proc: any = BunGlobal.spawn([opts.file, ...(opts.args ?? [])], {
     cwd: opts.cwd ?? process.cwd(),
     env: {
@@ -222,7 +293,9 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       rows,
       data(_term: any, chunk: any) {
         try {
-          transcript += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+          const text = typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+          transcript += text;
+          feedQueries?.(text);
         } catch {}
       },
     },
@@ -239,6 +312,13 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       ),
       { source: "pty" },
     );
+  }
+  if (opts.respondToQueries) {
+    feedQueries = createTerminalQueryResponder((s) => {
+      try {
+        proc.terminal.write(s);
+      } catch {}
+    });
   }
 
   // Poll for exit
@@ -329,7 +409,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
           stdout: transcript,
         });
       }
-      await delay(200);
+      await delay(opts.settleDelayMs ?? 200);
       checkCap();
       checkAborted();
       if (exited) {
@@ -374,6 +454,28 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
         checkpoint: "write",
         stdout: transcript,
       });
+    }
+    if (opts.submitInput !== undefined && opts.submitAfterMs !== undefined) {
+      await delay(opts.submitAfterMs);
+      checkCap();
+      checkAborted();
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "before input",
+          exitCode,
+          stdout: transcript,
+        });
+      }
+      try {
+        proc.terminal.write(opts.submitInput);
+      } catch (e) {
+        throw diagnosticError(new Error(`pty write failed: ${(e as Error).message}`), {
+          source: "pty",
+          checkpoint: "write",
+          stdout: transcript,
+        });
+      }
     }
 
     if (opts.completionRegex) {
@@ -502,10 +604,20 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
     } catch {}
   }, opts.label ?? opts.file);
 
+  const feedQueries = opts.respondToQueries
+    ? createTerminalQueryResponder((s) => {
+        try {
+          ptyProcess.write(s);
+        } catch {}
+      })
+    : null;
   const disposables: any[] = [];
   disposables.push(
     ptyProcess.onData((data: string) => {
       transcript += data;
+      try {
+        feedQueries?.(data);
+      } catch {}
     }),
   );
   disposables.push(
@@ -598,7 +710,7 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
           stdout: transcript,
         });
       }
-      await delay(200);
+      await delay(opts.settleDelayMs ?? 200);
       checkCap();
       checkAborted();
       if (exited) {
@@ -643,6 +755,28 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
         checkpoint: "write",
         stdout: transcript,
       });
+    }
+    if (opts.submitInput !== undefined && opts.submitAfterMs !== undefined) {
+      await delay(opts.submitAfterMs);
+      checkCap();
+      checkAborted();
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "before input",
+          exitCode,
+          stdout: transcript,
+        });
+      }
+      try {
+        ptyProcess.write(opts.submitInput);
+      } catch (e) {
+        throw diagnosticError(new Error(`pty write failed: ${(e as Error).message}`), {
+          source: "pty",
+          checkpoint: "write",
+          stdout: transcript,
+        });
+      }
     }
 
     if (opts.completionRegex) {

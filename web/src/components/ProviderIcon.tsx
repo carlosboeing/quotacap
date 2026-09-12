@@ -7,6 +7,7 @@ const PATHS: Record<string, string> = {
   grok: "M12 3.5l2.6 5.5 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.8l5.9-.8z",
   codex: "M8 5l10 7-10 7z",
   agy: "M12 4l7 7-7 9-7-9z",
+  muse: "M12 3l1.8 6.2L20 11l-6.2 1.8L12 19l-1.8-6.2L4 11l6.2-1.8z",
 };
 
 function iconKey(id: string): string {
