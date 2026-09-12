@@ -79,6 +79,10 @@ function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot 
     evidence: [],
     exclusionReason: null,
     advisory: null,
+    displayName: over.id,
+    vendor: null,
+    harness: null,
+    description: null,
     ...over,
   };
 }

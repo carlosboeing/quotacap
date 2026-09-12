@@ -25,6 +25,10 @@ describe("mcp get_quotas", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].provider).toBe("claude");
       expect(rows[0].exclusionReason).toBe("reset-passed");
+      expect(rows[0].displayName).toBe("Claude");
+      for (const k of ["displayName", "vendor", "harness", "description"]) {
+        expect(k in rows[0]).toBe(true);
+      }
     } finally {
       delete process.env.QUOTACAP_URL;
       await app.close();

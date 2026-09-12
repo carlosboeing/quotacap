@@ -42,6 +42,10 @@ export interface Recommendation {
 
 export interface ProviderSnapshot {
   id: string;
+  displayName: string;
+  vendor: string | null;
+  harness: string | null;
+  description: string | null;
   enabled: boolean;
   quota: Quota | null;
   lastAttempt: AttemptRecord | null;

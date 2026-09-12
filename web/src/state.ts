@@ -68,6 +68,10 @@ export interface AttemptView {
 
 export interface ProviderView {
   id: string;
+  displayName: string;
+  vendor: string | null;
+  harness: string | null;
+  description: string | null;
   enabled: boolean;
   quota: QuotaView | null;
   lastAttempt: AttemptView | null;
