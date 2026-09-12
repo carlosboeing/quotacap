@@ -37,7 +37,12 @@ function dataDir(home: string): string {
 
 function writeConfig(
   home: string,
-  cfg: { port: number; pollMinutes?: number; enabledProviders?: string[] },
+  cfg: {
+    port: number;
+    pollMinutes?: number;
+    enabledProviders?: string[];
+    knownProviders?: string[];
+  },
 ): void {
   fs.mkdirSync(dataDir(home), { recursive: true });
   fs.writeFileSync(
@@ -46,6 +51,9 @@ function writeConfig(
       port: cfg.port,
       pollMinutes: cfg.pollMinutes ?? 60,
       enabledProviders: cfg.enabledProviders ?? ["manual"],
+      ...(cfg.knownProviders !== undefined
+        ? { knownProviders: cfg.knownProviders }
+        : {}),
     }),
   );
 }
@@ -322,6 +330,54 @@ describe("service lifecycle", () => {
     try {
       await waitHealth(port);
       expect(fs.existsSync(path.join(dataDir(home), "daemon.pid"))).toBe(false);
+    } finally {
+      d.child.kill("SIGTERM");
+      expect(await waitExit(d.child, 10000)).toBe(0);
+    }
+  }, 30000);
+
+  it("(j) five-item config gains muse on start when muse is on PATH", async () => {
+    const home = mkHome();
+    const port = await getFreePort();
+    const five = ["claude", "codex", "kimi", "grok", "agy"];
+    writeConfig(home, { port, enabledProviders: five });
+    const binDir = fakeBin(home, "muse");
+    const d = spawnDaemon(home, ["--port", String(port)], {
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+    });
+    try {
+      await waitHealth(port);
+      const raw = JSON.parse(
+        fs.readFileSync(path.join(dataDir(home), "config.json"), "utf8"),
+      );
+      expect(raw.enabledProviders).toEqual([...five, "muse"]);
+      expect(raw.knownProviders).toEqual([...five, "muse"]);
+    } finally {
+      d.child.kill("SIGTERM");
+      expect(await waitExit(d.child, 10000)).toBe(0);
+    }
+  }, 30000);
+
+  it("(k) known-but-disabled muse is not re-added on start", async () => {
+    const home = mkHome();
+    const port = await getFreePort();
+    const five = ["claude", "codex", "kimi", "grok", "agy"];
+    writeConfig(home, {
+      port,
+      enabledProviders: five,
+      knownProviders: [...five, "muse"],
+    });
+    const binDir = fakeBin(home, "muse");
+    const d = spawnDaemon(home, ["--port", String(port)], {
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+    });
+    try {
+      await waitHealth(port);
+      const raw = JSON.parse(
+        fs.readFileSync(path.join(dataDir(home), "config.json"), "utf8"),
+      );
+      expect(raw.enabledProviders).toEqual(five);
+      expect(raw.enabledProviders).not.toContain("muse");
     } finally {
       d.child.kill("SIGTERM");
       expect(await waitExit(d.child, 10000)).toBe(0);

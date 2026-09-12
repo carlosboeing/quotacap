@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -33,6 +34,7 @@ const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
+  knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
@@ -97,6 +99,10 @@ const ServiceConfigSchema = z.object({
         });
       }
     }),
+  // Machine-managed by autoEnableNewProviders: ids are deliberately NOT
+  // validated against the registry, so a stale entry can never brick daemon
+  // start. A non-array still fails naming the field.
+  knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   experimentalIngest: z.boolean().optional(),
 });
@@ -230,6 +236,116 @@ export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
   rawObj.providerNames = {};
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
+// Frozen pre-auto-enable provider set. Configs written before knownProviders
+// existed are seeded with exactly these five, so any adapter shipped later
+// reads as new. Never extend this list: seeding from the live registry would
+// mark every adapter known and silently disable auto-enable.
+export const LEGACY_KNOWN_PROVIDERS = ["claude", "codex", "kimi", "grok", "agy"];
+
+// PATH lookup kept local: importing the sibling in src/service/macos.ts
+// would create a config<->service import cycle.
+function defaultWhich(bin: string): string | null {
+  try {
+    const out = execFileSync("which", [bin], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface AutoEnableDeps {
+  configPath?: string;
+  which?: (bin: string) => string | null;
+}
+
+export interface AutoEnableResult {
+  enabledProviders: string[];
+  knownProviders: string[];
+  changed: boolean;
+}
+
+/**
+ * Auto-enable newly shipped adapters. For each registered adapter (minus
+ * `manual`, which has no CLI binary) absent from knownProviders, resolve its
+ * binary on PATH and append it to both lists when found. An adapter whose
+ * binary is missing stays unknown so it is re-checked on the next start; a
+ * provider already known but disabled is never re-added. Raw-JSON mutation
+ * like setProviderNameOverride: unknown keys are preserved, never a schema
+ * round-trip. Returns null when the file is missing, unparseable, or
+ * structurally off, so readServiceConfig keeps owning that error; throws
+ * only when a decided write fails. Persists only when something changed.
+ */
+export async function autoEnableNewProviders(
+  deps?: AutoEnableDeps,
+): Promise<AutoEnableResult | null> {
+  const file = getConfigPath(deps?.configPath);
+  let rawObj: Record<string, any>;
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+    rawObj = parsed;
+  } catch {
+    return null;
+  }
+  if (
+    ("enabledProviders" in rawObj && !Array.isArray(rawObj.enabledProviders)) ||
+    ("knownProviders" in rawObj && !Array.isArray(rawObj.knownProviders))
+  ) {
+    return null;
+  }
+  const which = deps?.which ?? defaultWhich;
+  const prevEnabled: unknown[] = Array.isArray(rawObj.enabledProviders)
+    ? rawObj.enabledProviders
+    : defaultConfig().enabledProviders;
+  const prevKnown: unknown[] = Array.isArray(rawObj.knownProviders)
+    ? rawObj.knownProviders
+    : LEGACY_KNOWN_PROVIDERS;
+  const enabled = [...prevEnabled];
+  const known = [...prevKnown];
+  for (const id of Object.keys(adapters)) {
+    if (id === "manual" || known.includes(id)) continue;
+    let resolved: string | null = null;
+    try {
+      resolved = which(id);
+    } catch {
+      resolved = null;
+    }
+    if (!resolved) continue;
+    if (!enabled.includes(id)) enabled.push(id);
+    known.push(id);
+  }
+  const changed =
+    JSON.stringify(enabled) !== JSON.stringify(prevEnabled) ||
+    JSON.stringify(known) !== JSON.stringify(prevKnown);
+  if (!changed) {
+    return {
+      enabledProviders: enabled as string[],
+      knownProviders: known as string[],
+      changed: false,
+    };
+  }
+  rawObj.enabledProviders = enabled;
+  rawObj.knownProviders = known;
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+  } catch (err: any) {
+    throw new Error(
+      `cannot update provider enablement: failed to write ${file}: ${err?.message ?? err}`,
+    );
+  }
+  return {
+    enabledProviders: enabled as string[],
+    knownProviders: known as string[],
+    changed: true,
+  };
 }
 
 

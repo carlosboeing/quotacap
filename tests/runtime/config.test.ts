@@ -3,7 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  autoEnableNewProviders,
   isExperimentalIngestEnabled,
+  LEGACY_KNOWN_PROVIDERS,
   readServiceConfig,
   readServiceMetadata,
   resetAllProviderNameOverrides,
@@ -41,6 +43,7 @@ describe("strict service config", () => {
       port: 8787,
       pollMinutes: 15,
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
+      knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       providerNames: {},
     });
   });
@@ -283,6 +286,106 @@ describe("providerNames config", () => {
       /cannot update provider names/,
     );
     expect(fs.readFileSync(cfgPath, "utf8")).toBe("{ this is not valid json");
+  });
+});
+
+describe("provider auto-enable", () => {
+  const FIVE = ["claude", "codex", "kimi", "grok", "agy"];
+
+  function cfgPath(): string {
+    return path.join(home, ".quotacap", "config.json");
+  }
+
+  function readRaw(): any {
+    return JSON.parse(fs.readFileSync(cfgPath(), "utf8"));
+  }
+
+  it("backfills pre-feature configs with the frozen five, not the live registry", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: FIVE });
+    expect(LEGACY_KNOWN_PROVIDERS).toEqual(FIVE);
+    const r = await autoEnableNewProviders({ which: () => null });
+    expect(r?.changed).toBe(false);
+    // muse stays unknown when its binary is absent, so it is re-checked next start.
+    expect(r?.knownProviders).toEqual(FIVE);
+    expect(r?.enabledProviders).toEqual(FIVE);
+    expect(readRaw().knownProviders).toBeUndefined();
+  });
+
+  it("auto-enables an unknown adapter whose binary resolves, persisting both lists", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: FIVE, customUnknownKey: "preserve-me" });
+    const r = await autoEnableNewProviders({
+      which: (bin) => (bin === "muse" ? `/bin/${bin}` : null),
+    });
+    expect(r?.changed).toBe(true);
+    expect(r?.enabledProviders).toEqual([...FIVE, "muse"]);
+    expect(r?.knownProviders).toEqual([...FIVE, "muse"]);
+    const raw = readRaw();
+    expect(raw.enabledProviders).toEqual([...FIVE, "muse"]);
+    expect(raw.knownProviders).toEqual([...FIVE, "muse"]);
+    expect(raw.customUnknownKey).toBe("preserve-me");
+  });
+
+  it("never re-adds a deliberately disabled provider that is already known", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: FIVE, knownProviders: [...FIVE, "muse"] });
+    const before = fs.readFileSync(cfgPath(), "utf8");
+    const r = await autoEnableNewProviders({ which: () => "/bin/on-path" });
+    expect(r?.changed).toBe(false);
+    expect(r?.enabledProviders).toEqual(FIVE);
+    expect(r?.knownProviders).toEqual([...FIVE, "muse"]);
+    expect(fs.readFileSync(cfgPath(), "utf8")).toBe(before);
+  });
+
+  it("leaves fresh configs untouched (all six known and enabled)", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: [...FIVE, "muse"], knownProviders: [...FIVE, "muse"] });
+    const before = fs.readFileSync(cfgPath(), "utf8");
+    const r = await autoEnableNewProviders({ which: () => "/bin/on-path" });
+    expect(r?.changed).toBe(false);
+    expect(fs.readFileSync(cfgPath(), "utf8")).toBe(before);
+  });
+
+  it("never probes or records manual, which has no CLI binary", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: FIVE });
+    const probed: string[] = [];
+    const r = await autoEnableNewProviders({
+      which: (bin) => {
+        probed.push(bin);
+        return `/bin/${bin}`;
+      },
+    });
+    expect(probed).not.toContain("manual");
+    expect(r?.enabledProviders).not.toContain("manual");
+    expect(r?.knownProviders).not.toContain("manual");
+  });
+
+  it("returns null without throwing when the file is missing or corrupt", async () => {
+    isolatedHome();
+    expect(await autoEnableNewProviders()).toBeNull();
+    const file = cfgPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "{bad json");
+    expect(await autoEnableNewProviders()).toBeNull();
+    expect(fs.readFileSync(file, "utf8")).toBe("{bad json");
+  });
+
+  it("defaults knownProviders to all six and rejects a non-array naming the field", async () => {
+    isolatedHome();
+    writeConfig({ port: 9999 });
+    const cfg = await readServiceConfig();
+    expect(cfg.knownProviders).toEqual([...FIVE, "muse"]);
+    writeConfig({ knownProviders: 42 });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: knownProviders/);
+  });
+
+  it("tolerates unknown ids in knownProviders instead of bricking start", async () => {
+    isolatedHome();
+    writeConfig({ knownProviders: ["claude", "retired-adapter"] });
+    const cfg = await readServiceConfig();
+    expect(cfg.knownProviders).toEqual(["claude", "retired-adapter"]);
   });
 });
 
