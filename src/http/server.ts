@@ -294,18 +294,20 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
         cfg.providerNames[id] = validatedName;
       }
       await writeConfig(cfg, ctx.configPath);
-    } catch {
-      // In-memory update succeeded; config write best-effort if path not writable in test
+    } catch (err) {
+      console.warn(`[quotacap] failed to persist providerNames to config: ${String(err)}`);
     }
 
     const identity = providerIdentity(id, ctx.providerNames);
     return {
       ok: true,
       id,
-      displayName: validatedName,
-      effectiveName: identity.displayName,
+      displayName: identity.displayName,
+      builtinName: identity.builtinName,
+      override: validatedName,
     };
   });
+
 
   // Graceful-stop request for CLI-driven takeovers. The endpoint restarts
   // nothing by itself: it responds 202, then the service follows its normal

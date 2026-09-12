@@ -182,7 +182,7 @@ describe("CLI quotacap providers reset", () => {
     expect(logs.join("\n")).toContain("reset display name for muse");
   });
 
-  it("resets all provider overrides with --all", async () => {
+  it("resets all provider overrides via PATCH online with --all", async () => {
     const cfg = await readConfig();
     cfg.providerNames = { muse: "Work Muse", codex: "My Codex" };
     await writeConfig(cfg);
@@ -202,9 +202,64 @@ describe("CLI quotacap providers reset", () => {
 
     await program.parseAsync(["node", "quotacap", "providers", "reset", "--all"]);
 
+    expect(mockClient.patch).toHaveBeenCalledWith("/api/providers/muse", { displayName: null });
+    expect(mockClient.patch).toHaveBeenCalledWith("/api/providers/codex", { displayName: null });
+    expect(logs.join("\n")).toContain("reset all provider display name overrides");
+  });
+
+  it("resets all provider overrides in config offline with --all", async () => {
+    const cfg = await readConfig();
+    cfg.providerNames = { muse: "Work Muse", codex: "My Codex" };
+    await writeConfig(cfg);
+
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn(),
+      patch: vi.fn().mockRejectedValue(new ServiceUnavailable("daemon down")),
+    };
+
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((msg) => logs.push(msg));
+
+    const program = createMockProgram({
+      createClient: () => mockClient,
+    });
+
+    await program.parseAsync(["node", "quotacap", "providers", "reset", "--all"]);
+
     const updated = await readConfig();
     expect(updated.providerNames).toEqual({});
     expect(logs.join("\n")).toContain("reset all provider display name overrides");
+  });
+
+  it("fails and exits 1 without wiping local config if daemon returns ServiceError during reset --all", async () => {
+    const cfg = await readConfig();
+    cfg.providerNames = { muse: "Work Muse", codex: "My Codex" };
+    await writeConfig(cfg);
+
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn(),
+      patch: vi.fn().mockRejectedValue(new ServiceError(500, "daemon failed")),
+    };
+
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({
+      createClient: () => mockClient,
+      exit: exitMock,
+    });
+
+    await program.parseAsync(["node", "quotacap", "providers", "reset", "--all"]);
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toContain("daemon failed");
+
+    // Local config must NOT be wiped!
+    const updated = await readConfig();
+    expect(updated.providerNames).toEqual({ muse: "Work Muse", codex: "My Codex" });
   });
 
   it("errors and exits 1 if neither id nor --all is provided", async () => {

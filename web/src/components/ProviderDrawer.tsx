@@ -245,6 +245,26 @@ export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<
   };
 }
 
+export interface RenameSubmitResult {
+  success: boolean;
+  error: string | null;
+}
+
+export async function submitProviderRename(
+  id: string,
+  rawDraft: string,
+  renameFn: (id: string, name: string | null) => Promise<void>
+): Promise<RenameSubmitResult> {
+  const trimmed = rawDraft.trim();
+  const newName = trimmed.length === 0 ? null : trimmed;
+  try {
+    await renameFn(id, newName);
+    return { success: true, error: null };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to update display name" };
+  }
+}
+
 export function ProviderDrawer({
   provider,
   asOf,
@@ -313,26 +333,25 @@ export function ProviderDrawer({
   }, [provider, onClose]);
 
   const handleSubmitRename = async (e: React.FormEvent) => {
+
     e.preventDefault();
     if (!provider) return;
     setSaving(true);
     setRenameError(null);
-    const trimmed = nameDraft.trim();
-    const newName = trimmed.length === 0 ? null : trimmed;
-    try {
-      if (renameAction) {
-        await renameAction(provider.id, newName);
-      } else {
-        await renameProvider(provider.id, newName);
-      }
+    const result = await submitProviderRename(
+      provider.id,
+      nameDraft,
+      renameAction ?? renameProvider
+    );
+    if (result.success) {
       setIsEditing(false);
       onRenamed?.();
-    } catch (err: any) {
-      setRenameError(err.message || "Failed to update display name");
-    } finally {
-      setSaving(false);
+    } else {
+      setRenameError(result.error);
     }
+    setSaving(false);
   };
+
 
   const [copied, setCopied] = useState(false);
 

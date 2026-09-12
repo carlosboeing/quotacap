@@ -349,7 +349,13 @@ describe("http token auth and mutating routes", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body).toMatchObject({ ok: true, id: "muse", displayName: "Work Muse" });
+      expect(body).toMatchObject({
+        ok: true,
+        id: "muse",
+        displayName: "Work Muse",
+        builtinName: "Muse",
+        override: "Work Muse",
+      });
 
       const stateRes = await app.inject({ method: "GET", url: "/api/state" });
       const state = JSON.parse(stateRes.body);
@@ -370,7 +376,13 @@ describe("http token auth and mutating routes", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body).toMatchObject({ ok: true, id: "custom-unregistered", displayName: "My Custom" });
+      expect(body).toMatchObject({
+        ok: true,
+        id: "custom-unregistered",
+        displayName: "My Custom",
+        builtinName: null,
+        override: "My Custom",
+      });
     });
 
     it("clears override with null displayName, restoring built-in", async () => {
@@ -396,7 +408,13 @@ describe("http token auth and mutating routes", () => {
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body).toMatchObject({ ok: true, id: "muse", displayName: null });
+      expect(body).toMatchObject({
+        ok: true,
+        id: "muse",
+        displayName: "Muse",
+        builtinName: "Muse",
+        override: null,
+      });
 
       // Verify restored built-in in GET /api/state
       const stateRes = await app.inject({ method: "GET", url: "/api/state" });

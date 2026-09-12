@@ -112,22 +112,26 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
 
       if (opts.all) {
         try {
-          if (client.patch) {
-            const overriddenIds = Object.keys(cfg.providerNames ?? {});
-            for (const oid of overriddenIds) {
-              await client.patch(`/api/providers/${encodeURIComponent(oid)}`, {
-                displayName: null,
-              });
-            }
+          if (!client.patch) throw new ServiceUnavailable("patch not supported on client");
+          const overriddenIds = Object.keys(cfg.providerNames ?? {});
+          for (const oid of overriddenIds) {
+            await client.patch(`/api/providers/${encodeURIComponent(oid)}`, {
+              displayName: null,
+            });
           }
         } catch (e) {
-          if (!(e instanceof ServiceUnavailable)) {
-            // Non-transport error
+          if (e instanceof ServiceUnavailable) {
+            const current = await readConfig();
+            current.providerNames = {};
+            await writeConfig(current);
+          } else if (e instanceof ServiceError) {
+            console.error(e.message);
+            exit(1);
+          } else {
+            console.error(String(e));
+            exit(1);
           }
         }
-        const current = await readConfig();
-        current.providerNames = {};
-        await writeConfig(current);
         console.log("reset all provider display name overrides");
         return;
       }

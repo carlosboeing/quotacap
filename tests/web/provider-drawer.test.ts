@@ -11,7 +11,10 @@ import {
   rankingCopy,
   sourceLabel,
 } from "../../web/src/components/ProviderDrawer.js";
-import { ProviderDrawer } from "../../web/src/components/ProviderDrawer.js";
+import {
+  ProviderDrawer,
+  submitProviderRename,
+} from "../../web/src/components/ProviderDrawer.js";
 import { renameProvider } from "../../web/src/api.js";
 
 describe("provider drawer", () => {
@@ -203,4 +206,32 @@ describe("provider drawer", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  describe("submitProviderRename", () => {
+    it("trims non-empty input and calls renameFn with trimmed name", async () => {
+      let calledWith: { id: string; name: string | null } | null = null;
+      const result = await submitProviderRename("kimi", "  Work Kimi  ", async (id, name) => {
+        calledWith = { id, name };
+      });
+      expect(calledWith).toEqual({ id: "kimi", name: "Work Kimi" });
+      expect(result).toEqual({ success: true, error: null });
+    });
+
+    it("treats empty or whitespace-only input as null to restore built-in name", async () => {
+      let calledWith: { id: string; name: string | null } | null = null;
+      const result = await submitProviderRename("kimi", "   ", async (id, name) => {
+        calledWith = { id, name };
+      });
+      expect(calledWith).toEqual({ id: "kimi", name: null });
+      expect(result).toEqual({ success: true, error: null });
+    });
+
+    it("catches renameFn error and returns failure without throwing", async () => {
+      const result = await submitProviderRename("kimi", "Bad Name", async () => {
+        throw new Error("server validation failed");
+      });
+      expect(result).toEqual({ success: false, error: "server validation failed" });
+    });
+  });
 });
+
