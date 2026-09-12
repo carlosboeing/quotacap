@@ -117,6 +117,7 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
     case "reset-passed":
       return "reset passed — awaiting fresh window";
     case "provider-failed": {
+      if (ps.lastAttempt?.summary) return ps.lastAttempt.summary;
       const category = ps.lastAttempt?.failureCategory;
       return category ? `provider failed (${category})` : "provider failed";
     }

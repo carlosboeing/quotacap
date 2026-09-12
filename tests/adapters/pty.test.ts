@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
+import { liveChildCount } from "../../src/runtime/spawn.js";
 
 function tmpFile(suffix = ".mjs"): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "qc-pty-")).then((dir) => path.join(dir, `fake${suffix}`));
@@ -263,5 +264,49 @@ setInterval(()=>{},1000);
         timeoutMs: 300,
       }),
     ).rejects.toThrow(/pty (spawn failed|exited before ready|node-pty not available)/);
+  });
+
+  it("rejects with safe DiagnosticError when child exits with terminal error and secret", async () => {
+    const fake = await writeFake(
+      "process.stderr.write('Error: stdin is not a terminal token=private-value\\n'); process.exit(1);",
+    );
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [fake],
+        input: "/usage\r",
+        readyRegex: /READY/,
+        readyTimeoutMs: 1000,
+        timeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({
+      name: "DiagnosticError",
+      diagnostic: {
+        diagnosticCode: "terminal_error",
+        errorDetail: expect.stringContaining("stdin is not a terminal"),
+      },
+    });
+    expect(liveChildCount()).toBe(0);
+  });
+
+  it("classifies premature exit 0 before ready as unknown and cleans up child", async () => {
+    const fake = await writeFake("process.exit(0);");
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [fake],
+        input: "/usage\r",
+        readyRegex: /READY/,
+        readyTimeoutMs: 1000,
+        timeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({
+      name: "DiagnosticError",
+      diagnostic: {
+        diagnosticCode: "unknown",
+        errorDetail: expect.stringContaining("code 0"),
+      },
+    });
+    expect(liveChildCount()).toBe(0);
   });
 });

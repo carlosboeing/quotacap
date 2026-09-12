@@ -382,4 +382,80 @@ describe("http runtime context", () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it("POST /api/refresh returns enriched rejection and safe error detail for provider failure, reflected in subsequent GET /api/state without secrets", async () => {
+    const db = buildFixtureDb();
+    const coordinator = createCoordinator({
+      db,
+      enabledProviders: ["codex"],
+      pollFn: async () => [
+        {
+          provider: "codex",
+          status: "rejected",
+          reason: new Error("Error: unauthorized token=secret-tok"),
+        },
+      ],
+    });
+    const app = buildApp(ctxWith(db, { coordinator, enabledProviders: ["codex"] }));
+
+    const refreshRes = await app.inject({
+      method: "POST",
+      url: "/api/refresh",
+      headers: { "x-quotacap-token": TOKEN },
+    });
+    expect(refreshRes.statusCode).toBe(200);
+    const refreshBody = JSON.parse(refreshRes.body);
+    expect(refreshBody.degraded).toBe(true);
+    expect(refreshBody.rejected).toHaveLength(1);
+    const rej = refreshBody.rejected[0];
+    expect(rej.provider).toBe("codex");
+    expect(rej.diagnosticCode).toBe("auth");
+    expect(rej.category).toBe("auth");
+    expect(rej.summary).toBeTruthy();
+    expect(rej.action).toBeTruthy();
+    expect(rej.errorDetail).toBe("unauthorized");
+    expect(rej.error).toBe("unauthorized");
+    expect(rej.reason).toBe("unauthorized");
+    expect(refreshRes.body).not.toContain("secret-tok");
+
+    const stateRes = await app.inject({ method: "GET", url: "/api/state" });
+    expect(stateRes.statusCode).toBe(200);
+    const stateBody = JSON.parse(stateRes.body);
+    const codex = stateBody.providers.find((p: any) => p.id === "codex");
+    expect(codex.lastAttempt.diagnosticCode).toBe("auth");
+    expect(codex.lastAttempt.errorDetail).toBe("unauthorized");
+    expect(codex.lastAttempt.error).toBe("unauthorized");
+    expect(stateRes.body).not.toContain("secret-tok");
+  });
+
+  it("POST /api/refresh catches coordinator generation error, returns enriched rejection for provider 'all', safe error, and excludes secret", async () => {
+    const db = buildFixtureDb();
+    const coordinator = createCoordinator({
+      db,
+      enabledProviders: ["codex"],
+      pollFn: async () => {
+        throw new Error("unexpected generation crash secret=my-secret-token");
+      },
+    });
+    const app = buildApp(ctxWith(db, { coordinator, enabledProviders: ["codex"] }));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/refresh",
+      headers: { "x-quotacap-token": TOKEN },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.degraded).toBe(true);
+    expect(body.rejected).toHaveLength(1);
+    const rej = body.rejected[0];
+    expect(rej.provider).toBe("all");
+    expect(rej.diagnosticCode).toBe("unknown");
+    expect(rej.summary).toBeTruthy();
+    expect(rej.action).toBeTruthy();
+    expect(rej.errorDetail).toBeTruthy();
+    expect(rej.error).toBe(rej.errorDetail);
+    expect(body.error).toBe(rej.errorDetail);
+    expect(res.body).not.toContain("my-secret-token");
+  });
 });

@@ -327,4 +327,34 @@ describe("service lifecycle", () => {
       expect(await waitExit(d.child, 10000)).toBe(0);
     }
   }, 30000);
+
+  it("(i) logs initial poll with sanitized detail without leaking secret", async () => {
+    const home = mkHome();
+    const port = await getFreePort();
+    writeConfig(home, { port, enabledProviders: ["claude"] });
+    const binDir = fakeBin(home, "claude");
+    const logFile = path.join(dataDir(home), "logs", "service.log");
+    const d = spawnDaemon(home, ["--port", String(port)], {
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      QC_FAKE_MODE: "canned",
+      QC_FAKE_EXIT: "1",
+      QC_FAKE_EMIT: "Error: unauthorized token=super-secret-key\n",
+      QUOTACAP_LOG_FILE: logFile,
+    });
+    try {
+      await waitHealth(port);
+      await waitFor(() => fs.existsSync(logFile), 10000, "log file to be created");
+      await waitFor(
+        () => fs.readFileSync(logFile, "utf8").includes("poll failed"),
+        10000,
+        "poll failed log entry",
+      );
+      const content = fs.readFileSync(logFile, "utf8");
+      expect(content).toMatch(/\[quotacap\] \[claude\] poll failed \(auth\):/);
+      expect(content).not.toContain("super-secret-key");
+    } finally {
+      d.child.kill("SIGTERM");
+      expect(await waitExit(d.child, 10000)).toBe(0);
+    }
+  }, 30000);
 });

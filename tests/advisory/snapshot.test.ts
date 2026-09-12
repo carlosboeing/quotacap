@@ -68,4 +68,50 @@ describe("snapshot", () => {
     expect(r).toHaveProperty("advisories");
     expect(JSON.stringify(r)).not.toContain("Infinity");
   });
+
+  it("carries agy group attempt fallback and null diagnostic fields on legacy attempts", () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "agy", usedPct: 50, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    quota(db, { provider: "agy:3p", usedPct: 60, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    recordAttempt(db, {
+      provider: "agy",
+      attemptedAt: NOW.toISOString(),
+      completedAt: NOW.toISOString(),
+      succeededAt: null,
+      success: false,
+      failureCategory: "unknown",
+      diagnosticCode: "terminal_error",
+      summary: "Unable to open Antigravity session",
+      action: "Check terminal",
+      errorDetail: "pty exited during settle (code 1): stdin is not a terminal",
+    });
+    recordAttempt(db, {
+      provider: "claude",
+      attemptedAt: NOW.toISOString(),
+      completedAt: NOW.toISOString(),
+      succeededAt: null,
+      success: false,
+      failureCategory: "auth",
+    });
+
+    const s = buildSnapshot(db, { enabledProviders: ["agy", "claude"], now: NOW, runtime: RT });
+    const agy = s.providers.find((p) => p.id === "agy")!;
+    const agy3p = s.providers.find((p) => p.id === "agy:3p")!;
+    const claude = s.providers.find((p) => p.id === "claude")!;
+
+    expect(agy.lastAttempt?.diagnosticCode).toBe("terminal_error");
+    expect(agy.lastAttempt?.summary).toBe("Unable to open Antigravity session");
+
+    expect(agy3p.lastAttempt?.diagnosticCode).toBe("terminal_error");
+    expect(agy3p.lastAttempt?.summary).toBe("Unable to open Antigravity session");
+    expect(agy3p.lastAttempt?.errorDetail).toBe(agy.lastAttempt?.errorDetail);
+
+    expect(claude.lastAttempt?.failureCategory).toBe("auth");
+    expect(claude.lastAttempt?.diagnosticCode).toBeNull();
+    expect(claude.lastAttempt?.summary).toBeNull();
+    expect(claude.lastAttempt?.action).toBeNull();
+    expect(claude.lastAttempt?.errorDetail).toBeNull();
+    expect(claude.lastAttempt?.error).toBeNull();
+    expect(claude.lastAttempt?.error).toBe(claude.lastAttempt?.errorDetail);
+  });
 });

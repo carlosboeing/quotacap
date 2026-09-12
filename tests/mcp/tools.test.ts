@@ -7,7 +7,7 @@ import { projectQuotasResponse, projectRecommendationResponse } from "../../src/
 import { stateWord } from "../../src/format/rows.js";
 import { handleTool, tools } from "../../src/mcp/server.js";
 import { OFFLINE_LABEL } from "../../src/cli/snapshot-source.js";
-import { exampleStateSnapshot, exampleStateSnapshotJson } from "../fixtures/stable-state.js";
+import { FIXED_NOW, exampleStateSnapshot, exampleStateSnapshotJson } from "../fixtures/stable-state.js";
 import { seedFileDb } from "../cli/helpers.js";
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse) => void;
@@ -297,5 +297,73 @@ describe("offline fallback", () => {
   it("reports service-unavailable when no readings are stored either", async () => {
     process.env.QUOTACAP_URL = `http://127.0.0.1:${await closedPort()}`;
     await expect(handleTool("get_quotas", {})).rejects.toThrow(/service-unavailable/);
+  });
+});
+
+describe("provider failure observability in MCP", () => {
+  const failedState = () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const codex = s.providers.find((p: any) => p.id === "codex");
+    codex.reporting = false;
+    codex.exclusionReason = "provider-failed";
+    codex.lastAttempt = {
+      provider: "codex",
+      attemptedAt: FIXED_NOW.toISOString(),
+      completedAt: FIXED_NOW.toISOString(),
+      succeededAt: null,
+      success: false,
+      failureCategory: "unknown",
+      diagnosticCode: "terminal_error",
+      summary: "Unable to open Codex session",
+      action: "Open Codex directly in your terminal to check whether it starts.",
+      errorDetail: "pty exited during settle (code 1): stdin is not a terminal",
+    };
+    return s;
+  };
+
+  it("includes exact lastAttempt in forecast response", async () => {
+    const stub = await startStub(serveState(JSON.stringify(failedState())));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      const res: any = await handleTool("forecast", { provider: "codex" });
+      expect(res.isError).toBeUndefined();
+      const body = JSON.parse(res.content[0].text);
+      expect(body.forecast).toBe("Unable to open Codex session");
+      expect(body.lastAttempt).toEqual(failedState().providers.find((p: any) => p.id === "codex").lastAttempt);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("get_quotas renders friendly summary in markdown table and leaves JSON quota keys unchanged", async () => {
+    const stub = await startStub(serveState(JSON.stringify(failedState())));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      const res: any = await handleTool("get_quotas", {});
+      expect(res.isError).toBeUndefined();
+      const [markdown, json] = res.content;
+      expect(markdown.text).toContain("Unable to open Codex session");
+      const rows = JSON.parse(json.text);
+      const codexRow = rows.find((r: any) => r.provider === "codex");
+      expect(Object.keys(codexRow)).toEqual(
+        Object.keys(projectQuotasResponse(JSON.parse(exampleStateSnapshotJson)).find((r) => r.provider === "codex")!),
+      );
+      expect(codexRow.diagnosticCode).toBeUndefined();
+      expect(codexRow.summary).toBeUndefined();
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("preserves missing-reading rejection for failed provider without quota", async () => {
+    const state = failedState();
+    state.providers.find((p: any) => p.id === "codex").quota = null;
+    const stub = await startStub(serveState(JSON.stringify(state)));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      await expect(handleTool("forecast", { provider: "codex" })).rejects.toThrow(/missing-reading/);
+    } finally {
+      await stub.close();
+    }
   });
 });

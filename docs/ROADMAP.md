@@ -63,6 +63,7 @@
 
 ## Next
 
+* Provider error observability — safe bounded diagnostics, sanitized failure classifier, attempt persistence, verbose CLI status guidance, and MCP parity
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)

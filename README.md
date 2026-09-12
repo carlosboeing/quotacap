@@ -46,12 +46,12 @@ The npm package runs the same CLI on Node. To run without a global install, repl
 
 ```bash
 quotacap            # opens the dashboard, starting the service if needed
-quotacap status
+quotacap status     # summary table (pass --verbose for adapter failure guidance)
 quotacap advise
 quotacap update     # upgrade to the latest release
 ```
 
-No setup ceremony: config is provisioned on first use, and bare `quotacap` is the dashboard launcher. `quotacap web --foreground` and `quotacap daemon` keep the old hold-the-terminal mode for SSH, containers, and supervisors.
+No setup ceremony: config is provisioned on first use, and bare `quotacap` is the dashboard launcher. `quotacap status --verbose` displays actionable remediation guidance and sanitized failure details for failing adapters. `status` remains strictly read-only and never triggers background polling. `quotacap web --foreground` and `quotacap daemon` keep the old hold-the-terminal mode for SSH, containers, and supervisors.
 
 ## MCP
 

@@ -297,6 +297,19 @@ describe("forecast sentences (D7)", () => {
       });
     expect(forecastText(failed("auth"), FIXED_NOW)).toBe("provider failed (auth)");
     expect(forecastText(failed(null), FIXED_NOW)).toBe("provider failed");
+
+    const withSummary = ps({
+      id: "x",
+      quota: quota(),
+      exclusionReason: "provider-failed",
+      lastAttempt: attempt({
+        success: false,
+        succeededAt: null,
+        failureCategory: "unknown",
+        summary: "Unable to open Claude session",
+      }),
+    });
+    expect(forecastText(withSummary, FIXED_NOW)).toBe("Unable to open Claude session");
   });
 });
 

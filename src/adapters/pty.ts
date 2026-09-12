@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { registerTrackedChild } from "../runtime/spawn.js";
+import { diagnosticError, DiagnosticError } from "../diagnostics/failure.js";
 
 export function stripAnsi(s: string): string {
   return s
@@ -167,9 +168,12 @@ function getPty(): any {
     } catch {}
   }
   const repairNote = describeSpawnHelperRepairs(repairs);
-  throw new Error(
-    "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only; for compiled binaries, ensure the pty sidecar is installed alongside the binary (see install.sh)" +
-      (repairNote ? `; ${repairNote}` : ""),
+  throw diagnosticError(
+    new Error(
+      "pty: node-pty not available — install with build tools (Xcode on macOS, build-essential + python3 on Linux) or use exec-based adapters only; for compiled binaries, ensure the pty sidecar is installed alongside the binary (see install.sh)" +
+        (repairNote ? `; ${repairNote}` : ""),
+    ),
+    { source: "pty" },
   );
 }
 
@@ -182,15 +186,15 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   const cols = opts.cols ?? 140;
   const rows = opts.rows ?? 50;
   const readyTimeoutMs = opts.readyTimeoutMs ?? 6000;
-  if (opts.timeoutMs <= 0) throw new Error("pty: timeoutMs must be > 0");
-  if (opts.signal?.aborted) throw new Error("pty aborted");
+  if (opts.timeoutMs <= 0) throw diagnosticError(new Error("pty: timeoutMs must be > 0"), { source: "pty" });
+  if (opts.signal?.aborted) throw diagnosticError(new Error("pty aborted"), { source: "pty", checkpoint: "abort" });
   let aborted = false;
   const onAbort = () => {
     aborted = true;
   };
   if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true });
   const checkAborted = () => {
-    if (aborted) throw new Error("pty aborted");
+    if (aborted) throw diagnosticError(new Error("pty aborted"), { source: "pty", checkpoint: "abort", stdout: transcript });
   };
   const teardownAbort = () => {
     if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
@@ -229,8 +233,11 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     try {
       proc.kill();
     } catch {}
-    throw new Error(
-      "pty: Bun runtime lacks terminal (PTY) support (Bun.spawn terminal option unavailable) — rebuild the standalone binary with a newer Bun version",
+    throw diagnosticError(
+      new Error(
+        "pty: Bun runtime lacks terminal (PTY) support (Bun.spawn terminal option unavailable) — rebuild the standalone binary with a newer Bun version",
+      ),
+      { source: "pty" },
     );
   }
 
@@ -246,13 +253,24 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
 
   const checkCap = () => {
     if (Buffer.byteLength(transcript, "utf8") > maxBytes) {
-      throw new Error(`pty transcript exceeds ${maxBytes} bytes`);
+      throw diagnosticError(new Error(`pty transcript exceeds ${maxBytes} bytes`), {
+        source: "pty",
+        checkpoint: "transcript overflow",
+        stdout: transcript,
+      });
     }
   };
   const checkAbort = (clean: string) => {
     if (opts.abortOn && regexTest(opts.abortOn, clean)) {
-      throw new Error(
-        `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+      throw diagnosticError(
+        new Error(
+          `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+        ),
+        {
+          source: "pty",
+          checkpoint: "trust prompt",
+          stdout: transcript,
+        },
       );
     }
   };
@@ -286,7 +304,14 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
-        if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
+        if (exited) {
+          throw diagnosticError(new Error(`pty exited before ready (code ${exitCode})`), {
+            source: "pty",
+            checkpoint: "before ready",
+            exitCode,
+            stdout: transcript,
+          });
+        }
         const clean = stripAnsi(transcript);
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
@@ -297,28 +322,58 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       }
       if (!matched) {
         await kill();
-        throw new Error(`pty ready timeout after ${readyTimeoutMs}ms`);
+        throw diagnosticError(new Error(`pty ready timeout after ${readyTimeoutMs}ms`), {
+          source: "pty",
+          checkpoint: "ready timeout",
+          durationMs: readyTimeoutMs,
+          stdout: transcript,
+        });
       }
       await delay(200);
       checkCap();
       checkAborted();
-      if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "before input",
+          exitCode,
+          stdout: transcript,
+        });
+      }
       const postReadyClean = stripAnsi(transcript);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
       checkAborted();
-      if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited during settle (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "during settle",
+          exitCode,
+          stdout: transcript,
+        });
+      }
       const c = stripAnsi(transcript);
       checkAbort(c);
     }
 
-    if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+    if (exited) {
+      throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+        source: "pty",
+        checkpoint: "before input",
+        exitCode,
+        stdout: transcript,
+      });
+    }
     try {
       proc.terminal.write(opts.input);
     } catch (e) {
-      throw new Error(`pty write failed: ${(e as Error).message}`);
+      throw diagnosticError(new Error(`pty write failed: ${(e as Error).message}`), {
+        source: "pty",
+        checkpoint: "write",
+        stdout: transcript,
+      });
     }
 
     if (opts.completionRegex) {
@@ -335,7 +390,12 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
         }
         if (exited) {
           if (!regexTest(opts.completionRegex, clean)) {
-            throw new Error(`pty exited before completion (code ${exitCode})`);
+            throw diagnosticError(new Error(`pty exited before completion (code ${exitCode})`), {
+              source: "pty",
+              checkpoint: "before completion",
+              exitCode,
+              stdout: transcript,
+            });
           }
           done = true;
           break;
@@ -344,7 +404,12 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       }
       if (!done) {
         await kill();
-        throw new Error(`pty completion timeout after ${opts.timeoutMs}ms`);
+        throw diagnosticError(new Error(`pty completion timeout after ${opts.timeoutMs}ms`), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: opts.timeoutMs,
+          stdout: transcript,
+        });
       }
     } else {
       const deadline = Date.now() + opts.timeoutMs;
@@ -382,7 +447,8 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     } catch {}
     unregisterChild();
     teardownAbort();
-    throw e;
+    if (e instanceof DiagnosticError) throw e;
+    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode });
   }
 }
 
@@ -391,15 +457,15 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   const cols = opts.cols ?? 140;
   const rows = opts.rows ?? 50;
   const readyTimeoutMs = opts.readyTimeoutMs ?? 6000;
-  if (opts.timeoutMs <= 0) throw new Error("pty: timeoutMs must be > 0");
-  if (opts.signal?.aborted) throw new Error("pty aborted");
+  if (opts.timeoutMs <= 0) throw diagnosticError(new Error("pty: timeoutMs must be > 0"), { source: "pty" });
+  if (opts.signal?.aborted) throw diagnosticError(new Error("pty aborted"), { source: "pty", checkpoint: "abort" });
   let aborted = false;
   const onAbort = () => {
     aborted = true;
   };
   if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true });
   const checkAborted = () => {
-    if (aborted) throw new Error("pty aborted");
+    if (aborted) throw diagnosticError(new Error("pty aborted"), { source: "pty", checkpoint: "abort", stdout: transcript });
   };
   const teardownAbort = () => {
     if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
@@ -424,7 +490,10 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       },
     });
   } catch (e) {
-    throw new Error(`pty spawn failed for ${opts.file}: ${(e as Error).message}`);
+    throw diagnosticError(new Error(`pty spawn failed for ${opts.file}: ${(e as Error).message}`), {
+      source: "pty",
+      checkpoint: "spawn",
+    });
   }
 
   const unregisterChild = registerTrackedChild(() => {
@@ -474,14 +543,25 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
 
   const checkCap = () => {
     if (Buffer.byteLength(transcript, "utf8") > maxBytes) {
-      throw new Error(`pty transcript exceeds ${maxBytes} bytes`);
+      throw diagnosticError(new Error(`pty transcript exceeds ${maxBytes} bytes`), {
+        source: "pty",
+        checkpoint: "transcript overflow",
+        stdout: transcript,
+      });
     }
   };
 
   const checkAbort = (clean: string) => {
     if (opts.abortOn && regexTest(opts.abortOn, clean)) {
-      throw new Error(
-        `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+      throw diagnosticError(
+        new Error(
+          `pty: untrusted workspace — trust prompt detected in ${opts.cwd ?? process.cwd()} — run \`${opts.file}\` there and select Trust this folder`,
+        ),
+        {
+          source: "pty",
+          checkpoint: "trust prompt",
+          stdout: transcript,
+        },
       );
     }
   };
@@ -493,7 +573,14 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
-        if (exited) throw new Error(`pty exited before ready (code ${exitCode})`);
+        if (exited) {
+          throw diagnosticError(new Error(`pty exited before ready (code ${exitCode})`), {
+            source: "pty",
+            checkpoint: "before ready",
+            exitCode,
+            stdout: transcript,
+          });
+        }
         const clean = stripAnsi(transcript);
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
@@ -504,25 +591,59 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       }
       if (!matched) {
         await kill();
-        throw new Error(`pty ready timeout after ${readyTimeoutMs}ms`);
+        throw diagnosticError(new Error(`pty ready timeout after ${readyTimeoutMs}ms`), {
+          source: "pty",
+          checkpoint: "ready timeout",
+          durationMs: readyTimeoutMs,
+          stdout: transcript,
+        });
       }
       await delay(200);
       checkCap();
       checkAborted();
-      if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "before input",
+          exitCode,
+          stdout: transcript,
+        });
+      }
       const postReadyClean = stripAnsi(transcript);
       checkAbort(postReadyClean);
     } else if (opts.settleDelayMs) {
       await delay(opts.settleDelayMs);
       checkCap();
       checkAborted();
-      if (exited) throw new Error(`pty exited during settle (code ${exitCode})`);
+      if (exited) {
+        throw diagnosticError(new Error(`pty exited during settle (code ${exitCode})`), {
+          source: "pty",
+          checkpoint: "during settle",
+          exitCode,
+          stdout: transcript,
+        });
+      }
       const c = stripAnsi(transcript);
       checkAbort(c);
     }
 
-    if (exited) throw new Error(`pty exited before input (code ${exitCode})`);
-    ptyProcess.write(opts.input);
+    if (exited) {
+      throw diagnosticError(new Error(`pty exited before input (code ${exitCode})`), {
+        source: "pty",
+        checkpoint: "before input",
+        exitCode,
+        stdout: transcript,
+      });
+    }
+    try {
+      ptyProcess.write(opts.input);
+    } catch (e) {
+      throw diagnosticError(new Error(`pty write failed: ${(e as Error).message}`), {
+        source: "pty",
+        checkpoint: "write",
+        stdout: transcript,
+      });
+    }
 
     if (opts.completionRegex) {
       const deadline = Date.now() + opts.timeoutMs;
@@ -538,7 +659,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
         }
         if (exited) {
           if (!regexTest(opts.completionRegex, clean)) {
-            throw new Error(`pty exited before completion (code ${exitCode})`);
+            throw diagnosticError(new Error(`pty exited before completion (code ${exitCode})`), {
+              source: "pty",
+              checkpoint: "before completion",
+              exitCode,
+              stdout: transcript,
+            });
           }
           done = true;
           break;
@@ -547,7 +673,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       }
       if (!done) {
         await kill();
-        throw new Error(`pty completion timeout after ${opts.timeoutMs}ms`);
+        throw diagnosticError(new Error(`pty completion timeout after ${opts.timeoutMs}ms`), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: opts.timeoutMs,
+          stdout: transcript,
+        });
       }
     } else {
       const deadline = Date.now() + opts.timeoutMs;
@@ -571,7 +702,8 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
     return transcript;
   } catch (e) {
     await kill();
-    throw e;
+    if (e instanceof DiagnosticError) throw e;
+    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode });
   } finally {
     cleanup();
     unregisterChild();
@@ -580,8 +712,13 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
 }
 
 export async function runPty(opts: PtyRunOptions): Promise<string> {
-  if (isBunRuntime()) {
-    return runPtyBun(opts);
+  try {
+    if (isBunRuntime()) {
+      return await runPtyBun(opts);
+    }
+    return await runPtyNode(opts);
+  } catch (e) {
+    if (e instanceof DiagnosticError) throw e;
+    throw diagnosticError(e, { source: "pty" });
   }
-  return runPtyNode(opts);
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
 import { getLatestByProvider } from "../../src/store/quotas.js";
-import { getAttempt, recordAttempt } from "../../src/store/attempts.js";
+import { getAttempt, getAttempts, recordAttempt } from "../../src/store/attempts.js";
 import {
   createCoordinator,
   ServiceClosing,
@@ -456,7 +456,7 @@ describe("poll coordinator", () => {
     // Each failure is reported exactly once, naming the cause.
     const logged = warn.mock.calls.map((c) => c.join(" "));
     expect(logged).toHaveLength(calls);
-    expect(logged.every((l) => l.includes("database write failed"))).toBe(true);
+    expect(logged.every((l) => l.includes("Unrecognized diagnostic text omitted"))).toBe(true);
   });
 
   it("scheduled ticks fire onSettled after settling, even on failure", async () => {
@@ -491,5 +491,139 @@ describe("poll coordinator", () => {
     );
     await failing.scheduledTick();
     expect(settled).toEqual(["ok", "failed-tick"]);
+  });
+
+  it("sanitizes rejected detail across attempt, rejection aliases, results row, and lastResult without leaking secret", async () => {
+    const db = freshDb();
+    const fixedTime = Date.parse("2026-09-10T00:00:00Z");
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["codex"],
+        now: () => fixedTime,
+        pollFn: async () => [
+          {
+            provider: "codex",
+            status: "rejected",
+            reason: new Error("Error: unauthorized token=private-value"),
+          },
+        ],
+      }),
+    );
+    const result = await coord.refresh();
+    const attempt = getAttempt(db, "codex")!;
+    expect(attempt.failureCategory).toBe("auth");
+    expect(attempt.diagnosticCode).toBe("auth");
+    expect(attempt.errorDetail).toBe("unauthorized");
+    expect(attempt.error).toBe(attempt.errorDetail);
+
+    expect(result.rejected[0].diagnosticCode).toBe("auth");
+    expect(result.rejected[0].category).toBe("auth");
+    expect(result.rejected[0].errorDetail).toBe(attempt.errorDetail);
+    expect(result.rejected[0].error).toBe(attempt.errorDetail);
+    expect(result.rejected[0].reason).toBe(attempt.errorDetail);
+    expect(result.results[0].reason).toBe(attempt.errorDetail);
+
+    const lastResult = coord.getState().lastResult!;
+    expect(lastResult.rejected[0].errorDetail).toBe(attempt.errorDetail);
+    expect(lastResult.rejected[0].error).toBe(attempt.errorDetail);
+    expect(lastResult.rejected[0].reason).toBe(attempt.errorDetail);
+    expect(lastResult.results[0].reason).toBe(attempt.errorDetail);
+
+    expect(JSON.stringify(result)).not.toContain("private-value");
+    expect(JSON.stringify(lastResult)).not.toContain("private-value");
+  });
+
+  it("simultaneous refresh and cooldown calls: exactly one log and one attempt write per actual outcome", async () => {
+    const db = freshDb();
+    const clock = makeClock(T0);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    let pollCalls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["claude", "codex"],
+        now: clock.now,
+        pollFn: async () => {
+          pollCalls++;
+          await sleep(50);
+          return [
+            {
+              provider: "claude",
+              status: "fulfilled",
+              value: fakeQuota("claude", 20, clock.now()),
+            },
+            {
+              provider: "codex",
+              status: "rejected",
+              reason: new Error("Error: unauthorized token=secret-tok"),
+            },
+          ];
+        },
+      }),
+    );
+
+    const [r1, r2] = await Promise.all([coord.refresh(), coord.refresh()]);
+    expect(pollCalls).toBe(1);
+
+    const r3 = await coord.refresh();
+    expect(r3.cooldown).toBe(true);
+    expect(pollCalls).toBe(1);
+
+    const logs = logSpy.mock.calls.map((c) => c.join(" "));
+    const claudeLogs = logs.filter((l) => l.includes("[claude]"));
+    const codexLogs = logs.filter((l) => l.includes("[codex]"));
+    expect(claudeLogs).toHaveLength(1);
+    expect(claudeLogs[0]).toBe(`[${iso(T0)}] [quotacap] [claude] poll succeeded (20% used)`);
+    expect(codexLogs).toHaveLength(1);
+    expect(codexLogs[0]).toMatch(
+      new RegExp(`^\\[${iso(T0).replace(/\+/g, "\\+")}\\] \\[quotacap\\] \\[codex\\] poll failed \\(auth\\):`),
+    );
+    expect(codexLogs[0]).not.toContain("secret-tok");
+
+    const attempts = getAttempts(db);
+    expect(attempts).toHaveLength(2);
+    expect(attempts.find((a) => a.provider === "claude")?.success).toBe(true);
+    expect(attempts.find((a) => a.provider === "codex")?.success).toBe(false);
+  });
+
+  it("logs success with percent when finite, and omits parenthetical when usedPct is not finite or array", async () => {
+    const db = freshDb();
+    const clock = makeClock(T0);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["p-finite", "p-nan", "p-array"],
+        now: clock.now,
+        pollFn: async () => [
+          {
+            provider: "p-finite",
+            status: "fulfilled",
+            value: { provider: "p-finite", plan: "p", usedPct: 42, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
+          },
+          {
+            provider: "p-null",
+            status: "fulfilled",
+            value: { provider: "p-null", plan: "p", usedPct: null, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
+          },
+          {
+            provider: "p-array",
+            status: "fulfilled",
+            value: [{ provider: "p-array", plan: "p", usedPct: 10, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) }],
+          },
+        ],
+      }),
+    );
+
+    await coord.refresh();
+    const logs = logSpy.mock.calls.map((c) => c.join(" "));
+    const finiteLog = logs.find((l) => l.includes("[p-finite]"))!;
+    const nullLog = logs.find((l) => l.includes("[p-null]"))!;
+    const arrayLog = logs.find((l) => l.includes("[p-array]"))!;
+
+    expect(finiteLog).toBe(`[${iso(T0)}] [quotacap] [p-finite] poll succeeded (42% used)`);
+    expect(nullLog).toBe(`[${iso(T0)}] [quotacap] [p-null] poll succeeded`);
+    expect(arrayLog).toBe(`[${iso(T0)}] [quotacap] [p-array] poll succeeded`);
   });
 });

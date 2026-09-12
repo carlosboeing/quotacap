@@ -21,6 +21,7 @@ import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
+import { classifyFailure } from "../diagnostics/failure.js";
 
 export function resolveClaudeExecPath(): string | undefined {
   try {
@@ -241,9 +242,10 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
   // 7. Async initial poll (never blocks readiness) + schedule.
   void coordinator
     .refresh()
-    .catch((e) =>
-      console.warn("[quotacap] initial poll failed", e?.message ?? String(e)),
-    );
+    .catch((e) => {
+      const detail = classifyFailure("all", e).errorDetail;
+      console.warn("[quotacap] initial poll failed", detail);
+    });
   coordinator.start(config.pollMinutes * 60 * 1000);
 
   let stopping = false;

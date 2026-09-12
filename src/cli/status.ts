@@ -5,6 +5,7 @@ import type { Command } from "commander";
 import { projectQuotasResponse } from "../advisory/snapshot.js";
 import { ensureConfig, getDbPath } from "../config.js";
 import { renderCompact, renderNarrow, renderWide } from "../format/terminal.js";
+import { renderIssues } from "../format/issues.js";
 import { assertValidSortKey, type SortKey } from "../format/rows.js";
 import { createServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
@@ -51,6 +52,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
     .option("--compact", "one-line statusline")
     .option("--ascii", "ASCII glyphs without color")
     .option("--sort <key>", "row order: recommended|reset-asc|reset-desc|used-desc|used-asc", "recommended")
+    .option("--verbose", "show provider failure guidance and diagnostics")
     .action(async (o) => {
       // Flag validation precedes any I/O: an invalid sort never touches the
       // network, config, or database.
@@ -162,6 +164,10 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
           ? renderWide(snapshot, { now: t, ascii, color, sort })
           : renderNarrow(snapshot, { now: t, ascii, color, sort }),
       );
+      if (o.verbose) {
+        const issues = renderIssues(snapshot, ascii);
+        if (issues) console.log("\n" + issues);
+      }
       printUpdateFooter(o, footer);
     });
 }
