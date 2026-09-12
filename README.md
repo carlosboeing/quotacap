@@ -23,6 +23,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 | Codex | `pty` — `codex --no-alt-screen` then `/status`, parse `Weekly/5h limit: X% left` | Live |
 | Kimi Code | `pty` — `kimi` then `/usage`, parse `Weekly/5h limit: Y% used` | Live |
 | Grok | `pty` — `grok` then `/usage`, parse `Weekly limit (plan)` + `Credits: $X` | Live |
+| Muse Code | `pty` — `muse --trust-workspace` then `/usage`, parse `Subscription · Muse Code <plan>` + `Weekly/Current N% used` | Live |
 
 Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion). It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
 
@@ -98,7 +99,7 @@ curl -X POST http://localhost:8787/api/refresh \
 
 QuotaCap is a local daemon. It binds to `127.0.0.1` only (`src/cli/index.ts:56`). It does not listen on `0.0.0.0`. There is no LAN surface.
 
-It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`).
+It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. It never reads `~/.config/muse/auth.json`, `~/.local/share/muse/sessions/`, or `~/.config/muse/tui-history.jsonl`. Each CLI owns its own session. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`, `muse`).
 
 It stores no `raw` provider payload. The `raw` column was dropped and migrated in `src/store/db.ts:37-48`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). History and the token live under `~/.quotacap/` with `0700` on the directory and `0600` on files.
 
@@ -133,6 +134,8 @@ The same code is an npm package and a compiled binary.
 `node-pty` is a native addon for the PTY-based adapters (Kimi, Codex, Grok) and is an `optionalDependency`. Prebuilt binaries are provided where available (macOS and Linux). If no prebuild matches your Node version or platform, `npm install` compiles it from source — this requires Xcode (macOS) or `build-essential` + `python3` (Linux). If the compile fails the install still succeeds and exec-based adapters (Claude, Agy) continue to work; PTY adapters will report `node-pty not available` until you install the toolchain and run `npm rebuild node-pty`.
 
 The Kimi adapter spawns `kimi` in your home directory so the quota modal does not depend on the project path. If Kimi shows `Trust this folder?`, QuotaCap fails closed with `untrusted workspace — run \`kimi\` there and select Trust this folder` and does not auto-trust; trust remains an explicit interactive decision.
+
+The Muse adapter never trusts a directory of yours. It runs `muse --trust-workspace` with its working directory set to an empty folder QuotaCap owns (`~/.quotacap/muse-probe/`), so the flag has no project-local skills, rules, hooks or plugin config to load, and Muse's own flag does not persist trust. If a future Muse ignores the flag and shows the prompt anyway, the adapter aborts fail-closed rather than answering it.
 
 The compiled binaries are built with `bun build --compile`.
 Each `dist-bin/quotacap-<os>-<arch>.tar.gz` bundles a `pty` sidecar.
