@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ProviderView, RecommendationView, RuntimeView } from "../state.js";
 import { nextRefreshLabel } from "../state.js";
-import { displayName } from "../names.js";
 import { lanesFor } from "./Recommendation.js";
 import { ProviderCard } from "./ProviderCard.js";
 import { ProviderRow } from "./ProviderRow.js";
@@ -264,7 +263,7 @@ export function SubscriptionList({
               <span className="dot" style={{ background: "var(--fill-out)" }} />
               <span>
                 {excluded.length} not reporting
-                {excluded.length <= 2 ? ` · ${excluded.map((p) => displayName(p.id)).join(", ")}` : ""}
+                {excluded.length <= 2 ? ` · ${excluded.map((p) => p.displayName).join(", ")}` : ""}
               </span>
             </li>
           )}
@@ -278,7 +277,7 @@ export function SubscriptionList({
           <ul>
             {disabled.map((p) => (
               <li key={p.id} style={{ fontSize: "var(--t-2)" }}>
-                {displayName(p.id)} · disabled · {resetCountdown(p, asOfMs)}
+                {p.displayName} · disabled · {resetCountdown(p, asOfMs)}
               </li>
             ))}
           </ul>

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ProviderView } from "../state.js";
-import { displayName } from "../names.js";
 import { paceBadge, resetClock, resetCountdown, timeLeft } from "./PaceBar.js";
 
 export const RAIL_DAYS = 7;
@@ -168,7 +167,7 @@ function ClusterPopover({
       <ul>
         {cluster.ids.map((id) => {
           const provider = providers.get(id);
-          const name = displayName(id);
+          const name = provider?.displayName ?? id;
           return (
             <li key={id}>
               <button
@@ -265,7 +264,7 @@ export function ResetRail({
           {placement.overflow.length > 0 && (
             <span
               data-testid="rail-overflow"
-              title={placement.overflow.map((o) => displayName(o.id)).join(", ")}
+              title={placement.overflow.map((o) => byId.get(o.id)?.displayName ?? o.id).join(", ")}
               style={{ marginLeft: 8, fontWeight: 600, color: "var(--ahead)" }}
             >
               +{placement.overflow.length} beyond rail
@@ -298,7 +297,7 @@ export function ResetRail({
             const when = provider?.quota ? pinWhen(provider.quota.resetsAt) : provider ? resetCountdown(provider, asOfMs) : "";
             const pace = provider ? paceBadge(provider) : "";
             const left = provider?.quota ? timeLeft(provider.quota.resetsAt, asOfMs) : null;
-            const name = displayName(pin.id);
+            const name = provider?.displayName ?? pin.id;
             const { cls: paceCls, color: paceColor } = pinPace(provider);
             const alignClass = pin.positionPct < 12 ? "pin-start" : pin.positionPct > 88 ? "pin-end" : "";
             const tierClass = pin.tier > 0 ? `tier${pin.tier + 1}` : "tier1";
@@ -368,7 +367,7 @@ export function ResetRail({
                     "--dot-color": "var(--accent)",
                   } as React.CSSProperties
                 }
-                aria-label={`${cluster.ids.length} resets at the same time: ${cluster.ids.map(displayName).join(", ")}`}
+                aria-label={`${cluster.ids.length} resets at the same time: ${cluster.ids.map((id) => byId.get(id)?.displayName ?? id).join(", ")}`}
                 aria-expanded={openCluster === index}
                 onClick={() => setOpenCluster(openCluster === index ? null : index)}
               >

@@ -79,6 +79,10 @@ function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot 
     evidence: [],
     exclusionReason: null,
     advisory: null,
+    displayName: over.id,
+    vendor: null,
+    harness: null,
+    description: null,
     ...over,
   };
 }
@@ -438,10 +442,10 @@ describe("value sorts (D6)", () => {
 });
 
 describe("provider width", () => {
-  it("clamps the example fixture to the 12 minimum", () => {
-    expect(provWidthFor(exampleStateSnapshot.providers.map((p) => p.id))).toBe(12);
+  it("sizes the example fixture from display names", () => {
+    expect(provWidthFor(exampleStateSnapshot.providers.map((p) => p.displayName))).toBe(16);
   });
-  it("grows with raw names including the 2-char prefix", () => {
+  it("grows with names including the 2-char prefix", () => {
     expect(provWidthFor(["a-long-provider"])).toBe(2 + "a-long-provider".length);
   });
   it("caps at 22", () => {
@@ -457,53 +461,53 @@ describe("wide table", () => {
     const lines = wide();
     expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.length);
     expect(lines[0]).toBe(
-      line(["PROVIDER    ", "  USED", " ELAPSED", "USED VS TIME        ", "RESETS   ", "STATE          ", "FORECAST"]),
+      line(["PROVIDER        ", "  USED", " ELAPSED", "USED VS TIME        ", "RESETS   ", "STATE          ", "FORECAST"]),
     );
   });
   it("pins the recommended row exactly", () => {
     expect(wide()[1]).toBe(
-      line(["★ my-plan   ", "   12%", "     50%", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "76% waste in 7.0d"]),
+      line(["★ my-plan       ", "   12%", "     50%", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "76% waste in 7.0d"]),
     );
   });
   it("pins reporting, unknown-pace, stale, invalid, and not-reporting rows", () => {
     const lines = wide();
     expect(lines[2]).toBe(
-      line(["  kimi      ", "   22%", "     50%", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
+      line(["  Kimi          ", "   22%", "     50%", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
     );
     expect(lines[5]).toBe(
-      line(["  agy       ", "   50%", "      0%", "│█████████░░░░░░░░░░", "7d       ", "On track       ", "Measuring pace; 50% remains with 7.0d until reset"]),
+      line(["  Antigravity   ", "   50%", "      0%", "│█████████░░░░░░░░░░", "7d       ", "On track       ", "Measuring pace; 50% remains with 7.0d until reset"]),
     );
     expect(lines[6]).toBe(
-      line(["  agy:3p    ", "   60%", "      0%", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
+      line(["  Antigravity 3P", "   60%", "      0%", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
     );
     expect(lines[7]).toBe(
-      line(["  grok      ", "   30%", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "invalid reading"]),
+      line(["  Grok          ", "   30%", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "invalid reading"]),
     );
     expect(lines[8]).toBe(
-      line(["  manual    ", "     —", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "no readings yet"]),
+      line(["  Manual        ", "     —", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "no readings yet"]),
     );
   });
   it("every row honors the column contract", () => {
     for (const line of wide().slice(1)) {
-      expect(line.slice(0, 12)).toMatch(/^.{12}$/);
-      expect(line.slice(12, 14)).toBe("  ");
-      expect(line.slice(14, 20)).toMatch(/^ *(?:\d+%|—)$/);
-      expect(line.slice(20, 22)).toBe("  ");
-      expect(line.slice(22, 30)).toMatch(/^ *(?:\d+%|—)$/);
-      expect(line.slice(30, 32)).toBe("  ");
-      expect(line.slice(32, 52)).toMatch(/^[█│░]{20}$/);
-      expect(line.slice(52, 54)).toBe("  ");
-      expect(line.slice(54, 63)).toMatch(/^.{1,9}$/);
-      expect(line.slice(63, 65)).toBe("  ");
-      expect(line.slice(65, 80)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Not reporting) *$/);
-      expect(line.slice(80, 82)).toBe("  ");
-      expect(line.slice(82).length).toBeGreaterThan(0);
+      expect(line.slice(0, 16)).toMatch(/^.{16}$/);
+      expect(line.slice(16, 18)).toBe("  ");
+      expect(line.slice(18, 24)).toMatch(/^ *(?:\d+%|—)$/);
+      expect(line.slice(24, 26)).toBe("  ");
+      expect(line.slice(26, 34)).toMatch(/^ *(?:\d+%|—)$/);
+      expect(line.slice(34, 36)).toBe("  ");
+      expect(line.slice(36, 56)).toMatch(/^[█│░]{20}$/);
+      expect(line.slice(56, 58)).toBe("  ");
+      expect(line.slice(58, 67)).toMatch(/^.{1,9}$/);
+      expect(line.slice(67, 69)).toBe("  ");
+      expect(line.slice(69, 84)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Not reporting) *$/);
+      expect(line.slice(84, 86)).toBe("  ");
+      expect(line.slice(86).length).toBeGreaterThan(0);
     }
   });
   it("honors the requested sort key", () => {
     const lines = strip(renderWide(exampleStateSnapshot, { now: FIXED_NOW, sort: "used-asc" })).split("\n");
-    expect(lines[1].slice(0, 12)).toBe("★ my-plan   ");
-    expect(lines[2].slice(0, 12)).toBe("  kimi      ");
+    expect(lines[1].slice(0, 16)).toBe("★ my-plan       ");
+    expect(lines[2].slice(0, 16)).toBe("  Kimi          ");
   });
   it("truncates names past 22 cells with an ellipsis", () => {
     const s = snap(
@@ -526,8 +530,8 @@ describe("wide table", () => {
     expect(out).not.toContain("\x1b[");
     expect(out).not.toMatch(/[█│░★…·—]/);
     const lines = out.split("\n");
-    expect(lines[1].slice(0, 12)).toBe("* my-plan   ");
-    expect(lines[1].slice(32, 52)).toBe("##::::::::|:::::::::");
+    expect(lines[1].slice(0, 16)).toBe("* my-plan       ");
+    expect(lines[1].slice(36, 56)).toBe("##::::::::|:::::::::");
   });
 });
 
@@ -536,23 +540,23 @@ describe("narrow table (D8)", () => {
   it("renders two lines per provider in recommended order", () => {
     const lines = narrow();
     expect(lines).toHaveLength(2 * exampleStateSnapshot.providers.length);
-    expect(lines[0]).toBe("★ my-plan    12% used · 50% elapsed");
+    expect(lines[0]).toBe("★ my-plan        12% used · 50% elapsed");
     expect(lines[1]).toBe("██░░░░░░░░│░░░░░░░░░ resets 7d · Behind pace · 76% waste in 7.0d");
   });
   it("renders unknown values without placeholders leaking percents", () => {
     const lines = narrow();
-    expect(lines[14]).toBe("  manual     — used · — elapsed");
+    expect(lines[14]).toBe("  Manual         — used · — elapsed");
     expect(lines[15]).toBe("░░░░░░░░░░░░░░░░░░░░ resets — · Not reporting · no readings yet");
   });
   it("keeps the wide provider width, colors, and words", () => {
     const colored = renderNarrow(exampleStateSnapshot, { now: FIXED_NOW, color: true });
     expect(colored).toContain("\x1b[");
-    expect(strip(colored).split("\n")[0].slice(0, 12)).toBe("★ my-plan   ");
+    expect(strip(colored).split("\n")[0].slice(0, 16)).toBe("★ my-plan       ");
     expect(narrow()[3]).toContain("Behind pace");
   });
   it("--ascii replaces separators and glyphs", () => {
     const lines = renderNarrow(exampleStateSnapshot, { now: FIXED_NOW, ascii: true }).split("\n");
-    expect(lines[0]).toBe("* my-plan    12% used - 50% elapsed");
+    expect(lines[0]).toBe("* my-plan        12% used - 50% elapsed");
     expect(lines[1]).toBe("##::::::::|::::::::: resets 7d - Behind pace - 76% waste in 7.0d");
   });
 });

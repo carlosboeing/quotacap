@@ -2,6 +2,7 @@ import type { Quota } from "../adapters/types.js";
 import { getAllLatest, getBurnRates } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { recommend, averagePace, computeAdvisory } from "./engine.js";
+import { providerIdentity } from "./provider-names.js";
 import type {
   Advisory,
   ExclusionReason,
@@ -191,6 +192,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
 
     providerSnapshots.push({
       id,
+      ...providerIdentity(id),
       enabled,
       quota,
       lastAttempt: attempt,
@@ -253,6 +255,10 @@ export function projectQuotasResponse(s: StateSnapshot): any[] {
     .filter((p) => p.quota !== null)
     .map((p) => ({
       ...p.quota,
+      displayName: p.displayName,
+      vendor: p.vendor,
+      harness: p.harness,
+      description: p.description,
       stale: p.stale,
       ageMs: p.ageMs,
       evidence: p.evidence,

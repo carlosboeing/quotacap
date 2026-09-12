@@ -19,7 +19,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 | Provider | Mechanism | Source |
 |---|---|---|
 | Claude Code | `exec` — `claude -p /usage --output-format json` | Live |
-| Antigravity | `exec` — `agy -p /usage --output-format json` (two rows: `agy` Gemini, `agy:3p` 3p) | Live |
+| Antigravity | `exec` — `agy -p /usage --output-format json` (two rows: Antigravity for Gemini, Antigravity 3P for third-party models) | Live |
 | Codex | `pty` — `codex --no-alt-screen` then `/status`, parse `Weekly/5h limit: X% left` | Live |
 | Kimi Code | `pty` — `kimi` then `/usage`, parse `Weekly/5h limit: Y% used` | Live |
 | Grok | `pty` — `grok` then `/usage`, parse `Weekly limit (plan)` + `Credits: $X` | Live |

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderView, RecommendationView } from "../state.js";
-import { displayName } from "../names.js";
 import { paceBadge, timeLeft } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lanesFor } from "./Recommendation.js";
@@ -61,7 +60,7 @@ export function AdviceDrawer({
   const { useMore, easeOff } = lanesFor(recommendation.advisories, providers);
   const pickId = recommendation.use !== "none" ? recommendation.use : useMore[0]?.provider;
   const pick = pickId ? providers.find((p) => p.id === pickId) : undefined;
-  const pickName = pick ? displayName(pick.id) : null;
+  const pickName = pick ? pick.displayName : null;
   const remaining =
     pick?.advisory?.remaining !== null && pick?.advisory?.remaining !== undefined
       ? Math.round(pick.advisory.remaining)
@@ -186,13 +185,13 @@ export function AdviceDrawer({
                     const w = a.wastePct !== null ? `${Math.round(a.wastePct)}% unused` : null;
                     const t = p?.quota ? timeLeft(p.quota.resetsAt, asOfMs) : null;
                     const bits = [w, t ? `resets in ${t}` : null].filter(Boolean).join(" · ");
-                    return (
+                      return (
                       <span key={a.provider}>
                         {i > 0 ? ", " : ""}
-                        <b>{displayName(a.provider)}</b>
+                        <b>{p?.displayName ?? a.provider}</b>
                         {bits ? ` (${bits})` : ""}
                       </span>
-                    );
+                      );
                   })
                 : "None"}
             </dd>
@@ -205,7 +204,7 @@ export function AdviceDrawer({
                     return (
                       <span key={a.provider}>
                         {i > 0 ? ", " : ""}
-                        <b>{displayName(a.provider)}</b> ({badge})
+                        <b>{p?.displayName ?? a.provider}</b> ({badge})
                       </span>
                     );
                   })

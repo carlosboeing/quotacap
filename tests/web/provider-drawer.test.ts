@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect } from "vitest";
 import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson } from "../fixtures/stable-state.js";
-import { toViewModel } from "../../web/src/state.js";
+import { providerSubtitle, toViewModel } from "../../web/src/state.js";
 import {
   compactSnapshot,
   drawerModel,
@@ -73,5 +73,34 @@ describe("provider drawer", () => {
     expect(css).toMatch(/\.draw-code \{[^}]*line-height: 1\.6/);
     expect(css).toMatch(/\.draw-code \{[^}]*white-space: pre;/);
     expect(css).not.toMatch(/\.draw-code \{[^}]*max-height:/);
+  });
+  it("adds the derived subtitle and the authored description", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    expect(providerSubtitle(kimi)).toBe("Kimi Code · Moonshot AI");
+    const agy = s.providers.find((p) => p.id === "agy")!;
+    expect(providerSubtitle(agy)).toBe("Google");
+    const unknown = s.providers.find((p) => p.id === "my-plan")!;
+    expect(providerSubtitle(unknown)).toBeNull();
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: kimi,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).toContain("Kimi Code · Moonshot AI");
+    expect(html).toContain("Kimi Code subscription, metered as weekly and 5-hour windows.");
+    const bare = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: unknown,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(bare).not.toContain("undefined");
+    expect(bare).not.toContain("null");
   });
 });

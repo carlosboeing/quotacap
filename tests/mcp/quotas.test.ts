@@ -18,13 +18,17 @@ describe("mcp get_quotas", () => {
         [
           "| Provider | Used | Elapsed | Resets | State | Forecast |",
           "|---|---|---|---|---|---|",
-          "| claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
+          "| Claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
         ].join("\n"),
       );
       const rows = JSON.parse(res.content[1].text);
       expect(rows).toHaveLength(1);
       expect(rows[0].provider).toBe("claude");
       expect(rows[0].exclusionReason).toBe("reset-passed");
+      expect(rows[0].displayName).toBe("Claude");
+      for (const k of ["displayName", "vendor", "harness", "description"]) {
+        expect(k in rows[0]).toBe(true);
+      }
     } finally {
       delete process.env.QUOTACAP_URL;
       await app.close();

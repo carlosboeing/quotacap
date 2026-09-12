@@ -1,7 +1,6 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
-import { displayName } from "../names.js";
 import { failureWords } from "./ProviderDrawer.js";
 
 export interface Repair {
@@ -15,7 +14,7 @@ export interface Repair {
  * service-unavailable panel when the daemon itself is down.
  */
 export function repairFor(provider: ProviderView): Repair {
-  const name = displayName(provider.id);
+  const name = provider.displayName;
   if (provider.lastAttempt?.failureCategory === "auth") {
     return {
       text: `Sign in to the ${name} CLI, then re-poll. QuotaCap never handles those credentials.`,
@@ -95,7 +94,7 @@ export function FaultBanner({
             </svg>
             <span>
               <strong>
-                {displayName(p.id)} {bannerVerb(p)}.
+                {p.displayName} {bannerVerb(p)}.
               </strong>{" "}
               {age ? `Last read ${age} ago; ` : ""}
               excluded from ranking. {repair.text}
@@ -107,7 +106,7 @@ export function FaultBanner({
               disabled={repolling}
               style={{ flex: "none", marginLeft: "auto" }}
             >
-              {repolling ? "Polling…" : `Check ${displayName(p.id)}`}
+              {repolling ? "Polling…" : `Check ${p.displayName}`}
             </button>
           </div>
         );

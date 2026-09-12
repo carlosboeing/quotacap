@@ -1,6 +1,5 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
-import { displayName } from "../names.js";
 import {
   Badge,
   PaceBar,
@@ -24,7 +23,7 @@ export function ProviderRow({
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
   const evidence = evidenceLabels(provider.evidence);
-  const name = displayName(provider.id);
+  const name = provider.displayName;
   return (
     <div
       data-testid={`provider-row-${provider.id}`}

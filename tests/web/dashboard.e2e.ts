@@ -579,7 +579,7 @@ test("fault banner per excluded provider carries last-read age", async ({ page }
   await page.goto(stub.url);
   const banners = page.getByTestId("fault-banner");
   await expect(banners).toHaveCount(2);
-  await expect(banners.filter({ hasText: "Agy 3P" })).toContainText("Last read 3h ago");
+  await expect(banners.filter({ hasText: "Antigravity 3P" })).toContainText("Last read 3h ago");
   await expect(banners.filter({ hasText: "Grok" })).toContainText("invalid reading");
   await expect(banners.filter({ hasText: "manual" })).toHaveCount(0);
 });

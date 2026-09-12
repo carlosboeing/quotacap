@@ -12,7 +12,7 @@ export function renderMarkdownTable(snapshot: StateSnapshot, now: Date): string 
   const sorted = sortProviders(snapshot.providers, "recommended", use);
   const lines = sorted.map((p) => {
     const row = buildRow(p, now);
-    const name = p.id === use && use !== "none" ? `★ ${p.id}` : p.id;
+    const name = p.id === use && use !== "none" ? `★ ${p.displayName}` : p.displayName;
     const used = row.usedPct === null ? "—" : `${row.usedPct}%`;
     const elapsed = row.elapsedPct === null ? "—" : `${row.elapsedPct}%`;
     return `| ${esc(name)} | ${used} | ${elapsed} | ${esc(row.countdown)} | ${esc(row.state)} | ${esc(row.forecast)} |`;
