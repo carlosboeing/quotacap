@@ -396,12 +396,50 @@ describe("macos login service", () => {
     await stop(depsFor(home, rec.run));
     expect(rec.calls.at(-1)).toEqual(["bootout", "gui/501/quotacap"]);
     rec.calls.length = 0;
-    await restart(depsFor(home, rec.run, { waitReady: async () => true }));
+    await restart(depsFor(home, rec.run, { waitReady: async () => true, waitReleased: async () => true }));
     expect(rec.calls).toEqual([
       ["bootout", "gui/501/quotacap"],
       ["bootstrap", `gui/501`, path.join(home, "Library/LaunchAgents/quotacap.plist")],
       ["enable", "gui/501/quotacap"],
     ]);
+  });
+
+  // `launchctl bootout` returns before the job is gone. Starting immediately
+  // raced the dying process for the port, and `quotacap update` reported
+  // "service did not become ready on port 8787" on a perfectly good upgrade.
+  it("restart waits for the port to be released before starting again", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const order: string[] = [];
+    const run = (args: string[]) => {
+      order.push(args[0]);
+      return rec.run(args);
+    };
+    await restart(
+      depsFor(home, run, {
+        waitReady: async () => true,
+        waitReleased: async () => {
+          order.push("wait-released");
+          return true;
+        },
+      }),
+    );
+    expect(order).toEqual(["bootout", "wait-released", "bootstrap", "enable"]);
+  });
+
+  it("restart starts anyway, with a warning, when the port never frees", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const printed: string[] = [];
+    await restart(
+      depsFor(home, rec.run, {
+        waitReady: async () => true,
+        waitReleased: async () => false,
+        print: (m: string) => printed.push(m),
+      }),
+    );
+    expect(printed.some((m) => /still in use/.test(m))).toBe(true);
+    expect(rec.calls.map((c) => c[0])).toEqual(["bootout", "bootstrap", "enable"]);
   });
 
   it("upgrade retries bootstrap across the teardown window, then loads", async () => {
