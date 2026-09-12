@@ -76,7 +76,13 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
       } catch (e) {
         if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
           // Daemon is offline or older version without PATCH /api/providers; update config directly
-          await setProviderNameOverride(id, validatedName);
+          try {
+            await setProviderNameOverride(id, validatedName);
+          } catch (err: any) {
+            console.error(err?.message ?? String(err));
+            exit(1);
+            return;
+          }
           if (e instanceof ServiceError && e.status === 404) {
             console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
           }
@@ -119,7 +125,13 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           }
         } catch (e) {
           if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
-            await resetAllProviderNameOverrides();
+            try {
+              await resetAllProviderNameOverrides();
+            } catch (err: any) {
+              console.error(err?.message ?? String(err));
+              exit(1);
+              return;
+            }
             if (e instanceof ServiceError && e.status === 404) {
               console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
             }
@@ -128,7 +140,7 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
             exit(1);
             return;
           } else {
-            console.error(String(e));
+            console.error(e instanceof Error ? e.message : String(e));
             exit(1);
             return;
           }
@@ -145,7 +157,13 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           });
         } catch (e) {
           if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
-            await setProviderNameOverride(id, null);
+            try {
+              await setProviderNameOverride(id, null);
+            } catch (err: any) {
+              console.error(err?.message ?? String(err));
+              exit(1);
+              return;
+            }
             if (e instanceof ServiceError && e.status === 404) {
               console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
             }

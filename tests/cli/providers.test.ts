@@ -278,4 +278,31 @@ describe("CLI quotacap providers reset", () => {
     expect(exitMock).toHaveBeenCalledWith(1);
     expect(errors.join("\n")).toContain("specify a provider id or --all");
   });
+
+  it("prints a clean error and exits 1 when config is corrupt during offline rename", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn(),
+      patch: vi.fn().mockRejectedValue(new ServiceUnavailable("offline")),
+    };
+
+    const cfgPath = path.join(tmpHome, ".quotacap", "config.json");
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+    fs.writeFileSync(cfgPath, "{ malformed json");
+
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({
+      createClient: () => mockClient,
+      exit: exitMock,
+    });
+
+    await program.parseAsync(["node", "quotacap", "providers", "rename", "claude", "Work Claude"]);
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toContain("cannot update provider names");
+    expect(fs.readFileSync(cfgPath, "utf8")).toBe("{ malformed json");
+  });
 });
