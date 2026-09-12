@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.24
 
 - Naming: one server-side provider registry gives every row a `displayName` (the dashboard now reads `Antigravity` and `Antigravity 3P`), carries `vendor`, `harness` and `description` additively on `/api/state` and MCP `get_quotas`, and moves the CLI wide/narrow tables and MCP Markdown labels off raw ids; compact statuslines stay id-based. A CLI newer than a still-running daemon falls back to raw ids at the ingest boundary instead of crashing in the column-width calculation.
 - Provider adapter: Muse Code (`muse`) — PTY scrape of the TUI `/usage` panel (`muse --trust-workspace` in an empty QuotaCap-owned probe directory, `MUSE_NO_AUTO_UPDATE=1`, 14 s budget), mapping the weekly window to `usedPct` and the rolling current window to `sessionPct`; `enabledProviders` defaults to all six. `runPty` gains two opt-in capabilities it needs: a terminal capability-query responder (cursor position, device attributes, OSC colour) and a two-phase `submitInput`/`submitAfterMs` write for TUIs whose autocomplete swallows a same-burst Enter. Aborts fail-closed on the trust prompt, on an accidental model turn, and on an unavailable subscription.
