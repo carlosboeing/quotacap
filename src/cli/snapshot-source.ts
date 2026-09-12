@@ -194,6 +194,23 @@ async function versionSkewOrBroken(client: ServiceClient, notFound: ServiceError
   );
 }
 
+// A service older than the naming standard serves providers with no
+// displayName. Render sites treat it as always present, so fill it here at
+// the ingest boundary rather than guarding every call site downstream.
+export function withProviderNames(snapshot: StateSnapshot): StateSnapshot {
+  if (!Array.isArray(snapshot.providers)) return snapshot;
+  return {
+    ...snapshot,
+    providers: snapshot.providers.map((p) => ({
+      ...p,
+      displayName: typeof p.displayName === "string" && p.displayName ? p.displayName : p.id,
+      vendor: p.vendor ?? null,
+      harness: p.harness ?? null,
+      description: p.description ?? null,
+    })),
+  };
+}
+
 export type SnapshotSource = "service" | "offline";
 
 export interface ResolvedSnapshot {
@@ -235,7 +252,7 @@ export async function resolveSnapshot(opts: ResolveSnapshotOptions): Promise<Res
   try {
     const state = await opts.client.get("/api/state");
     if (!isStateEnvelope(state)) return versionSkewOrBroken(opts.client, null);
-    const snapshot = state as StateSnapshot;
+    const snapshot = withProviderNames(state as StateSnapshot);
     return { snapshot, source: "service", asOf: snapshot.asOf };
   } catch (e) {
     if (e instanceof ServiceUnavailable) return offlineSnapshot(opts, now);
