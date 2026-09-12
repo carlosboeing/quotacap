@@ -382,10 +382,10 @@ describe("update npm", () => {
     expect(r.exitCodes).toEqual([]);
   });
 
-  it("pins --version and reports spawn failures", async () => {
+  it("pins --to and reports spawn failures", async () => {
     const home = isolatedHome();
     const spawns: string[][] = [];
-    const r = await runUpdate(["--version", "0.0.21"], {
+    const r = await runUpdate(["--to", "0.0.21"], {
       channelEnv: npmEnv,
       homeDir: home,
       fetchFn: releaseFetch(),
@@ -398,6 +398,63 @@ describe("update npm", () => {
     expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
     expect(r.exitCodes).toEqual([1]);
     expect(r.errors.join("\n")).toContain("exited 3");
+    expect(home).toBeTruthy();
+  });
+
+  it("--to reaches the subcommand despite the global --version flag", async () => {
+    const home = isolatedHome();
+    const spawns: string[][] = [];
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const exitCodes: number[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: any[]) => {
+      logs.push(a.join(" "));
+    });
+    vi.spyOn(console, "error").mockImplementation((...a: any[]) => {
+      errors.push(a.join(" "));
+    });
+    // Same global wiring as src/cli/index.ts: a global --version flag that
+    // used to swallow the subcommand's own --version option.
+    const prog = new Command();
+    prog.exitOverride();
+    prog.name("quotacap").version(VERSION);
+    registerUpdateCommand(prog, {
+      channelEnv: npmEnv,
+      homeDir: home,
+      fetchFn: releaseFetch(),
+      spawnNpm: async (args: string[]) => {
+        spawns.push(args);
+        return 0;
+      },
+      createClient: downClient(),
+      isManaged: async () => false,
+      exit: (c: number) => exitCodes.push(c),
+    });
+    await prog.parseAsync(["update", "--to", "0.0.21"], { from: "user" });
+    expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
+    expect(logs[0]).toBe(`Updated ${VERSION} to 0.0.21`);
+    expect(errors).toEqual([]);
+    expect(exitCodes).toEqual([]);
+    expect(home).toBeTruthy();
+  });
+
+  it("pins --to past an unresolvable release", async () => {
+    const home = isolatedHome();
+    const spawns: string[][] = [];
+    const r = await runUpdate(["--to", "v0.0.21"], {
+      channelEnv: npmEnv,
+      homeDir: home,
+      fetchFn: failingFetch(),
+      spawnNpm: async (args: string[]) => {
+        spawns.push(args);
+        return 0;
+      },
+      createClient: downClient(),
+      isManaged: async () => false,
+    });
+    expect(spawns).toEqual([["install", "-g", "quotacap@0.0.21"]]);
+    expect(r.exitCodes).toEqual([]);
+    expect(r.logs[0]).toBe(`Updated ${VERSION} to 0.0.21`);
     expect(home).toBeTruthy();
   });
 });

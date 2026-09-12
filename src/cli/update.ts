@@ -251,7 +251,7 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
     .command("update")
     .description("check for and apply updates")
     .option("--check", "only check for updates, changing nothing")
-    .option("--version <v>", "update to a specific version")
+    .option("--to <version>", "update to a specific version")
     .option("--json", "machine-readable output")
     .action(async (o) => {
       const current = VERSION;
@@ -284,7 +284,7 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
         return;
       }
 
-      const pin = typeof o.version === "string" && o.version ? stripV(o.version) : null;
+      const pin = typeof o.to === "string" && o.to ? stripV(o.to) : null;
       let latest: ReleaseInfo | null = null;
       let rateLimited: { resetsAtMs: number | null } | null = null;
       try {
