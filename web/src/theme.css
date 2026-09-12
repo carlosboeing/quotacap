@@ -84,6 +84,7 @@
   --p-kimi: oklch(0.55 0.19 300);
   --p-grok: oklch(0.42 0.02 292);
   --p-agy: oklch(0.52 0.13 195);
+  --p-muse: oklch(0.52 0.17 265);
 }
 
 html[data-theme="dark"] {
@@ -139,6 +140,7 @@ html[data-theme="dark"] {
   --p-kimi: oklch(0.76 0.16 300);
   --p-grok: oklch(0.80 0.01 292);
   --p-agy: oklch(0.76 0.12 195);
+  --p-muse: oklch(0.75 0.15 265);
 }
 
 *,

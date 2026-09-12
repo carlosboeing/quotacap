@@ -17,7 +17,7 @@ export function getDbPath(p?: string): string {
 const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
-  enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy"]),
+  enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),

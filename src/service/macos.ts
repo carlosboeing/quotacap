@@ -15,7 +15,7 @@ import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
 
 export const SERVICE_LABEL = "quotacap";
-export const PROVIDER_BINS = ["claude", "codex", "kimi", "grok", "agy"];
+export const PROVIDER_BINS = ["claude", "codex", "kimi", "grok", "agy", "muse"];
 
 export function serviceSupported(platform: string = process.platform): boolean {
   return platform === "darwin";
