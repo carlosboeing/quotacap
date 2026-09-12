@@ -12,6 +12,7 @@ import {
   releasesPageUrl,
   resolveLatestVersion,
   resolveLatestVersionDetailed,
+  UPDATE_FAILURE_RETRY_MS,
   updateCacheStale,
   updateFooter,
   updateNpm,
@@ -435,7 +436,7 @@ describe("update cache", () => {
       expect(next?.latest).toBe("0.0.24");
       expect(readUpdateCache(p)?.latest).toBe("0.0.24");
 
-      // Failure keeps the old cache silently.
+      // Failure keeps the old latest and stamps the attempt for backoff.
       writeUpdateCache(old, p);
       const kept = await refreshUpdateCache({
         channel: "standalone",
@@ -443,7 +444,109 @@ describe("update cache", () => {
         cachePath: p,
         fetchFn: failFetch,
       });
-      expect(kept).toEqual(old);
+      expect(kept).toMatchObject({ latest: old.latest, checkedAt: old.checkedAt });
+      expect(kept?.lastFailureAt).toBeDefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("loads caches that predate lastFailureAt, rejects malformed stamps", () => {
+    const dir = tmpDir("qc-cache-compat-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const legacy = {
+        checkedAt: new Date().toISOString(),
+        latest: "0.0.23",
+        channel: "standalone",
+        current: "0.0.22",
+      };
+      fs.writeFileSync(p, JSON.stringify(legacy));
+      expect(readUpdateCache(p)).toEqual(legacy);
+      fs.writeFileSync(p, JSON.stringify({ ...legacy, lastFailureAt: "not-a-date" }));
+      expect(readUpdateCache(p)).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("backs off failed refreshes inside the retry floor without losing latest", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-negcache-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const stale = {
+        checkedAt: new Date(Date.now() - 25 * 3600 * 1000).toISOString(),
+        latest: "0.0.23",
+        channel: "standalone",
+        current: "0.0.22",
+      };
+      writeUpdateCache(stale, p);
+      let calls = 0;
+      const failFetch = (async () => {
+        calls++;
+        throw new Error("down");
+      }) as unknown as typeof fetch;
+      const now = new Date();
+      const first = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: failFetch,
+        now: () => now,
+      });
+      expect(calls).toBe(1);
+      // checkedAt and latest untouched; only the failure stamp recorded.
+      expect(first).toMatchObject({ checkedAt: stale.checkedAt, latest: "0.0.23" });
+      expect(first?.lastFailureAt).toBe(now.toISOString());
+      expect(readUpdateCache(p)).toEqual(first);
+
+      // Second attempt inside the floor: no network call at all, latest kept.
+      const second = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: failFetch,
+        now: () => new Date(now.getTime() + 60 * 1000),
+      });
+      expect(calls).toBe(1);
+      expect(second).toEqual(first);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries the network once the floor expires and clears the stamp on success", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const dir = tmpDir("qc-negretry-");
+    try {
+      const p = path.join(dir, "updates.json");
+      const now = Date.now();
+      writeUpdateCache(
+        {
+          checkedAt: new Date(now - 25 * 3600 * 1000).toISOString(),
+          latest: "0.0.23",
+          channel: "standalone",
+          current: "0.0.22",
+          lastFailureAt: new Date(now - UPDATE_FAILURE_RETRY_MS - 1000).toISOString(),
+        },
+        p,
+      );
+      const okFetch = (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ tag_name: "v0.0.24", html_url: "https://x" }),
+      })) as unknown as typeof fetch;
+      const next = await refreshUpdateCache({
+        channel: "standalone",
+        current: "0.0.22",
+        cachePath: p,
+        fetchFn: okFetch,
+        now: () => new Date(now),
+      });
+      expect(next?.latest).toBe("0.0.24");
+      expect(next).not.toHaveProperty("lastFailureAt");
+      expect(readUpdateCache(p)).toEqual(next);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

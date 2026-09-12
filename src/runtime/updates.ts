@@ -263,6 +263,9 @@ export interface UpdateCache {
   latest: string;
   channel: string;
   current: string;
+  // Last failed refresh attempt, for negative caching. Optional so caches
+  // written before it existed keep loading.
+  lastFailureAt?: string;
 }
 
 export function updatesCachePath(): string {
@@ -287,6 +290,13 @@ export function readUpdateCache(p: string = updatesCachePath()): UpdateCache | n
     if (typeof parsed.channel !== "string" || typeof parsed.current !== "string") {
       return null;
     }
+    if (
+      parsed.lastFailureAt !== undefined &&
+      (typeof parsed.lastFailureAt !== "string" ||
+        Number.isNaN(new Date(parsed.lastFailureAt).getTime()))
+    ) {
+      return null;
+    }
     return parsed as UpdateCache;
   } catch {
     return null;
@@ -308,13 +318,21 @@ export function writeUpdateCache(cache: UpdateCache, p: string = updatesCachePat
 
 export const UPDATE_CACHE_TTL_MS = 24 * 3600 * 1000;
 
+// Negative-cache floor: a failed refresh suppresses further network attempts
+// for this long. Short against the daily TTL so a recovered endpoint is
+// re-probed soon, long enough that status/advise/poll storms back off.
+export const UPDATE_FAILURE_RETRY_MS = 30 * 60 * 1000;
+
 export function updateCacheStale(cache: UpdateCache | null, nowMs: number = Date.now()): boolean {
   if (!cache) return true;
   return nowMs - new Date(cache.checkedAt).getTime() >= UPDATE_CACHE_TTL_MS;
 }
 
-// Refresh the daily cache when older than 24 hours or absent. Network failure
-// keeps the old cache silently; the result is the cache to read from.
+// Refresh the daily cache when older than 24 hours or absent. A failure
+// inside the retry floor performs no network call and keeps serving the
+// previously cached latest; a fresh failure stamps lastFailureAt so the next
+// attempt backs off. checkedAt is never stamped on failure, so the daily
+// check is unaffected. The result is the cache to read from.
 export async function refreshUpdateCache(
   opts: {
     channel: string;
@@ -329,11 +347,22 @@ export async function refreshUpdateCache(
   const existing = readUpdateCache(cachePath);
   const now = opts.now?.() ?? new Date();
   if (!updateCacheStale(existing, now.getTime())) return existing;
+  if (
+    existing?.lastFailureAt &&
+    now.getTime() - new Date(existing.lastFailureAt).getTime() < UPDATE_FAILURE_RETRY_MS
+  ) {
+    return existing;
+  }
   const latest = await resolveLatestVersion({
     fetchFn: opts.fetchFn,
     timeoutMs: opts.timeoutMs ?? 3000,
   });
-  if (!latest) return existing;
+  if (!latest) {
+    if (!existing) return existing;
+    const stamped: UpdateCache = { ...existing, lastFailureAt: now.toISOString() };
+    writeUpdateCache(stamped, cachePath);
+    return stamped;
+  }
   const fresh: UpdateCache = {
     checkedAt: now.toISOString(),
     latest: latest.version,
