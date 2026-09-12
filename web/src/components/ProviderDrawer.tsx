@@ -19,6 +19,7 @@ import {
   type PaceBadge,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
+import { renameProvider } from "../api.js";
 
 export interface DrawerModel {
   id: string;
@@ -249,14 +250,31 @@ export function ProviderDrawer({
   asOf,
   recommendation,
   onClose,
+  onRenamed,
+  renameAction,
 }: {
   provider: ProviderView | null;
   asOf: string;
   recommendation: RecommendationView | null;
   onClose: () => void;
+  onRenamed?: () => void;
+  renameAction?: (id: string, displayName: string | null) => Promise<void>;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<Element | null>(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(provider?.displayName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (provider) {
+      setNameDraft(provider.displayName);
+      setIsEditing(false);
+      setRenameError(null);
+    }
+  }, [provider?.id, provider?.displayName]);
 
   useEffect(() => {
     if (!provider) return;
@@ -293,6 +311,28 @@ export function ProviderDrawer({
       (previouslyFocused.current as HTMLElement | null)?.focus?.();
     };
   }, [provider, onClose]);
+
+  const handleSubmitRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!provider) return;
+    setSaving(true);
+    setRenameError(null);
+    const trimmed = nameDraft.trim();
+    const newName = trimmed.length === 0 ? null : trimmed;
+    try {
+      if (renameAction) {
+        await renameAction(provider.id, newName);
+      } else {
+        await renameProvider(provider.id, newName);
+      }
+      setIsEditing(false);
+      onRenamed?.();
+    } catch (err: any) {
+      setRenameError(err.message || "Failed to update display name");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const [copied, setCopied] = useState(false);
 
@@ -332,10 +372,134 @@ export function ProviderDrawer({
           <span className="picon" style={providerTint(provider.id)}>
             <ProviderIcon id={provider.id} title={model.name} />
           </span>
-          <div style={{ flex: 1 }}>
-            <h2 id={titleId}>{model.name}</h2>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {isEditing ? (
+              <form
+                onSubmit={handleSubmitRename}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--s1)",
+                  marginBottom: "var(--s2)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--s2)" }}>
+                  <input
+                    type="text"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        setIsEditing(false);
+                        setNameDraft(provider.displayName);
+                        setRenameError(null);
+                      }
+                    }}
+                    autoFocus
+                    maxLength={32}
+                    placeholder={provider.builtinName ?? provider.id}
+                    aria-label="Provider display name"
+                    style={{
+                      font: "inherit",
+                      fontSize: "var(--t-4)",
+                      fontWeight: 600,
+                      padding: "4px 8px",
+                      borderRadius: "var(--r-sm)",
+                      border: "1px solid var(--line)",
+                      background: "var(--surface)",
+                      color: "var(--ink)",
+                      width: "100%",
+                      maxWidth: "240px",
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="btn btn-sm"
+                    style={{ flex: "none" }}
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => {
+                      setIsEditing(false);
+                      setNameDraft(provider.displayName);
+                      setRenameError(null);
+                    }}
+                    className="btn btn-quiet btn-sm"
+                    style={{ flex: "none" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {renameError && (
+                  <span style={{ fontSize: "var(--t-2)", color: "var(--danger)" }}>
+                    {renameError}
+                  </span>
+                )}
+              </form>
+            ) : (
+              <h2
+                id={titleId}
+                onClick={() => setIsEditing(true)}
+                title="Click to rename"
+                style={{
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "var(--s1)",
+                }}
+              >
+                <span>{model.name}</span>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  aria-label={`Rename ${model.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: "2px",
+                    cursor: "pointer",
+                    color: "var(--ink-soft)",
+                    display: "inline-flex",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                  </svg>
+                </button>
+              </h2>
+            )}
+            {provider.builtinName && provider.displayName !== provider.builtinName && (
+              <div
+                className="sub"
+                style={{ marginTop: "2px" }}
+                data-testid="provider-builtin-name"
+              >
+                {`Built-in: ${provider.builtinName}`}
+              </div>
+            )}
             <span className="sub">{providerSubtitle(provider) ?? sub}</span>
           </div>
+
           <button
             className="drawer-close"
             type="button"
