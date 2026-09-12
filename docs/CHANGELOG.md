@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.0.25
+
+- Service restart: `restart` now waits for the port to be released between stopping and starting. `launchctl bootout` and `systemctl --user stop` both return before the job is gone, so the replacement raced the dying process for the port and `quotacap update` reported `service did not become ready on port 8787` on upgrades that had in fact succeeded, leaving the daemon stopped. Both backends wait, warn and start anyway if the port never frees, and keep tests off the real daemon's port via `deps.port`.
+- Dashboard: the reset rail renders the whole provider display name instead of its first word, so `Antigravity` and `Antigravity 3P` no longer share a label, and the estimate marker moves from the name pill onto the timestamp it qualifies (`Codex` + `Sun 02:04 (est.)`, not `Codex (est.)`). Pill width is bounded so a long custom name cannot push its neighbours off the rail.
+- Release and docs: the post-publish registry check retries for five minutes rather than sixty seconds, since npm propagation made it fail on a release that had published correctly, and reports the real cause when the window is exhausted. Documentation cites symbols instead of `file:line`, which had rotted to the point of naming a file the loopback bind had left.
 
 - Provider auto-enable: new `knownProviders` config key records which adapters the daemon has already considered; at every start each registered adapter (minus `manual`) absent from it is resolved on PATH and appended to both `enabledProviders` and `knownProviders` when found, so newly shipped adapters light up on upgrade whatever the channel. Absent binaries stay unknown for the next start, known-but-disabled providers are never re-added, and configs predating the key backfill the pre-0.0.24 five so `muse` reads as new. Raw-JSON persistence preserves unknown keys and writes only on change.
 - Post-update registration refresh: managed `quotacap update` takeovers reinstall the login service instead of only restarting it, regenerating the supervisor PATH from current provider locations via `install`'s existing idempotent comparison; the target version travels with the call because the update runs in the old binary.
