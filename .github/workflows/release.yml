@@ -299,11 +299,23 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.verify.outputs.version }}"
-          for attempt in 1 2 3 4 5; do
-            if npx --yes "quotacap@$version" version; then break; fi
-            echo "not on the registry yet, retrying in 15s"
-            sleep 15
+          # npm propagation is not instant and is not bounded by any promise
+          # we can rely on. v0.0.24 published fine and this step still failed:
+          # five tries over 60s was simply too short a window.
+          published=""
+          for attempt in $(seq 1 10); do
+            if npx --yes "quotacap@$version" version >/dev/null 2>&1; then
+              echo "on the registry after ${attempt} attempt(s)"
+              published=1
+              break
+            fi
+            echo "not on the registry yet (attempt ${attempt}/10), retrying in 30s"
+            sleep 30
           done
+          if [ -z "$published" ]; then
+            echo "::error::quotacap@$version did not appear on the registry within 5 minutes of publishing"
+            exit 1
+          fi
           test "$(npx --yes "quotacap@$version" version)" = "$version"
           npx --yes "quotacap@$version" --help | grep -q "Usage: quotacap"
           echo "published artifact verified"

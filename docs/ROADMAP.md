@@ -5,6 +5,8 @@
 * Provider naming standard — one server-side registry supplies `displayName`, `vendor`, `harness` and `description` per provider id, applied once in `buildSnapshot` and carried as additive output-only fields on `/api/state` and MCP `get_quotas`; CLI wide/narrow tables and MCP Markdown labels render display names, compact statuslines stay id-based, ids stay frozen as the contract, and the dashboard's private name map is retired (#52)
 * Provider adapter — Muse Code (`muse`): PTY scrape of the TUI `/usage` panel with a terminal capability-query responder and a two-phase submit in `runPty`, run credential-free in an empty QuotaCap-owned probe directory with auto-update disabled, weekly window to `usedPct` and rolling current window to `sessionPct`, fail-closed aborts on trust prompt, accidental model turn, and unavailable subscription; `enabledProviders` defaults to all six (#53)
 * Naming version skew — a CLI newer than a still-running daemon falls back to raw ids at the ingest boundary rather than crashing `status` in the column-width calculation (#54)
+* Provider display name overrides — user-set names per provider id resolved server-side as `user override → built-in registry → raw id`, editable via `providerNames` in config, `PATCH /api/providers/:id`, the `quotacap providers` CLI group, and click-to-rename in the dashboard drawer, with rendering-safety validation and raw-JSON persistence that preserves unrecognized config keys (#57)
+* npm package trimmed — compiled tests and a duplicate `dist/src/` no longer ship, bringing the tarball back under its 500 kB release budget (#59)
 
 ## Recently shipped — 0.0.22 — 2026-09-10
 

@@ -117,11 +117,11 @@ curl -X PATCH http://localhost:8787/api/providers/claude \
 
 ## Security
 
-QuotaCap is a local daemon. It binds to `127.0.0.1` only (`src/cli/index.ts:56`). It does not listen on `0.0.0.0`. There is no LAN surface.
+QuotaCap is a local daemon. It binds to `127.0.0.1` only (`src/runtime/service.ts` `app.listen`). It does not listen on `0.0.0.0`. There is no LAN surface.
 
 It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. It never reads `~/.config/muse/auth.json`, `~/.local/share/muse/sessions/`, or `~/.config/muse/tui-history.jsonl`. Each CLI owns its own session. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`, `muse`).
 
-It stores no `raw` provider payload. The `raw` column was dropped and migrated in `src/store/db.ts:37-48`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). History and the token live under `~/.quotacap/` with `0700` on the directory and `0600` on files.
+It stores no `raw` provider payload. The `raw` column was dropped and migrated in `src/store/db.ts` `migrate`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). History and the token live under `~/.quotacap/` with `0700` on the directory and `0600` on files.
 
 Every request checks `Host` and `Origin`. `Host` must be loopback (`127.0.0.1`, `localhost`, `[::1]`), otherwise `403`. `Origin` when present must be loopback, otherwise `403`. Absent `Origin` passes for `curl` and MCP. `POST /api/refresh` requires `X-QuotaCap-Token` matching `~/.quotacap/token` with `crypto.timingSafeEqual` (`src/http/server.ts:isValidToken`), otherwise `401`. `GET /assets/*` is rooted with `path.resolve` and a prefix check (`tests/http/api.test.ts`).
 
