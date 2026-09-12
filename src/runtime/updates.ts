@@ -150,6 +150,34 @@ export function releasesApiUrl(): string {
   return "https://api.github.com/repos/carlosboeing/quotacap/releases/latest";
 }
 
+// Default version endpoint: the releases page answers 302 to the latest tag
+// and sits outside the anonymous API rate-limit bucket shared with every
+// other API consumer on the machine.
+export function releasesPageUrl(): string {
+  return "https://github.com/carlosboeing/quotacap/releases/latest";
+}
+
+// Header read that tolerates real Headers and the plain-object headers that
+// hermetic fetch mocks use.
+function responseHeader(res: Response, name: string): string | null {
+  const headers = (res as { headers?: unknown }).headers;
+  if (!headers) return null;
+  if (typeof (headers as Headers).get === "function") {
+    return (headers as Headers).get(name);
+  }
+  if (typeof headers === "object") {
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === name && typeof v === "string") return v;
+    }
+  }
+  return null;
+}
+
+function tagFromReleaseUrl(location: string): string {
+  const m = /\/releases\/tag\/([^/?#]+)/.exec(location);
+  return m ? m[1] : "";
+}
+
 export function releaseDownloadBase(version: string): string {
   const base = process.env.QUOTACAP_RELEASE_BASE_URL?.replace(/\/+$/, "");
   if (base) return `${base}/download`;
@@ -158,31 +186,76 @@ export function releaseDownloadBase(version: string): string {
     : `https://github.com/carlosboeing/quotacap/releases/download/v${version}`;
 }
 
+export type LatestVersionResolution =
+  | { status: "ok"; release: ReleaseInfo }
+  | { status: "rate-limited"; resetsAtMs: number | null }
+  | { status: "unavailable" };
+
+function rateLimitOrUnavailable(res: Response): LatestVersionResolution {
+  if (responseHeader(res, "x-ratelimit-remaining") === "0") {
+    const reset = responseHeader(res, "x-ratelimit-reset");
+    const secs = reset !== null && reset.trim() !== "" ? Number(reset) : NaN;
+    return {
+      status: "rate-limited",
+      resetsAtMs: Number.isFinite(secs) ? secs * 1000 : null,
+    };
+  }
+  return { status: "unavailable" };
+}
+
+// Full resolution outcome: the release, a rate-limited response carrying its
+// reset time, or an undifferentiated failure. Never throws.
+export async function resolveLatestVersionDetailed(
+  opts: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
+): Promise<LatestVersionResolution> {
+  const fetchFn = opts.fetchFn ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const base = process.env.QUOTACAP_RELEASE_BASE_URL?.replace(/\/+$/, "");
+  try {
+    if (base) {
+      const res = await fetchFn(releasesApiUrl(), {
+        headers: { accept: "application/vnd.github+json" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as any;
+        const tag = typeof body?.tag_name === "string" ? body.tag_name : "";
+        const version = tag.startsWith("v") ? tag.slice(1) : tag;
+        if (parseVersion(version)) {
+          const url =
+            typeof body?.html_url === "string" && body.html_url
+              ? body.html_url
+              : "https://github.com/carlosboeing/quotacap/releases/latest";
+          return { status: "ok", release: { version, url } };
+        }
+      }
+      return rateLimitOrUnavailable(res);
+    }
+    const res = await fetchFn(releasesPageUrl(), {
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = responseHeader(res, "location") ?? "";
+      const tag = tagFromReleaseUrl(location);
+      const version = tag.startsWith("v") ? tag.slice(1) : tag;
+      if (tag && parseVersion(version)) {
+        return { status: "ok", release: { version, url: location } };
+      }
+    }
+    return rateLimitOrUnavailable(res);
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 // Latest published version, or null when the release cannot be resolved
-// (network failure, non-200, bad JSON, unparseable tag). Never throws.
+// (network failure, non-redirect, bad JSON, unparseable tag). Never throws.
 export async function resolveLatestVersion(
   opts: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<ReleaseInfo | null> {
-  const fetchFn = opts.fetchFn ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 10000;
-  try {
-    const res = await fetchFn(releasesApiUrl(), {
-      headers: { accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as any;
-    const tag = typeof body?.tag_name === "string" ? body.tag_name : "";
-    const version = tag.startsWith("v") ? tag.slice(1) : tag;
-    if (!parseVersion(version)) return null;
-    const url =
-      typeof body?.html_url === "string" && body.html_url
-        ? body.html_url
-        : "https://github.com/carlosboeing/quotacap/releases/latest";
-    return { version, url };
-  } catch {
-    return null;
-  }
+  const r = await resolveLatestVersionDetailed(opts);
+  return r.status === "ok" ? r.release : null;
 }
 
 export interface UpdateCache {

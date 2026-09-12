@@ -17,7 +17,7 @@ import { readClaim } from "../runtime/owner.js";
 import { compareVersions } from "../runtime/versions.js";
 import {
   detectChannel,
-  resolveLatestVersion,
+  resolveLatestVersionDetailed,
   updateNpm,
   updateStandalone,
   writeUpdateCache,
@@ -229,6 +229,18 @@ function stripV(v: string): string {
   return v.startsWith("v") ? v.slice(1) : v;
 }
 
+// A rate-limited response names its reset (local HH:MM) and the pin escape
+// hatch; every other failure keeps the generic network message.
+function rateLimitError(resetsAtMs: number | null): string {
+  const hint = "or run 'quotacap update --to <version>'";
+  if (resetsAtMs === null) {
+    return `GitHub's anonymous API rate limit is exhausted; retry later, ${hint}`;
+  }
+  const d = new Date(resetsAtMs);
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `GitHub's anonymous API rate limit is exhausted (resets ${hhmm}); retry then, ${hint}`;
+}
+
 export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps): void {
   const exit = deps?.exit ?? process.exit;
   const fetchFn = deps?.fetchFn ?? fetch;
@@ -274,14 +286,19 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
 
       const pin = typeof o.version === "string" && o.version ? stripV(o.version) : null;
       let latest: ReleaseInfo | null = null;
+      let rateLimited: { resetsAtMs: number | null } | null = null;
       try {
-        latest = await resolveLatestVersion({ fetchFn });
+        const resolved = await resolveLatestVersionDetailed({ fetchFn });
+        if (resolved.status === "ok") latest = resolved.release;
+        else if (resolved.status === "rate-limited") rateLimited = resolved;
       } catch {
         latest = null;
       }
       const target = pin ?? latest?.version ?? null;
       if (!target) {
-        const error = "could not resolve the latest release; check your network and retry";
+        const error = rateLimited
+          ? rateLimitError(rateLimited.resetsAtMs)
+          : "could not resolve the latest release; check your network and retry";
         if (asJson) {
           emit({
             channel,

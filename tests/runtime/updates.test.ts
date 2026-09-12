@@ -9,7 +9,9 @@ import {
   printUpdateFooter,
   readUpdateCache,
   refreshUpdateCache,
+  releasesPageUrl,
   resolveLatestVersion,
+  resolveLatestVersionDetailed,
   updateCacheStale,
   updateFooter,
   updateNpm,
@@ -185,14 +187,83 @@ describe("resolveLatestVersion", () => {
     return (async () => ({ ok, status, json: async () => body })) as unknown as typeof fetch;
   }
 
-  it("strips the leading v and keeps the release URL", async () => {
+  it("reads the tag from the redirect Location without following it", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const seen: Array<{ url: string; init: any }> = [];
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v0.0.25";
+    const r = await resolveLatestVersion({
+      fetchFn: (async (url: any, init: any) => {
+        seen.push({ url: String(url), init });
+        return { ok: false, status: 302, headers: { location } };
+      }) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ version: "0.0.25", url: location });
+    expect(seen).toHaveLength(1);
+    expect(seen[0].url).toBe(releasesPageUrl());
+    expect(seen[0].url).not.toContain("api.github.com");
+    expect(seen[0].init?.redirect).toBe("manual");
+  });
+
+  it("accepts real Headers and any 3xx with a tag Location", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v1.2.3";
+    const r = await resolveLatestVersion({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 301,
+        headers: new Headers({ location }),
+      })) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ version: "1.2.3", url: location });
+  });
+
+  it("returns null when the redirect is unusable, never throwing", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const redirectFetch = (status: number, location?: string) =>
+      (async () => ({
+        ok: status >= 200 && status < 300,
+        status,
+        headers: location ? { location } : {},
+      })) as unknown as typeof fetch;
+    // 200 with no redirect.
+    expect(await resolveLatestVersion({ fetchFn: redirectFetch(200) })).toBeNull();
+    // Redirect without a Location.
+    expect(await resolveLatestVersion({ fetchFn: redirectFetch(302) })).toBeNull();
+    // Location that is not a release tag.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: redirectFetch(302, "https://github.com/carlosboeing/quotacap"),
+      }),
+    ).toBeNull();
+    // Tag that is not a version.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: redirectFetch(
+          302,
+          "https://github.com/carlosboeing/quotacap/releases/tag/not-a-version",
+        ),
+      }),
+    ).toBeNull();
+    // Network failure.
+    expect(
+      await resolveLatestVersion({
+        fetchFn: (async () => {
+          throw new Error("boom");
+        }) as unknown as typeof fetch,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps the JSON behaviour when QUOTACAP_RELEASE_BASE_URL is set", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     const r = await resolveLatestVersion({
       fetchFn: fakeFetch({ tag_name: "v0.0.23", html_url: "https://x/notes" }),
     });
     expect(r).toEqual({ version: "0.0.23", url: "https://x/notes" });
   });
 
-  it("returns null when the release cannot be resolved", async () => {
+  it("returns null on the JSON path when the release cannot be resolved", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     expect(await resolveLatestVersion({ fetchFn: fakeFetch({}) })).toBeNull();
     expect(
       await resolveLatestVersion({ fetchFn: fakeFetch({ tag_name: "not-a-version" }) }),
@@ -220,6 +291,75 @@ describe("resolveLatestVersion", () => {
       timeoutMs: 100,
     });
     expect(seen).toEqual(["http://127.0.0.1:9/api/releases/latest"]);
+  });
+});
+
+describe("resolveLatestVersionDetailed", () => {
+  const RESET = 1786840560; // fixed unix seconds; expectations derive from it
+
+  function rateLimitedFetch(extraHeaders: Record<string, string> = {}) {
+    return (async () => ({
+      ok: false,
+      status: 403,
+      headers: {
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": String(RESET),
+        ...extraHeaders,
+      },
+    })) as unknown as typeof fetch;
+  }
+
+  it("reports ok with the parsed release", async () => {
+    delete process.env.QUOTACAP_RELEASE_BASE_URL;
+    const location = "https://github.com/carlosboeing/quotacap/releases/tag/v1.2.3";
+    const r = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 302,
+        headers: { location },
+      })) as unknown as typeof fetch,
+    });
+    expect(r).toEqual({ status: "ok", release: { version: "1.2.3", url: location } });
+  });
+
+  it("reports rate-limited with the reset time from headers", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const r = await resolveLatestVersionDetailed({ fetchFn: rateLimitedFetch() });
+    expect(r).toEqual({ status: "rate-limited", resetsAtMs: RESET * 1000 });
+  });
+
+  it("reports rate-limited without a reset when the header is missing or bad", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const missing = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 403,
+        headers: { "x-ratelimit-remaining": "0" },
+      })) as unknown as typeof fetch,
+    });
+    expect(missing).toEqual({ status: "rate-limited", resetsAtMs: null });
+    const bad = await resolveLatestVersionDetailed({
+      fetchFn: rateLimitedFetch({ "x-ratelimit-reset": "soon" }),
+    });
+    expect(bad).toEqual({ status: "rate-limited", resetsAtMs: null });
+  });
+
+  it("reports unavailable for generic failures, never throwing", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
+    const notFound = await resolveLatestVersionDetailed({
+      fetchFn: (async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })) as unknown as typeof fetch,
+    });
+    expect(notFound).toEqual({ status: "unavailable" });
+    const down = await resolveLatestVersionDetailed({
+      fetchFn: (async () => {
+        throw new Error("boom");
+      }) as unknown as typeof fetch,
+    });
+    expect(down).toEqual({ status: "unavailable" });
   });
 });
 
@@ -261,6 +401,7 @@ describe("update cache", () => {
   });
 
   it("refresh skips fresh caches, writes new ones, keeps old on failure", async () => {
+    process.env.QUOTACAP_RELEASE_BASE_URL = "http://127.0.0.1:9";
     const dir = tmpDir("qc-refresh-");
     try {
       const p = path.join(dir, "updates.json");
