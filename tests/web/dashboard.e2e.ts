@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +30,16 @@ async function stubFor(state: unknown, extra?: Omit<StubOptions, "state">): Prom
   return stub;
 }
 
-/** Private screenshot dir: the main checkout's workbench, never the branch. */
+/**
+ * Screenshots are test output, not documentation. They default to the
+ * gitignored `test-results/` scratch dir, per checkout so a worktree never
+ * writes into the main one.
+ *
+ * A workbench `assets/` folder holds assets that support a document — UX
+ * mocks and the like — so a test must not write there by default. It used to,
+ * at a hardcoded plan path, which overwrote committed doc assets on every run.
+ * Set QUOTACAP_ASSETS_DIR to refresh those deliberately.
+ */
 function assetsDir(): string {
   const override = process.env.QUOTACAP_ASSETS_DIR;
   if (override && override.length > 0) {
@@ -39,17 +47,7 @@ function assetsDir(): string {
     return override;
   }
   const specDir = path.dirname(fileURLToPath(import.meta.url));
-  const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    cwd: specDir,
-    encoding: "utf8",
-  }).trim();
-  const dir = path.join(
-    path.dirname(common),
-    ".workbench",
-    "3-plans",
-    "assets",
-    "2026-09-07-stable-c"
-  );
+  const dir = path.join(specDir, "..", "..", "test-results", "dashboard-screenshots");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
