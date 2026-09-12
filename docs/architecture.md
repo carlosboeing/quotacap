@@ -1,8 +1,8 @@
 ---
 title: QuotaCap architecture
 type: architecture
-authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)", "Gemini 3.7 Flash (agy)"]
-last_reviewed: 2026-09-02
+authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)", "Gemini 3.7 Flash (agy)", "Gemini 2.5 Pro (agy)"]
+last_reviewed: 2026-09-12
 scope: [quotacap, architecture, system]
 ---
 
@@ -24,7 +24,8 @@ Claude Code, Codex, Kimi Code, Grok, and Antigravity can expose multiple concurr
 |---|---|---|
 | Adapters | Poll one agent CLI for its current usage snapshot (% used, reset time, plan). `claude` and `agy` use `execFile`. `codex`, `kimi`, `grok` use a PTY. Each adapter fails closed. PTY adapters are TUI-fragile. Poll latency is 2–10 s. `agy` emits two rows: `agy` and `agy:3p`. | `src/adapters/claude.ts`, `agy.ts`, `codex.ts`, `kimi.ts`, `grok.ts`, `manual.ts`, `types.ts` |
 | PTY runner | Generic PTY session. It spawns via `node-pty`. It waits for readiness or a settle delay. It sends input with `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. | `src/adapters/pty.ts` |
-| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, and the 24-hour rolling usage pace. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts` |
+| Failure classifier | Pure allowlist classifier. Maps raw adapter failure evidence to safe diagnostic codes, summaries, and action guidance while stripping secrets, ANSI/OSC codes, paths, and control characters. | `src/diagnostics/failure.ts` |
+| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, the 24-hour rolling usage pace, and `adapter_attempts` with nullable diagnostic fields. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts`, `src/store/attempts.ts` |
 | Daemon | The poll loop. `pollOnce` every 15 minutes plus jitter. `Promise.allSettled` isolation. Single-instance `O_EXCL` pidfile with stale-steal. Pinned `claude` binary at start. Runs until SIGINT or SIGTERM. | `src/daemon.ts` |
 | Advisory engine | Target daily usage, recent or estimated pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
 | HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `GET /api/token`, `POST /api/refresh`, `/`, `/assets/*`. Bound to `127.0.0.1:8787`. `Host` and `Origin` allowlists. `X-QuotaCap-Token` on mutating routes. Rooted asset serving. | `src/http/server.ts` |
@@ -74,16 +75,23 @@ quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL,
 
 snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
           ideal_rate REAL, PRIMARY KEY(day, provider))
+
+adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL,
+                 completed_at TEXT NOT NULL, succeeded_at TEXT,
+                 success INTEGER NOT NULL, failure_category TEXT,
+                 diagnostic_code TEXT, summary TEXT, action TEXT,
+                 error_detail TEXT)
 ```
 
 - `quotas` is append-only polling history: one row per provider per poll. The recent usage pace is the percentage-point change over a rolling window of up to 24 hours. See `getBurnRates` in `src/store/quotas.ts`. The rolling window keeps calendar-day boundaries and poll timing from skewing it. The `raw` column was dropped in `src/store/db.ts:37-48`. A migration rebuilds an old `raw` table and preserves rows.
 - `snapshots` is the per-day roll-up that feeds the 7-day strip.
+- `adapter_attempts` records the latest poll attempt per provider with four nullable diagnostic fields (`diagnostic_code`, `summary`, `action`, `error_detail`). An idempotent `PRAGMA table_info` loop adds missing columns on legacy databases. Legacy attempt rows without diagnostic fields safely normalize to `null` on read, with `error` aliased to `error_detail`. Successful and skipped attempts clear diagnostic fields.
 - The `Quota` shape is `{ provider, plan, usedPct, sessionPct?, resetsAt, periodStart, source, fetchedAt, creditsUsd?, resetsAtEstimated? }`. No `raw` field crosses the store or API boundary (`src/store/quotas.ts:18`, `src/adapters/types.ts`). `ParsedQuota` keeps an in-memory `raw` slice for debugging only — PTY adapters (`codex`, `kimi`, `grok`) cap at 4096 chars, `claude`/`agy` keep the full CLI result. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`, `tests/store/db.test.ts`).
 
 ## Poll cycle
 
 1. The daemon wakes on the poll interval plus jitter, and on `POST /api/refresh` (60s debounce).
-2. `pollAll(enabledProviders)` runs each adapter isolated by `Promise.allSettled` with a per-adapter timeout. Timeouts are `claude` 8 s, `codex` 12 s, `kimi` 8 s, `grok` 14 s, `agy` 20 s (`src/adapters/index.ts:18`). A timeout or parse failure becomes a degraded row. It never becomes a misleading "0% used".
+2. `pollAll(enabledProviders)` runs each adapter isolated by `Promise.allSettled` with a per-adapter timeout. Timeouts are `claude` 8 s, `codex` 12 s, `kimi` 8 s, `grok` 14 s, `agy` 20 s (`src/adapters/index.ts:18`). On failure, runners capture bounded failure evidence — PTY runners capture one merged transcript (since terminal allocation has no separate stderr stream), and exec runners capture callback stderr and exit code metadata. All failures pass through the shared allowlist classifier (`src/diagnostics/failure.ts`) into canonical safe phrases and actionable guidance under the sanitized-output rule (secrets, tokens, paths, and arbitrary text omitted as `Unrecognized diagnostic text omitted`). A failure degrades the provider row fail-closed; it never becomes a misleading "0% used". Per-adapter outcome logs record timestamps, status, diagnostic codes, and safe details.
 3. Adapter mechanisms — credential-free, no token ownership:
    - `claude`, `agy`: use `execFile` with an argv list. No shell. `claude` is pinned at daemon start via `which claude` (`src/daemon.ts:resolveClaudeExecPath`). `claude` runs `claude -p /usage --output-format json`. `agy` runs `agy -p /usage --output-format json`. `claude` parses week and session percents. `agy` parses `groups[].buckets[]` JSON and emits two rows: `agy` and `agy:3p`. Both use `source: "cli"`.
    - `codex`, `kimi`, `grok`: use `runPty` (`src/adapters/pty.ts`). The runner spawns the CLI in a PTY via `node-pty`. It waits a settle delay (`codex` 2 s, `grok` 5 s) or a readiness regex (`kimi`). It writes `/status` or `/usage` plus `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. Parsers are TUI-fragile. A vendor text change breaks the regex. The row then degrades fail-closed until the pattern is fixed. Poll latency is 2–10 s. It dominates `POST /api/refresh` and the first poll. It does not affect the steady-state 15 m timer. These adapters use `source: "tui"`. They abort fail-closed on trust prompts without auto-trusting.
@@ -96,7 +104,7 @@ snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
 
 | Command | What it does | Example |
 |---|---|---|
-| `status [--json]` | Latest per-provider table: used, left, resets, days left, ideal burn, burn rate, waste. Reads the database; no network. | `quotacap status` |
+| `status [--json] [--verbose]` | Latest per-provider table: used, left, resets, days left, ideal burn, burn rate, waste. `--verbose` appends actionable guidance and diagnostics for failing adapters. Strictly read-only; never polls. | `quotacap status --verbose` |
 | `advise [--task <any\|heavy\|light>]` | "Use X next." HTTP API first, in-process fallback. | `quotacap advise --task heavy` |
 | `web [--port <n>]` | Serve the dashboard on :8787 and auto-start the daemon if none is running. | `quotacap web` |
 | `daemon [--foreground]` | Run the daemon in the foreground (default) and poll `enabledProviders`. | `quotacap daemon` |

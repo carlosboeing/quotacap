@@ -336,4 +336,83 @@ describe("cancellation reaches children", () => {
     await waitForPidDead(parseInt(fs.readFileSync(pid1, "utf8"), 10), 2000);
     await waitForPidDead(parseInt(fs.readFileSync(pid2, "utf8"), 10), 2000);
   }, 15000);
+
+  it("proves listener disposal, signal cleanup, and child unregistration on failure checkpoints", async () => {
+    const dir = mkHome();
+    const pidFile = path.join(dir, "timeout.pid");
+    const script = `
+import fs from 'node:fs';
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setInterval(()=>{}, 1000);
+`;
+    const scriptFile = path.join(dir, "hang.mjs");
+    fs.writeFileSync(scriptFile, script);
+
+    const controller1 = new AbortController();
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [scriptFile],
+        input: "",
+        readyRegex: /NEVER_READY/,
+        readyTimeoutMs: 150,
+        timeoutMs: 500,
+        signal: controller1.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: "DiagnosticError",
+      diagnostic: { diagnosticCode: "timeout" },
+    });
+    expect(liveChildCount()).toBe(0);
+
+    const trustScript = `process.stdout.write('Trust this folder?\\n'); setInterval(()=>{}, 1000);`;
+    const trustFile = path.join(dir, "trust.mjs");
+    fs.writeFileSync(trustFile, trustScript);
+
+    const controller2 = new AbortController();
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [trustFile],
+        input: "",
+        readyRegex: /READY/,
+        readyTimeoutMs: 500,
+        abortOn: /Trust this folder\?/i,
+        timeoutMs: 500,
+        signal: controller2.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: "DiagnosticError",
+      diagnostic: { diagnosticCode: "trust_prompt" },
+    });
+    expect(liveChildCount()).toBe(0);
+
+    const capScript = `
+process.stdout.write('READY\\n');
+const chunk = 'x'.repeat(1024);
+setInterval(() => {
+  process.stdout.write(chunk);
+}, 10);
+`;
+    const capFile = path.join(dir, "cap.mjs");
+    fs.writeFileSync(capFile, capScript);
+
+    const controller3 = new AbortController();
+    await expect(
+      runPty({
+        file: process.execPath,
+        args: [capFile],
+        readyRegex: /READY/,
+        readyTimeoutMs: 500,
+        input: "hi\\r",
+        timeoutMs: 500,
+        maxBytes: 1000,
+        signal: controller3.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: "DiagnosticError",
+      diagnostic: { diagnosticCode: "unknown" },
+    });
+    expect(liveChildCount()).toBe(0);
+  }, 15000);
 });

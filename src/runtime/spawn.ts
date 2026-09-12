@@ -3,6 +3,7 @@
 // AbortController per adapter id before invoking poll(); tracked exec/PTY
 // wrappers read the controller for their adapter id.
 import { execFile } from "node:child_process";
+import { diagnosticError } from "../diagnostics/failure.js";
 
 const installed = new Map<string, AbortSignal>();
 
@@ -84,14 +85,26 @@ export function trackedExecFile(
   opts?: TrackedExecOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   const signal = opts?.signal ?? adapterSignal(adapterId);
-  if (signal?.aborted) return Promise.reject(abortError(adapterId));
+  if (signal?.aborted) return Promise.reject(diagnosticError(abortError(adapterId), { source: "exec", checkpoint: "abort" }));
   return new Promise((resolve, reject) => {
     const { signal: _drop, ...execOpts } = opts ?? {};
     const child = execFile(file, args ?? [], execOpts, (err, stdout, stderr) => {
       unregister();
       if (signal) signal.removeEventListener("abort", onAbort);
-      if (err) reject(err);
-      else resolve({ stdout: stdout as string, stderr: stderr as string });
+      if (err) {
+        const exitCode = typeof (err as any).code === "number" ? (err as any).code : undefined;
+        reject(
+          diagnosticError(err, {
+            source: "exec",
+            checkpoint: signal?.aborted ? "abort" : undefined,
+            exitCode,
+            stderr: stderr as string,
+            stdout: stdout as string,
+          }),
+        );
+      } else {
+        resolve({ stdout: stdout as string, stderr: stderr as string });
+      }
     });
     const unregister = registerTrackedChild((sig) => {
       try {

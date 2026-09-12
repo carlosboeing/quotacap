@@ -103,3 +103,53 @@ setInterval(() => {}, 1000);
   },
   15000,
 );
+
+test(
+  "bun pty: safe DiagnosticError on terminal error with secret stripped",
+  async () => {
+    const fake = writeFake(`
+console.log("READY");
+let buf = "";
+process.stdin.on("data", (d) => {
+  buf += d.toString();
+  if (buf.includes("/check")) {
+    process.stderr.write("Error: stdin is not a terminal token=secret-bun-val\\n");
+    process.exit(1);
+  }
+});
+setInterval(() => {}, 1000);
+`);
+    let capturedParentStderr = "";
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as any).write = (chunk: any, ...args: any[]) => {
+      capturedParentStderr += String(chunk);
+      return (origStderrWrite as any)(chunk, ...args);
+    };
+
+    let capturedErr: any = null;
+    try {
+      await runPty({
+        file: "node",
+        args: [fake],
+        readyRegex: /READY/,
+        readyTimeoutMs: 5000,
+        input: "/check\r",
+        completionRegex: /COMPLETED/,
+        timeoutMs: 5000,
+      });
+    } catch (e: any) {
+      capturedErr = e;
+    } finally {
+      process.stderr.write = origStderrWrite;
+    }
+
+    expect(capturedErr).not.toBeNull();
+    expect(capturedErr.name).toBe("DiagnosticError");
+    expect(capturedErr.diagnostic.diagnosticCode).toBe("terminal_error");
+    expect(capturedErr.diagnostic.errorDetail).toContain("stdin is not a terminal");
+    expect(JSON.stringify(capturedErr)).not.toContain("secret-bun-val");
+    expect(capturedErr.message).not.toContain("secret-bun-val");
+    expect(capturedParentStderr).not.toContain("secret-bun-val");
+  },
+  15000,
+);

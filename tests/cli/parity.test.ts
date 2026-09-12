@@ -13,6 +13,10 @@ import {
   renderWide,
 } from "../../src/format/terminal.js";
 import { renderMarkdownTable, renderRecommendationSummary } from "../../src/format/markdown.js";
+import { renderIssues } from "../../src/format/issues.js";
+import { openDb, migrate } from "../../src/store/db.js";
+import { upsertQuota } from "../../src/store/quotas.js";
+import { recordAttempt, getAttempt } from "../../src/store/attempts.js";
 import { handleTool } from "../../src/mcp/server.js";
 import {
   FIXED_NOW,
@@ -248,3 +252,101 @@ for (const [name, snap, snapJson] of FIXTURES) {
     });
   });
 }
+
+describe("parity: provider-error observability", () => {
+  const failedSnapshot = (): StateSnapshot => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const codex = s.providers.find((p: any) => p.id === "codex");
+    codex.reporting = false;
+    codex.exclusionReason = "provider-failed";
+    codex.lastAttempt = {
+      provider: "codex",
+      attemptedAt: FIXED_NOW.toISOString(),
+      completedAt: FIXED_NOW.toISOString(),
+      succeededAt: null,
+      success: false,
+      failureCategory: "unknown",
+      diagnosticCode: "terminal_error",
+      summary: "Unable to open Codex session",
+      action: "Open Codex directly in your terminal to check whether it starts.",
+      errorDetail: "pty exited during settle (code 1): stdin is not a terminal",
+    };
+    return s;
+  };
+
+  let closeServer: () => Promise<void>;
+  beforeEach(async () => {
+    const server = http.createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(failedSnapshot()));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    closeServer = () =>
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+  });
+  afterEach(async () => {
+    await closeServer();
+  });
+
+  it("maintains detail parity across stored db, HTTP state, verbose CLI, and MCP", async () => {
+    const snap = failedSnapshot();
+    const codexAttempt = snap.providers.find((p) => p.id === "codex")!.lastAttempt!;
+
+    // 1. Stored state
+    const db = openDb(":memory:");
+    migrate(db);
+    upsertQuota(db, {
+      provider: "codex",
+      plan: "p",
+      source: "cli",
+      usedPct: 40,
+      resetsAt: "2026-09-14T06:00:00+10:00",
+      periodStart: "2026-08-31T06:00:00+10:00",
+      fetchedAt: FIXED_NOW.toISOString(),
+    });
+    recordAttempt(db, codexAttempt);
+    const stored = getAttempt(db, "codex")!;
+    expect(stored.diagnosticCode).toBe(codexAttempt.diagnosticCode);
+    expect(stored.summary).toBe(codexAttempt.summary);
+    expect(stored.action).toBe(codexAttempt.action);
+    expect(stored.errorDetail).toBe(codexAttempt.errorDetail);
+    db.close();
+
+    // 2. HTTP state
+    const res = await fetch(`${process.env.QUOTACAP_URL}/api/state`);
+    const httpSnap: StateSnapshot = (await res.json()) as StateSnapshot;
+    const httpAttempt = httpSnap.providers.find((p) => p.id === "codex")!.lastAttempt!;
+    expect(httpAttempt).toEqual(codexAttempt);
+
+    // 3. Verbose CLI
+    const issues = renderIssues(snap, false);
+    expect(issues).toContain(`• codex: ${codexAttempt.summary}`);
+    expect(issues).toContain(`  Action: ${codexAttempt.action}`);
+    expect(issues).toContain(`  Detail: ${codexAttempt.errorDetail}`);
+    const wide = renderWide(snap, { now: FIXED_NOW });
+    expect(wide).toContain(codexAttempt.summary);
+
+    // 4. MCP
+    const mcpForecast: any = await handleTool("forecast", { provider: "codex" });
+    const forecastBody = JSON.parse(mcpForecast.content[0].text);
+    expect(forecastBody.lastAttempt).toEqual(codexAttempt);
+    expect(forecastBody.forecast).toBe(codexAttempt.summary);
+
+    const mcpQuotas: any = await handleTool("get_quotas", {});
+    expect(mcpQuotas.content[0].text).toContain(codexAttempt.summary!);
+
+    // 5. Leak check: no raw secret in any surface
+    const secret = "private-value";
+    for (const surface of [
+      JSON.stringify(stored),
+      JSON.stringify(httpSnap),
+      issues,
+      wide,
+      JSON.stringify(forecastBody),
+      mcpQuotas.content[0].text,
+    ]) {
+      expect(surface).not.toContain(secret);
+    }
+  });
+});

@@ -7,6 +7,10 @@ import {
   getAttempt,
   type FailureCategory,
 } from "../store/attempts.js";
+import {
+  classifyFailure,
+  type DiagnosticCode,
+} from "../diagnostics/failure.js";
 
 export class ServiceClosing extends Error {
   constructor(message = "service is closing") {
@@ -24,9 +28,20 @@ export interface PollRow {
 
 export type PollFn = (enabled: string[]) => Promise<PollRow[]>;
 
+export interface RejectedAttempt {
+  provider: string;
+  reason: string;
+  category: Exclude<FailureCategory, null | "skipped">;
+  diagnosticCode: DiagnosticCode;
+  summary: string;
+  action: string;
+  errorDetail: string;
+  error: string;
+}
+
 export interface RefreshResult {
   fulfilled: any[];
-  rejected: { provider: string; reason: string }[];
+  rejected: RejectedAttempt[];
   lastPollAt: string;
   results: PollRow[];
   degraded: boolean;
@@ -67,41 +82,7 @@ function defaultPollFn(enabled: string[]): Promise<PollRow[]> {
 }
 
 export function mapFailureCategory(reason: unknown): Exclude<FailureCategory, null> {
-  const msg = String((reason as any)?.message ?? reason).toLowerCase();
-  const name = String((reason as any)?.name ?? "");
-  if (
-    name === "AbortError" ||
-    msg.includes("abort") ||
-    msg.includes("timeout") ||
-    msg.includes("timed out")
-  ) {
-    return "timeout";
-  }
-  if (
-    msg.includes("login") ||
-    msg.includes("logged in") ||
-    msg.includes("logged out") ||
-    msg.includes("unauthorized") ||
-    msg.includes("unauthorised") ||
-    msg.includes("forbidden") ||
-    msg.includes("credential") ||
-    msg.includes("authentication")
-  ) {
-    return "auth";
-  }
-  if (name === "SyntaxError" || msg.includes("parse") || msg.includes("syntax")) {
-    return "parse";
-  }
-  if (
-    msg.includes("enotfound") ||
-    msg.includes("econnrefused") ||
-    msg.includes("etimedout") ||
-    msg.includes("eai_again") ||
-    msg.includes("fetch failed")
-  ) {
-    return "network";
-  }
-  return "unknown";
+  return classifyFailure("Provider", reason).category;
 }
 
 export function createCoordinator(opts: CoordinatorOptions): Coordinator {
@@ -127,9 +108,10 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      void scheduledTick().catch((e) =>
-        console.warn("[quotacap] scheduled poll failed", e?.message ?? String(e)),
-      );
+      void scheduledTick().catch((e) => {
+        const detail = classifyFailure("all", e).errorDetail;
+        console.warn("[quotacap] scheduled poll failed", detail);
+      });
     }, intervalMs);
   }
 
@@ -143,25 +125,50 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
       onOwnershipLost();
       throw new ServiceClosing("ownership lost");
     }
+
     const fulfilled = rows
       .filter((r) => r.status === "fulfilled")
       .map((r) => r.value);
-    const rejected = rows
-      .filter((r) => r.status === "rejected")
-      .map((r) => ({
-        provider: r.provider,
-        reason: String((r.reason as any)?.message ?? r.reason),
-      }));
+
+    const rejected: RejectedAttempt[] = [];
+    const sanitizedResults: PollRow[] = [];
+    const diagnosisMap = new Map<string, ReturnType<typeof classifyFailure>>();
+
+    for (const r of rows) {
+      if (r.status === "rejected") {
+        const diagnosis = classifyFailure(r.provider, r.reason);
+        diagnosisMap.set(r.provider, diagnosis);
+        sanitizedResults.push({
+          provider: r.provider,
+          status: "rejected",
+          reason: diagnosis.errorDetail,
+        });
+        rejected.push({
+          provider: r.provider,
+          reason: diagnosis.errorDetail,
+          category: diagnosis.category,
+          diagnosticCode: diagnosis.diagnosticCode,
+          summary: diagnosis.summary,
+          action: diagnosis.action,
+          errorDetail: diagnosis.errorDetail,
+          error: diagnosis.errorDetail,
+        });
+      } else {
+        sanitizedResults.push(r);
+      }
+    }
+
     const result: RefreshResult = {
       fulfilled,
       rejected,
       lastPollAt: completedAt,
-      results: rows,
+      results: sanitizedResults,
       degraded: rejected.length > 0,
       shared: false,
       cooldown: false,
     };
     if (closing) return result;
+
     for (const row of rows) {
       if (row.status === "fulfilled") {
         upsertQuota(db, row.value);
@@ -173,6 +180,12 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
           success: true,
           failureCategory: null,
         });
+        const usedPct = row.value?.usedPct;
+        const pctSuffix =
+          typeof usedPct === "number" && Number.isFinite(usedPct)
+            ? ` (${usedPct}% used)`
+            : "";
+        console.log(`[${completedAt}] [quotacap] [${row.provider}] poll succeeded${pctSuffix}`);
       } else if (row.status === "skipped") {
         recordAttempt(db, {
           provider: row.provider,
@@ -182,7 +195,10 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
           success: true,
           failureCategory: "skipped",
         });
+        console.log(`[${completedAt}] [quotacap] [${row.provider}] poll skipped`);
       } else {
+        const diagnosis =
+          diagnosisMap.get(row.provider) ?? classifyFailure(row.provider, row.reason);
         const prev = getAttempt(db, row.provider);
         recordAttempt(db, {
           provider: row.provider,
@@ -190,8 +206,15 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
           completedAt,
           succeededAt: prev?.succeededAt ?? null,
           success: false,
-          failureCategory: mapFailureCategory(row.reason),
+          failureCategory: diagnosis.category,
+          diagnosticCode: diagnosis.diagnosticCode,
+          summary: diagnosis.summary,
+          action: diagnosis.action,
+          errorDetail: diagnosis.errorDetail,
         });
+        console.log(
+          `[${completedAt}] [quotacap] [${row.provider}] poll failed (${diagnosis.diagnosticCode}): ${diagnosis.summary}: ${diagnosis.errorDetail}`,
+        );
       }
     }
     lastResult = result;
@@ -244,9 +267,10 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
     } catch (e: any) {
       // A discarded failure leaves lastCompletedPollAt unchanged with no
       // diagnostic, so repeated failures serve stale data and say nothing.
+      const detail = classifyFailure("all", e).errorDetail;
       console.warn(
         "[quotacap] scheduled poll failed",
-        e?.message ?? String(e),
+        detail,
       );
     } finally {
       // Rearming stays outside the failure path: one bad generation must not

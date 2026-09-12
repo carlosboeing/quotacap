@@ -21,7 +21,9 @@ import {
   createCoordinator,
   ServiceClosing,
   type Coordinator,
+  type RejectedAttempt,
 } from "../runtime/poll.js";
+import { classifyFailure } from "../diagnostics/failure.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -213,14 +215,26 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
         return reply.status(503).send({ error: "service unavailable: closing" });
       }
       const st = ctx.coordinator.getState();
+      const diagnosis = classifyFailure("all", e);
+      const rejection: RejectedAttempt = {
+        provider: "all",
+        reason: diagnosis.errorDetail,
+        category: diagnosis.category,
+        diagnosticCode: diagnosis.diagnosticCode,
+        summary: diagnosis.summary,
+        action: diagnosis.action,
+        errorDetail: diagnosis.errorDetail,
+        error: diagnosis.errorDetail,
+      };
       return {
         fulfilled: [],
-        rejected: [{ provider: "all", reason: String(e?.message ?? e) }],
+        rejected: [rejection],
         lastPollAt: st.lastCompletedPollAt,
+        results: [{ provider: "all", status: "rejected", reason: diagnosis.errorDetail }],
         degraded: true,
         shared: false,
         cooldown: false,
-        error: String(e?.message ?? e),
+        error: diagnosis.errorDetail,
       };
     }
   });

@@ -327,7 +327,7 @@ describe("status wiring", () => {
     createClient: () => ({
       get: async () => servedState(),
       post: async () => {
-        throw new Error("unused");
+        throw new Error("status must not call client.post");
       },
     }),
     openDb: () => {
@@ -588,5 +588,128 @@ describe("status wiring", () => {
     } finally {
       if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
     }
+  });
+
+  describe("status --verbose with provider diagnostics", () => {
+    const failedServedState = () => {
+      const s = JSON.parse(exampleStateSnapshotJson);
+      const codex = s.providers.find((p: any) => p.id === "codex");
+      codex.reporting = false;
+      codex.exclusionReason = "provider-failed";
+      codex.lastAttempt = {
+        provider: "codex",
+        attemptedAt: FIXED_NOW.toISOString(),
+        completedAt: FIXED_NOW.toISOString(),
+        succeededAt: null,
+        success: false,
+        failureCategory: "unknown",
+        diagnosticCode: "terminal_error",
+        summary: "Unable to open Codex session",
+        action: "Open Codex directly in your terminal to check whether it starts.",
+        errorDetail: "pty exited during settle (code 1): stdin is not a terminal",
+      };
+      return s;
+    };
+
+    const failedDeps = (stateOverride?: any, clientDeps?: Partial<ClientCommandDeps>) =>
+      onlineDeps({
+        createClient: () => ({
+          get: async () => stateOverride ?? failedServedState(),
+          post: async () => {
+            throw new Error("status must not call client.post");
+          },
+        }),
+        ...clientDeps,
+      });
+
+    it("does not render issues in normal wide mode without --verbose", async () => {
+      await runWired(["status"], failedDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain("Unable to open Codex session");
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("does not render issues in narrow mode without --verbose", async () => {
+      await runWired(["status"], failedDeps(undefined, { resolveWidth: () => ({ columns: 80, tty: true }) }));
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain("Unable to open Codex session");
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("renders bullet issues with a blank line separator under --verbose in wide mode", async () => {
+      await runWired(["status", "--verbose"], failedDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toContain("PROVIDER");
+      expect(logs[0]).toContain("Unable to open Codex session");
+      expect(logs[1]).toBe(
+        "\nAdapter issues:\n• codex: Unable to open Codex session\n  Action: Open Codex directly in your terminal to check whether it starts.\n  Detail: pty exited during settle (code 1): stdin is not a terminal",
+      );
+    });
+
+    it("renders hyphen marker under --verbose and --ascii", async () => {
+      await runWired(["status", "--verbose", "--ascii"], failedDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(2);
+      expect(logs[1]).toBe(
+        "\nAdapter issues:\n- codex: Unable to open Codex session\n  Action: Open Codex directly in your terminal to check whether it starts.\n  Detail: pty exited during settle (code 1): stdin is not a terminal",
+      );
+    });
+
+    it("does not render issues under --verbose with --json", async () => {
+      await runWired(["status", "--verbose", "--json"], failedDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      const parsed = JSON.parse(logs[0]);
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("does not render issues under --verbose with --compact", async () => {
+      await runWired(["status", "--verbose", "--compact"], failedDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain("[codex:");
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("does not render issues under --verbose when failed provider is disabled", async () => {
+      const state = failedServedState();
+      state.providers.find((p: any) => p.id === "codex").enabled = false;
+      await runWired(["status", "--verbose"], failedDeps(state));
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("does not render issues under --verbose when there are no failures", async () => {
+      await runWired(["status", "--verbose"], onlineDeps());
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).not.toContain("Adapter issues:");
+    });
+
+    it("renders fallback wording for legacy failed attempt without diagnostic fields under --verbose", async () => {
+      const state = JSON.parse(exampleStateSnapshotJson);
+      const kimi = state.providers.find((p: any) => p.id === "kimi");
+      kimi.reporting = false;
+      kimi.exclusionReason = "provider-failed";
+      kimi.lastAttempt = {
+        provider: "kimi",
+        attemptedAt: FIXED_NOW.toISOString(),
+        completedAt: FIXED_NOW.toISOString(),
+        succeededAt: null,
+        success: false,
+        failureCategory: "auth",
+      };
+      await runWired(["status", "--verbose"], failedDeps(state));
+      expect(exitCode).toBeUndefined();
+      expect(logs).toHaveLength(2);
+      expect(logs[1]).toBe(
+        "\nAdapter issues:\n• kimi: provider failed (auth)\n  Detail: No diagnostic detail was recorded for this attempt.",
+      );
+    });
   });
 });

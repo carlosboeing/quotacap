@@ -97,6 +97,7 @@ export async function handleTool(name:string, args:any){
       exclusionReason: ps.exclusionReason,
       state: stateWord(ps),
       forecast: forecastText(ps, new Date()),
+      lastAttempt: ps.lastAttempt,
     };
     return { content: [{ type:"text", text: JSON.stringify(body, null, 2) }] };
   }

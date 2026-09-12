@@ -60,6 +60,7 @@
 * `quotacap update` with channel detection, passive daily signals, CLI footer + API + dashboard badge
 * Daemon takeover on version skew, wedged recovery without PID killing, Linux systemd user unit
 * Bun PTY genuine terminal and Grok reset parsing ([#42](https://github.com/carlosboeing/quotacap/issues/42)), npm `postinstall` removal
+* Provider error observability — safe bounded diagnostics, sanitized failure classifier, attempt persistence, verbose CLI status guidance, and MCP parity
 
 ## Next
 

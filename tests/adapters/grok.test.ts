@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseGrokTui, grokAdapter } from "../../src/adapters/grok.js";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
+import { classifyFailure } from "../../src/diagnostics/failure.js";
 import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
@@ -105,6 +106,25 @@ describe("parseGrokTui", () => {
   it("throws when resets timestamp malformed", () => {
     const txt = grokFixture({ reset: "Resets: bad date" });
     expect(() => parseGrokTui(txt, new Date())).toThrow(/resets/i);
+  });
+
+  it("throws bad resets timestamp for genuinely invalid reset forms and classifies as parse_error", () => {
+    const invalidForms = ["Resets: September 99,99:99", "Resets: someday-ish"];
+    for (const reset of invalidForms) {
+      const txt = grokFixture({ reset });
+      let thrown: any = null;
+      try {
+        parseGrokTui(txt, new Date());
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).not.toBeNull();
+      expect(thrown.message).toMatch(/bad resets timestamp/i);
+      const classified = classifyFailure("grok", thrown);
+      expect(classified.diagnosticCode).toBe("parse_error");
+      expect(classified.category).toBe("parse");
+      expect(classified.summary).toBe("Unable to read Grok usage");
+    }
   });
 
   it("raw is capped and contains cleaned transcript", () => {

@@ -40,3 +40,38 @@ describe("session_pct migration", () => {
     expect(JSON.stringify(db.prepare(`SELECT * FROM quotas`).all())).not.toContain("secret");
   });
 });
+
+describe("adapter_attempts migration", () => {
+  it("upgrades a pre-observability database preserving rows and retaining legacy parse", () => {
+    const db = openDb(":memory:");
+    // Create pre-observability schema directly
+    db.exec(`CREATE TABLE adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT)`);
+    db.exec(`INSERT INTO adapter_attempts(provider, attempted_at, completed_at, succeeded_at, success, failure_category)
+      VALUES('kimi', '2026-09-07T06:00:00Z', '2026-09-07T06:00:05Z', NULL, 0, 'parse')`);
+
+    migrate(db);
+    migrate(db); // Idempotent
+
+    const cols = (db.prepare(`PRAGMA table_info(adapter_attempts)`).all() as any[]).map((c: any) => c.name);
+    for (const col of ["diagnostic_code", "summary", "action", "error_detail"]) {
+      expect(cols).toContain(col);
+    }
+
+    const row = db.prepare(`SELECT * FROM adapter_attempts WHERE provider='kimi'`).get() as any;
+    expect(row.failure_category).toBe("parse");
+    expect(row.diagnostic_code).toBeNull();
+    expect(row.summary).toBeNull();
+    expect(row.action).toBeNull();
+    expect(row.error_detail).toBeNull();
+  });
+
+  it("repeated migration idempotency on fresh database", () => {
+    const db = openDb(":memory:");
+    migrate(db);
+    migrate(db);
+    const cols = (db.prepare(`PRAGMA table_info(adapter_attempts)`).all() as any[]).map((c: any) => c.name);
+    for (const col of ["diagnostic_code", "summary", "action", "error_detail"]) {
+      expect(cols).toContain(col);
+    }
+  });
+});

@@ -7,6 +7,7 @@
 - Update: `quotacap update` with install-channel detection (standalone swap, npm reinstall, print-only brew/pnpm/yarn guidance), `--check`/`--json`, a passive daily `updates.json` signal surfaced in CLI footers, `/api/state`, and a dashboard badge — never silent auto-update.
 - Runtime: CLI newer than the daemon takes over via managed restart or graceful `/api/restart` handoff instead of exit 2; wedged daemons print PID-free recovery instructions; Linux gains a systemd user unit mirroring the macOS LaunchAgent; bootstrap retries across the launchd teardown window.
 - PTY: Bun-spawned adapters get a genuine terminal (`terminal` option verified on Bun 1.3.11), fixing `stdin is not a terminal` (#42); Grok reset timestamps parse without a space after the comma; npm `postinstall` removed with best-effort `spawn-helper` permission repair at load.
+- Observability: provider error diagnostics and verbose status — captures bounded failure evidence from PTY (merged transcript) and exec (stderr and status) runners through a strict allowlist classifier with canonical safe phrases and secret omission; persists nullable diagnostic fields on attempt records with backward-compatible PRAGMA migration and clear-on-success; exposes diagnostics via `status --verbose` (strictly read-only) and MCP `forecast`; logs sanitized, timestamped outcome lines per adapter.
 
 ## 0.0.22
 

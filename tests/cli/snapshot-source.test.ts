@@ -9,6 +9,7 @@ import {
 } from "../../src/advisory/snapshot.js";
 import { createServiceClient, ServiceError, ServiceUnavailable } from "../../src/runtime/client.js";
 import { VERSION } from "../../src/version.js";
+import { openDb } from "../../src/store/db.js";
 import {
   ClientError,
   emptySnapshot,
@@ -175,6 +176,41 @@ describe("offline fallback (D3, D10)", () => {
     } finally {
       db.close();
     }
+  });
+
+  it("reads pre-observability schema offline without migrating and leaves file byte-identical", async () => {
+    const dbPath = tmpDb("pre-observability.db");
+    const db = openDb(dbPath);
+    db.exec(`CREATE TABLE quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
+             CREATE TABLE snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
+             CREATE TABLE adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT);
+             CREATE INDEX idx_quotas_provider ON quotas(provider);`);
+    db.exec(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, session_pct)
+             VALUES('kimi', 'p', 30, '2026-09-14T06:00:00+10:00', '2026-08-31T06:00:00+10:00', 'cli', '${FIXED_NOW.toISOString()}', 10)`);
+    db.exec(`INSERT INTO adapter_attempts(provider, attempted_at, completed_at, succeeded_at, success, failure_category)
+             VALUES('kimi', '${FIXED_NOW.toISOString()}', '${FIXED_NOW.toISOString()}', NULL, 0, 'parse')`);
+    db.close();
+
+    const before = fs.readFileSync(dbPath);
+    const resolved = await resolveSnapshot({
+      client: createServiceClient({ port: await closedPort(), timeoutMs: 1000 }),
+      dbPath,
+      enabledProviders: ["kimi"],
+      now: FIXED_NOW,
+    });
+
+    expect(resolved.source).toBe("offline");
+    const kimi = resolved.snapshot.providers.find((p) => p.id === "kimi")!;
+    expect(kimi.lastAttempt?.failureCategory).toBe("parse");
+    expect(kimi.lastAttempt?.diagnosticCode).toBeNull();
+    expect(kimi.lastAttempt?.summary).toBeNull();
+    expect(kimi.lastAttempt?.action).toBeNull();
+    expect(kimi.lastAttempt?.errorDetail).toBeNull();
+    expect(kimi.lastAttempt?.error).toBeNull();
+
+    expect(fs.readFileSync(dbPath).equals(before)).toBe(true);
+    expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
   });
 });
 
