@@ -927,6 +927,12 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: var(--t-2);
   font-weight: 600;
   white-space: nowrap;
+  /* Display names are user-overridable up to 32 chars. Bound the pill so a
+     long one cannot shove its neighbours off the rail; the tooltip and the
+     aria-label both carry the full name. */
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: 1px solid var(--pin-border, var(--line-strong));
   border-radius: 999px;
   padding: 3px 10px;
