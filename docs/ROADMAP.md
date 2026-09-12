@@ -1,6 +1,6 @@
 # QuotaCap Roadmap
 
-## Unreleased
+## Recently shipped — 0.0.24 — 2026-09-12 (provider naming & Muse Code)
 
 * Provider naming standard — one server-side registry supplies `displayName`, `vendor`, `harness` and `description` per provider id, applied once in `buildSnapshot` and carried as additive output-only fields on `/api/state` and MCP `get_quotas`; CLI wide/narrow tables and MCP Markdown labels render display names, compact statuslines stay id-based, ids stay frozen as the contract, and the dashboard's private name map is retired (#52)
 * Provider adapter — Muse Code (`muse`): PTY scrape of the TUI `/usage` panel with a terminal capability-query responder and a two-phase submit in `runPty`, run credential-free in an empty QuotaCap-owned probe directory with auto-update disabled, weekly window to `usedPct` and rolling current window to `sessionPct`, fail-closed aborts on trust prompt, accidental model turn, and unavailable subscription; `enabledProviders` defaults to all six (#53)
