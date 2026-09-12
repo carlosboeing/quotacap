@@ -20,6 +20,7 @@ import {
   PROVIDER_BINS,
   buildChildPath,
   defaultWaitReady,
+  defaultWaitReleased,
   defaultWhich,
   formatMissingProviders,
   formatStatus,
@@ -47,6 +48,7 @@ export interface SystemdDeps {
   runSystemctl?: (args: string[]) => string;
   which?: (bin: string) => string | null;
   waitReady?: (port: number) => Promise<boolean>;
+  waitReleased?: (port: number) => Promise<boolean>;
   print?: (msg: string) => void;
   error?: (msg: string) => void;
   now?: () => Date;
@@ -321,6 +323,15 @@ export async function restart(deps: SystemdDeps = {}): Promise<void> {
     return;
   }
   await stop(deps);
+  // systemctl stop can return before the port is released; same race as launchd.
+  // deps.port mirrors start(): tests must never probe the real daemon's port.
+  const port = deps.port ?? (await readConfig()).port;
+  const waitReleased = deps.waitReleased ?? defaultWaitReleased;
+  if (!(await waitReleased(port))) {
+    (deps.print ?? console.log)(
+      `port ${port} is still in use after stopping; starting anyway`,
+    );
+  }
   await start(deps);
 }
 

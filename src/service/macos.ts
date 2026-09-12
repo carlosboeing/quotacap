@@ -34,6 +34,7 @@ export interface ServiceDeps {
   which?: (bin: string) => string | null;
   lintPlist?: (plistFile: string) => void;
   waitReady?: (port: number) => Promise<boolean>;
+  waitReleased?: (port: number) => Promise<boolean>;
   print?: (msg: string) => void;
   error?: (msg: string) => void;
   now?: () => Date;
@@ -95,6 +96,28 @@ export async function defaultWaitReady(port: number, timeoutMs = 15000): Promise
       if (h?.ok && h?.ready) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+/**
+ * `launchctl bootout` and `systemctl --user stop` both return before the job
+ * has actually gone, so a restart that starts immediately races the dying
+ * process for the port: the replacement fails to bind and the restart reports
+ * "did not become ready". Wait until nothing answers on the port.
+ *
+ * Resolves true as soon as the port is free, false if it never frees.
+ */
+export async function defaultWaitReleased(port: number, timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  const client = createServiceClient({ port, timeoutMs: 500 });
+  while (Date.now() < deadline) {
+    try {
+      await client.get("/health");
+    } catch {
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 250));
   }
   return false;
 }
@@ -513,6 +536,16 @@ export async function restart(deps: ServiceDeps = {}): Promise<void> {
     return;
   }
   await stop(deps);
+  // bootout is asynchronous: without this the replacement races the dying
+  // process for the port and start() fails its readiness check.
+  // deps.port keeps tests off the real daemon's port.
+  const port = deps.port ?? (await readConfig()).port;
+  const waitReleased = deps.waitReleased ?? defaultWaitReleased;
+  if (!(await waitReleased(port))) {
+    (deps.print ?? console.log)(
+      `port ${port} is still in use after stopping; starting anyway`,
+    );
+  }
   await start(deps);
 }
 
