@@ -339,9 +339,7 @@ function buildPrefix(
 
 export function diagnosticError(reason: unknown, evidence?: FailureEvidence): DiagnosticError {
   if (reason instanceof DiagnosticError) {
-    if (!evidence) {
-      return reason;
-    }
+    return reason;
   }
 
   let errorName = "";
@@ -391,16 +389,7 @@ export function diagnosticError(reason: unknown, evidence?: FailureEvidence): Di
 
   const cleanText = stripAnsiAndControls(combinedEvidenceText);
 
-  // If reason is already DiagnosticError, reuse its diagnosticCode
-  let match: MatchResult;
-  if (reason instanceof DiagnosticError) {
-    match = {
-      code: reason.diagnostic.diagnosticCode,
-      phrase: reason.diagnostic.errorDetail,
-    };
-  } else {
-    match = matchPrecedence(evidence, errorName, errorCode, cleanText);
-  }
+  const match = matchPrecedence(evidence, errorName, errorCode, cleanText);
 
   const prefix = buildPrefix(evidence?.source, checkpoint, exitCode, durationMs);
 

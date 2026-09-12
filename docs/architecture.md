@@ -77,7 +77,7 @@ snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL,
           ideal_rate REAL, PRIMARY KEY(day, provider))
 
 adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL,
-                 completed_at TEXT NOT NULL, succeeded_at TEXT,
+                 completed_at TEXT, succeeded_at TEXT,
                  success INTEGER NOT NULL, failure_category TEXT,
                  diagnostic_code TEXT, summary TEXT, action TEXT,
                  error_detail TEXT)

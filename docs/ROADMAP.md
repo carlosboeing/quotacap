@@ -60,10 +60,10 @@
 * `quotacap update` with channel detection, passive daily signals, CLI footer + API + dashboard badge
 * Daemon takeover on version skew, wedged recovery without PID killing, Linux systemd user unit
 * Bun PTY genuine terminal and Grok reset parsing ([#42](https://github.com/carlosboeing/quotacap/issues/42)), npm `postinstall` removal
-* Provider error observability — safe bounded diagnostics, sanitized failure classifier, attempt persistence, verbose CLI status guidance, and MCP parity
 
 ## Next
 
+* Provider error observability — safe bounded diagnostics, sanitized failure classifier, attempt persistence, verbose CLI status guidance, and MCP parity
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)

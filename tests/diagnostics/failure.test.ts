@@ -306,9 +306,14 @@ describe("diagnostic boundary and failure classification", () => {
       abortErr.name = "AbortError";
       const err = diagnosticError(abortErr);
       expect(err.diagnostic.diagnosticCode).toBe("timeout");
-      // Re-wrapping DiagnosticError preserves its diagnostic code
+      // Re-wrapping DiagnosticError returns original instance unchanged, preventing prefix doubling
       const err2 = diagnosticError(err);
+      expect(err2).toBe(err);
       expect(err2.diagnostic.diagnosticCode).toBe("timeout");
+
+      const errWithEvidence = diagnosticError(err, { source: "pty", checkpoint: "during settle", exitCode: 1 });
+      expect(errWithEvidence).toBe(err);
+      expect(errWithEvidence.diagnostic.errorDetail).toBe(err.diagnostic.errorDetail);
     });
 
     it("rejects plain object pretending to be DiagnosticError", () => {
