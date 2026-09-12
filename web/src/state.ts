@@ -120,6 +120,11 @@ export function toViewModel(s: StateSnapshot): ViewModel {
   const providers = Array.isArray(s.providers)
     ? s.providers.map((p) => ({
         ...p,
+        // A service older than the naming standard omits these four.
+        displayName: typeof p.displayName === "string" && p.displayName ? p.displayName : p.id,
+        vendor: p.vendor ?? null,
+        harness: p.harness ?? null,
+        description: p.description ?? null,
         evidence: Array.isArray(p.evidence) ? [...p.evidence] : [],
       }))
     : [];

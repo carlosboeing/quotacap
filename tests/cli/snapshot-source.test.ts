@@ -10,6 +10,7 @@ import {
 import { createServiceClient, ServiceError, ServiceUnavailable } from "../../src/runtime/client.js";
 import { VERSION } from "../../src/version.js";
 import { openDb } from "../../src/store/db.js";
+import { renderWide, renderNarrow } from "../../src/format/terminal.js";
 import {
   ClientError,
   emptySnapshot,
@@ -85,6 +86,46 @@ describe("online snapshot", () => {
       expect(resolved.snapshot).toEqual(exampleStateSnapshot);
       expect(resolved.asOf).toBe(exampleStateSnapshot.asOf);
       expect(fs.existsSync(dbPath)).toBe(false);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  // A service predating the naming standard omits displayName, vendor,
+  // harness and description. Render sites treat displayName as always
+  // present, so an unfilled field crashes `status` outright.
+  it("fills naming fields a pre-naming service omits", async () => {
+    const legacy = JSON.parse(exampleStateSnapshotJson);
+    for (const p of legacy.providers) {
+      delete p.displayName;
+      delete p.vendor;
+      delete p.harness;
+      delete p.description;
+    }
+    const stub = await startStub({
+      "/api/state": (_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(legacy));
+      },
+    });
+    try {
+      const resolved = await resolveSnapshot({
+        client: createServiceClient({ port: stub.port, timeoutMs: 2000 }),
+        dbPath: tmpDb("missing.db"),
+        enabledProviders: ENABLED,
+        now: FIXED_NOW,
+      });
+      expect(resolved.source).toBe("service");
+      expect(resolved.snapshot.providers.length).toBeGreaterThan(0);
+      for (const p of resolved.snapshot.providers) {
+        expect(p.displayName).toBe(p.id);
+        expect(p.vendor).toBeNull();
+        expect(p.harness).toBeNull();
+        expect(p.description).toBeNull();
+      }
+      // The crash was in the width calculation, so render for real.
+      expect(() => renderWide(resolved.snapshot, { now: FIXED_NOW })).not.toThrow();
+      expect(() => renderNarrow(resolved.snapshot, { now: FIXED_NOW })).not.toThrow();
     } finally {
       await stub.close();
     }
