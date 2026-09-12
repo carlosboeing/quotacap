@@ -39,6 +39,7 @@ describe("strict service config", () => {
       port: 8787,
       pollMinutes: 15,
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
+      providerNames: {},
     });
   });
 
@@ -174,3 +175,59 @@ describe("service metadata", () => {
     }
   });
 });
+
+describe("providerNames config", () => {
+  it("defaults providerNames to empty object when omitted", async () => {
+    isolatedHome();
+    const cfg = await readServiceConfig();
+    expect(cfg.providerNames).toEqual({});
+  });
+
+  it("parses valid providerNames map including unregistered ids", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        "agy:3p": "Google 3P",
+        muse: "Work Muse",
+        "custom-manual": "My Manual Provider",
+      },
+    });
+    const cfg = await readServiceConfig();
+    expect(cfg.providerNames).toEqual({
+      "agy:3p": "Google 3P",
+      muse: "Work Muse",
+      "custom-manual": "My Manual Provider",
+    });
+  });
+
+  it("rejects invalid display name in providerNames naming the field", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        claude: "\x1b[31mRed\x1b[0m",
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.claude/);
+  });
+
+  it("rejects empty display name in providerNames", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        muse: "   ",
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.muse/);
+  });
+
+  it("rejects display name exceeding 32 characters in providerNames", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        codex: "a".repeat(33),
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.codex/);
+  });
+});
+

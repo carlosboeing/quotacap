@@ -10,6 +10,7 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
     providers: providers.map((p) => ({
       id: "unknown",
       displayName: p.displayName ?? p.id ?? "unknown",
+      builtinName: p.builtinName ?? null,
       vendor: null,
       harness: null,
       description: null,

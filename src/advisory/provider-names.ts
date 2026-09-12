@@ -5,12 +5,13 @@
 
 export interface ProviderIdentity {
   displayName: string;
+  builtinName: string | null;
   vendor: string | null;
   harness: string | null;
   description: string | null;
 }
 
-const REGISTRY = new Map<
+export const REGISTRY = new Map<
   string,
   { displayName: string; vendor: string | null; harness: string | null; description: string }
 >([
@@ -93,8 +94,29 @@ const REGISTRY = new Map<
   ],
 ]);
 
-export function providerIdentity(id: string): ProviderIdentity {
+export function providerIdentity(
+  id: string,
+  overrides?: Record<string, string>,
+): ProviderIdentity {
   const entry = REGISTRY.get(id);
-  if (!entry) return { displayName: id, vendor: null, harness: null, description: null };
-  return { ...entry };
+  const override =
+    overrides && typeof overrides[id] === "string" && overrides[id].trim().length > 0
+      ? overrides[id].trim()
+      : undefined;
+
+  if (!entry) {
+    return {
+      displayName: override ?? id,
+      builtinName: null,
+      vendor: null,
+      harness: null,
+      description: null,
+    };
+  }
+
+  return {
+    ...entry,
+    displayName: override ?? entry.displayName,
+    builtinName: entry.displayName,
+  };
 }

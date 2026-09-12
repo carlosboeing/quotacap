@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { adapters } from "./adapters/index.js";
+import { validateDisplayName } from "./advisory/validation.js";
 
 export function getConfigPath(p?: string): string {
   if (p) return p;
@@ -14,10 +15,25 @@ export function getDbPath(p?: string): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "quotacap.db");
 }
 
+export const ProviderDisplayNameSchema = z
+  .string()
+  .superRefine((val, ctx) => {
+    try {
+      validateDisplayName(val);
+    } catch (e: any) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: e?.message ?? String(e),
+      });
+    }
+  })
+  .transform((val) => val.trim());
+
 const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
+  providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),
@@ -81,6 +97,7 @@ const ServiceConfigSchema = z.object({
         });
       }
     }),
+  providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   experimentalIngest: z.boolean().optional(),
 });
 

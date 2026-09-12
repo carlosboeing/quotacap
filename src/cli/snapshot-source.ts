@@ -204,6 +204,7 @@ export function withProviderNames(snapshot: StateSnapshot): StateSnapshot {
     providers: snapshot.providers.map((p) => ({
       ...p,
       displayName: typeof p.displayName === "string" && p.displayName ? p.displayName : p.id,
+      builtinName: p.builtinName ?? null,
       vendor: p.vendor ?? null,
       harness: p.harness ?? null,
       description: p.description ?? null,

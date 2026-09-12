@@ -80,6 +80,7 @@ function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot 
     exclusionReason: null,
     advisory: null,
     displayName: over.id,
+    builtinName: over.id,
     vendor: null,
     harness: null,
     description: null,
@@ -516,6 +517,15 @@ describe("wide table", () => {
     );
     const line = strip(renderWide(s, { now: FIXED_NOW })).split("\n")[1];
     expect(line.slice(0, 22)).toBe(`  ${"a".repeat(19)}…`);
+  });
+  it("clips a 32-character override with an ellipsis and does not wrap", () => {
+    const s = snap(
+      [ps({ id: "claude", displayName: "A".repeat(32), quota: quota({ provider: "claude" }), reporting: true, advisory: advisory() })],
+      "none",
+    );
+    const lines = strip(renderWide(s, { now: FIXED_NOW })).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1].slice(0, 22)).toBe(`  ${"A".repeat(19)}…`);
   });
   it("emits no ANSI without color and identical text with color stripped", () => {
     const plain = renderWide(exampleStateSnapshot, { now: FIXED_NOW });

@@ -69,6 +69,7 @@ export interface AttemptView {
 export interface ProviderView {
   id: string;
   displayName: string;
+  builtinName: string | null;
   vendor: string | null;
   harness: string | null;
   description: string | null;
@@ -122,6 +123,7 @@ export function toViewModel(s: StateSnapshot): ViewModel {
         ...p,
         // A service older than the naming standard omits these four.
         displayName: typeof p.displayName === "string" && p.displayName ? p.displayName : p.id,
+        builtinName: p.builtinName ?? null,
         vendor: p.vendor ?? null,
         harness: p.harness ?? null,
         description: p.description ?? null,
