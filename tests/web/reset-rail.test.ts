@@ -65,6 +65,35 @@ describe("reset rail", () => {
     expect(html).toMatch(/pin-tooltip/);
     expect(html).not.toMatch(/data-testid="pin"[^>]*\stitle=/);
   });
+  // The pill used to render name.split(" ")[0], so "Antigravity" and
+  // "Antigravity 3P" both showed as "Antigravity", and the estimate marker
+  // was appended to the name rather than the timestamp it qualifies.
+  it("shows the whole display name and keeps (est.) out of the name pill", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const asOf = new Date(Date.parse(s.asOf) - 24 * 60 * 60 * 1000).toISOString();
+    const providers = s.providers.map((p: any, i: number) =>
+      p.quota
+        ? {
+            ...p,
+            displayName: `Antigravity ${i}P`,
+            quota: {
+              ...p.quota,
+              resetsAt: new Date(Date.parse(asOf) + (i + 1) * 24 * 60 * 60 * 1000).toISOString(),
+              resetsAtEstimated: i === 0,
+            },
+          }
+        : p
+    );
+    const html = renderToString(
+      React.createElement(ResetRail, { providers, asOf, onSelectProvider: () => {} })
+    );
+    // the full multi-word name reaches the pill, not just its first word
+    expect(html).toMatch(/pin-label[^>]*>Antigravity 0P</);
+    // the estimate marker qualifies the timestamp, so it must not be in the pill
+    expect(html).not.toMatch(/pin-label[^>]*>[^<]*\(est\.\)/);
+    expect(html).toMatch(/pin-when[^>]*>[^<]*\(est\.\)/);
+  });
+
   it("keeps edge-pin tooltips inside the rail instead of centered", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.pin\.pin-end \.pin-tooltip/);

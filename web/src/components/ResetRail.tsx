@@ -321,10 +321,9 @@ export function ResetRail({
               >
                 {pin.band === "above" ? (
                   <>
-                    <span className="pin-when">{when}</span>
+                    <span className="pin-when">{pin.estimated ? `${when} (est.)` : when}</span>
                     <span className={`pin-label ${paceCls}`} style={pinBorder}>
-                      {name.split(" ")[0]}
-                      {pin.estimated ? " (est.)" : ""}
+                      {name}
                     </span>
                     <span className="pin-stem" />
                     <span className="pin-dot" />
@@ -334,10 +333,9 @@ export function ResetRail({
                     <span className="pin-dot" />
                     <span className="pin-stem" />
                     <span className={`pin-label ${paceCls}`} style={pinBorder}>
-                      {name.split(" ")[0]}
-                      {pin.estimated ? " (est.)" : ""}
+                      {name}
                     </span>
-                    <span className="pin-when">{when}</span>
+                    <span className="pin-when">{pin.estimated ? `${when} (est.)` : when}</span>
                   </>
                 )}
                 <span className="pin-tooltip" role="tooltip">
