@@ -69,6 +69,7 @@
 
 ## Future
 
+* Task suitability & model capability routing — benchmark mapping, reasoning/context tier matching, and task profile selector (deferred to keep core advisory strictly economic)
 * Auto-routing proxy (out of scope v1)
 * Cloud sync, team mode
 * `--buffer` flag (95% target option)
