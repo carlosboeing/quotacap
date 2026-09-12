@@ -10,7 +10,9 @@ import { kimiAdapter, parseKimiTui } from "../../src/adapters/kimi.js";
 import { grokAdapter, parseGrokTui } from "../../src/adapters/grok.js";
 import { claudeAdapter, parseClaudeUsage } from "../../src/adapters/claude.js";
 import { agyAdapter, parseAgyUsage } from "../../src/adapters/agy.js";
+import { museAdapter, parseMuseTui } from "../../src/adapters/muse.js";
 import { manualAdapter, parseManualUsage } from "../../src/adapters/manual.js";
+import { formatInTimeZone } from "date-fns-tz";
 
 const SENSITIVE_PATTERNS = [
   /auth\.json/i,
@@ -18,6 +20,10 @@ const SENSITIVE_PATTERNS = [
   /\.kimi/i,
   /kimi-code/i,
   /\.grok/i,
+  /\.config\/muse/i,
+  /\bmuse[-_]?auth/i,
+  /share\/muse/i,
+  /tui-history/i,
   /\.qc-bak/i,
   /\.qc-lock/i,
   /\.qc-tmp/i,
@@ -103,6 +109,7 @@ describe("Credential-free adapters regression", () => {
           },
         }, now);
         parseManualUsage("custom", "50% used · resets Aug 29 at 11am", now);
+        parseMuseTui("Subscription · Muse Code High Usage  Current 11% used · Resets at 3:51 PM  Weekly 35% used · Resets Sep 14 at 10:00 AM  as of 12:34 PM", now);
 
         for (const p of accessedPaths) {
           for (const pattern of SENSITIVE_PATTERNS) {
@@ -121,6 +128,9 @@ describe("Credential-free adapters regression", () => {
       const codexAuth = path.join(mockHome, ".codex", "auth.json");
       const kimiCreds = path.join(mockHome, ".kimi-code", "credentials", "kimi-code.json");
       const grokAuth = path.join(mockHome, ".grok", "auth.json");
+      const museAuth = path.join(mockHome, ".config", "muse", "auth.json");
+      const museHistory = path.join(mockHome, ".config", "muse", "tui-history.jsonl");
+      const museSession = path.join(mockHome, ".local", "share", "muse", "sessions", "snap-1.json");
 
       await fsp.mkdir(path.dirname(codexAuth), { recursive: true });
       await fsp.writeFile(codexAuth, JSON.stringify({ access_token: "dummy_codex_tok", refresh_token: "dummy_codex_rf" }));
@@ -131,8 +141,21 @@ describe("Credential-free adapters regression", () => {
       await fsp.mkdir(path.dirname(grokAuth), { recursive: true });
       await fsp.writeFile(grokAuth, JSON.stringify({ access_token: "dummy_grok_tok", refresh_token: "dummy_grok_rf" }));
 
+      await fsp.mkdir(path.dirname(museAuth), { recursive: true });
+      await fsp.writeFile(museAuth, JSON.stringify({ access_token: "dummy_muse_tok", refresh_token: "dummy_muse_rf" }));
+      await fsp.writeFile(museHistory, JSON.stringify({ prompt: "dummy private prompt" }) + "\n");
+
+      await fsp.mkdir(path.dirname(museSession), { recursive: true });
+      await fsp.writeFile(museSession, JSON.stringify({ cumulative_tokens: 12345 }));
+
       // Mock PTY runner to return simulated TUI output and verify cwd matches os.homedir()
+      const museReset = formatInTimeZone(new Date(Date.now() + 2 * 86400000), "Australia/Brisbane", "MMM d 'at' h:mm a");
       const runPtySpy = vi.spyOn(pty, "runPty").mockImplementation(async (opts) => {
+        if (opts.file === "muse") {
+          // Muse probes a QuotaCap-owned dir, never $HOME itself.
+          expect(opts.cwd).toBe(path.join(mockHome, ".quotacap", "muse-probe"));
+          return `Subscription · Muse Code High Usage  Current 11% used · Resets at 3:51 PM  Weekly 35% used · Resets ${museReset}  as of 12:34 PM`;
+        }
         expect(opts.cwd).toBe(mockHome);
         if (opts.file === "codex") {
           return "5h limit: 9% left (resets 14:12)\nWeekly limit: 73% left (resets 16:36 on 7 Sep)\n";
@@ -154,9 +177,11 @@ describe("Credential-free adapters regression", () => {
       await fsp.writeFile(mockClaudeScript, `#!/bin/sh\nprintf '%s' '${claudeJson}'\n`, { mode: 0o755 });
 
       const origHome = process.env.HOME;
+      const origQcHome = process.env.QUOTACAP_HOME;
       const origExecPath = claudeAdapter.execPath;
       const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(mockHome);
       process.env.HOME = mockHome;
+      delete process.env.QUOTACAP_HOME;
       claudeAdapter.execPath = mockClaudeScript;
 
       const accessedPaths: string[] = [];
@@ -169,6 +194,9 @@ describe("Credential-free adapters regression", () => {
         const codexStatBefore = await fsp.stat(codexAuth);
         const kimiStatBefore = await fsp.stat(kimiCreds);
         const grokStatBefore = await fsp.stat(grokAuth);
+        const museAuthStatBefore = await fsp.stat(museAuth);
+        const museHistoryStatBefore = await fsp.stat(museHistory);
+        const museSessionStatBefore = await fsp.stat(museSession);
 
         // 1. Exercise codexAdapter.poll()
         const codexQuota = await codexAdapter.poll();
@@ -189,18 +217,27 @@ describe("Credential-free adapters regression", () => {
         expect(grokQuota.creditsUsd).toBe(4.85);
         expect(grokQuota.source).toBe("tui");
 
-        // 4. Exercise claudeAdapter.poll()
+        // 4. Exercise museAdapter.poll()
+        const museQuota = await museAdapter.poll();
+        expect(museQuota.provider).toBe("muse");
+        expect(museQuota.plan).toBe("High Usage");
+        expect(museQuota.usedPct).toBe(35);
+        expect(museQuota.sessionPct).toBe(11);
+        expect(museQuota.source).toBe("tui");
+
+        // 5. Exercise claudeAdapter.poll()
         const claudeQuota = await claudeAdapter.poll();
         expect(claudeQuota.provider).toBe("claude");
         expect(claudeQuota.usedPct).toBe(25);
         expect(claudeQuota.source).toBe("cli");
 
-        // 5. Exercise pollAll across all providers
-        const results = await pollAll(["claude", "codex", "kimi", "grok", "manual"]);
-        expect(results).toHaveLength(5);
+        // 6. Exercise pollAll across all providers
+        const results = await pollAll(["claude", "codex", "kimi", "grok", "muse", "manual"]);
+        expect(results).toHaveLength(6);
         expect(results.find((r) => r.provider === "codex")?.status).toBe("fulfilled");
         expect(results.find((r) => r.provider === "kimi")?.status).toBe("fulfilled");
         expect(results.find((r) => r.provider === "grok")?.status).toBe("fulfilled");
+        expect(results.find((r) => r.provider === "muse")?.status).toBe("fulfilled");
         expect(results.find((r) => r.provider === "claude")?.status).toBe("fulfilled");
         expect(results.find((r) => r.provider === "manual")?.status).toBe("skipped");
 
@@ -215,10 +252,16 @@ describe("Credential-free adapters regression", () => {
         const codexStatAfter = await fsp.stat(codexAuth);
         const kimiStatAfter = await fsp.stat(kimiCreds);
         const grokStatAfter = await fsp.stat(grokAuth);
+        const museAuthStatAfter = await fsp.stat(museAuth);
+        const museHistoryStatAfter = await fsp.stat(museHistory);
+        const museSessionStatAfter = await fsp.stat(museSession);
 
         expect(codexStatAfter.mtimeMs).toBe(codexStatBefore.mtimeMs);
         expect(kimiStatAfter.mtimeMs).toBe(kimiStatBefore.mtimeMs);
         expect(grokStatAfter.mtimeMs).toBe(grokStatBefore.mtimeMs);
+        expect(museAuthStatAfter.mtimeMs).toBe(museAuthStatBefore.mtimeMs);
+        expect(museHistoryStatAfter.mtimeMs).toBe(museHistoryStatBefore.mtimeMs);
+        expect(museSessionStatAfter.mtimeMs).toBe(museSessionStatBefore.mtimeMs);
 
         // Verify no backup or lock files were created
         const codexDir = await fsp.readdir(path.join(mockHome, ".codex"));
@@ -229,11 +272,19 @@ describe("Credential-free adapters regression", () => {
 
         const grokDir = await fsp.readdir(path.join(mockHome, ".grok"));
         expect(grokDir).toEqual(["auth.json"]);
+
+        const museConfigDir = await fsp.readdir(path.join(mockHome, ".config", "muse"));
+        expect(museConfigDir.sort()).toEqual(["auth.json", "tui-history.jsonl"]);
+
+        const museSessionsDir = await fsp.readdir(path.join(mockHome, ".local", "share", "muse", "sessions"));
+        expect(museSessionsDir).toEqual(["snap-1.json"]);
       } finally {
         readSpy.mockRestore();
         homedirSpy.mockRestore();
         runPtySpy.mockRestore();
         process.env.HOME = origHome;
+        if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
+        else process.env.QUOTACAP_HOME = origQcHome;
         claudeAdapter.execPath = origExecPath;
         await fsp.rm(mockHome, { recursive: true, force: true });
       }

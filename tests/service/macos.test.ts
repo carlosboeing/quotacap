@@ -207,6 +207,7 @@ describe("macos login service", () => {
       kimi: "/opt/bin/kimi",
       grok: "/opt/bin/grok",
       agy: null,
+      muse: "/opt/bin/muse",
     });
     const hints = formatMissingProviders(paths);
     expect(hints).toHaveLength(2);
