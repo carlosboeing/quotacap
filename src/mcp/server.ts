@@ -37,6 +37,7 @@ async function resolveState(): Promise<{ snapshot: StateSnapshot; source: Snapsh
       client: clientFromUrl(),
       dbPath: getDbPath(),
       enabledProviders: cfg.enabledProviders,
+      providerNames: cfg.providerNames,
       now: new Date(),
     });
   } catch (e) {

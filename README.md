@@ -50,9 +50,12 @@ quotacap            # opens the dashboard, starting the service if needed
 quotacap status     # summary table (pass --verbose for adapter failure guidance)
 quotacap advise
 quotacap update     # upgrade to the latest release
+quotacap providers list                    # view built-in and effective provider names
+quotacap providers rename claude "Work"    # customize provider display name
+quotacap providers reset claude            # restore built-in name (--all resets all)
 ```
 
-No setup ceremony: config is provisioned on first use, and bare `quotacap` is the dashboard launcher. `quotacap status --verbose` displays actionable remediation guidance and sanitized failure details for failing adapters. `status` remains strictly read-only and never triggers background polling. `quotacap web --foreground` and `quotacap daemon` keep the old hold-the-terminal mode for SSH, containers, and supervisors.
+No setup ceremony: config is provisioned on first use, and bare `quotacap` is the dashboard launcher. `quotacap status --verbose` displays actionable remediation guidance and sanitized failure details for failing adapters. `status` remains strictly read-only and never triggers background polling. `quotacap providers` manages custom display names (persisted to `~/.quotacap/config.json` under `providerNames`). `quotacap web --foreground` and `quotacap daemon` keep the old hold-the-terminal mode for SSH, containers, and supervisors.
 
 ## MCP
 
@@ -79,6 +82,7 @@ The local web server listens on `127.0.0.1:8787` (configured via `QUOTACAP_URL` 
 | `GET` | `/api/recommendation` | None | Current advisory on which provider to use next |
 | `GET` | `/api/token` | Same-origin | Shared secret token for the dashboard |
 | `POST` | `/api/refresh` | `X-QuotaCap-Token` | Trigger an immediate adapter poll (debounced to 60s) |
+| `PATCH` | `/api/providers/:id` | `X-QuotaCap-Token` | Set or clear custom provider display name override |
 
 ### Curl examples
 
@@ -93,6 +97,22 @@ Trigger an immediate refresh (requires the shared secret in `~/.quotacap/token` 
 ```bash
 curl -X POST http://localhost:8787/api/refresh \
   -H "X-QuotaCap-Token: $(cat ~/.quotacap/token)"
+```
+
+Set or clear a provider display name override:
+
+```bash
+# Set custom display name
+curl -X PATCH http://localhost:8787/api/providers/claude \
+  -H "X-QuotaCap-Token: $(cat ~/.quotacap/token)" \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": "Work Claude"}'
+
+# Reset to built-in name
+curl -X PATCH http://localhost:8787/api/providers/claude \
+  -H "X-QuotaCap-Token: $(cat ~/.quotacap/token)" \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": null}'
 ```
 
 ## Security

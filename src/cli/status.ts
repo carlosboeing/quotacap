@@ -122,6 +122,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
           client,
           dbPath: getDbPath(),
           enabledProviders: cfg.enabledProviders,
+          providerNames: cfg.providerNames,
           now: t,
           openDb,
         });

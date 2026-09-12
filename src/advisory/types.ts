@@ -43,6 +43,7 @@ export interface Recommendation {
 export interface ProviderSnapshot {
   id: string;
   displayName: string;
+  builtinName?: string | null;
   vendor: string | null;
   harness: string | null;
   description: string | null;

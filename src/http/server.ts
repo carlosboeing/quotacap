@@ -24,6 +24,9 @@ import {
   type RejectedAttempt,
 } from "../runtime/poll.js";
 import { classifyFailure } from "../diagnostics/failure.js";
+import { validateDisplayName } from "../advisory/validation.js";
+import { providerIdentity } from "../advisory/provider-names.js";
+import { setProviderNameOverride } from "../config.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -83,6 +86,7 @@ export interface RuntimeContext {
   token: string;
   coordinator: Coordinator;
   enabledProviders: string[];
+  providerNames?: Record<string, string>;
   version: string;
   exec: string;
   now?: () => Date;
@@ -99,6 +103,7 @@ export interface RuntimeContext {
    * normal SIGTERM path; unset in tests that only assert the response.
    */
   onRestart?: (info: { version?: string; exec?: string }) => void;
+  configPath?: string;
 }
 
 // Ingest writes outside the poll path, so it needs the same fence the
@@ -114,6 +119,7 @@ export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeCo
     token: "test-token",
     coordinator: createCoordinator({ db, enabledProviders: [] }),
     enabledProviders: [],
+    providerNames: {},
     version: "test",
     exec: "test",
     ingestEnabled: false,
@@ -129,6 +135,7 @@ function snapshotOf(ctx: RuntimeContext): StateSnapshot {
   const cache = readUpdateCache();
   return buildSnapshot(ctx.db, {
     enabledProviders: ctx.enabledProviders,
+    providerNames: ctx.providerNames,
     now: ctx.now?.() ?? new Date(),
     runtime: {
       available: true,
@@ -238,6 +245,68 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       };
     }
   });
+
+  app.patch("/api/providers/:id", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+
+    const { id } = req.params;
+    if (!id || typeof id !== "string") {
+      return reply.status(400).send({ error: "invalid-argument: provider id is required" });
+    }
+
+    const body = (req.body ?? {}) as any;
+    if (typeof body !== "object" || body === null || !("displayName" in body)) {
+      return reply.status(400).send({ error: "invalid-argument: body must contain displayName" });
+    }
+
+    const { displayName } = body;
+    if (displayName !== null && typeof displayName !== "string") {
+      return reply.status(400).send({ error: "invalid-argument: displayName must be a string or null" });
+    }
+
+    let validatedName: string | null = null;
+    if (typeof displayName === "string") {
+      try {
+        validatedName = validateDisplayName(displayName);
+      } catch (e: any) {
+        return reply.status(400).send({ error: e?.message ?? String(e) });
+      }
+    }
+
+    // Update in-memory ctx
+    ctx.providerNames = { ...(ctx.providerNames ?? {}) };
+    if (validatedName === null) {
+      delete ctx.providerNames[id];
+    } else {
+      ctx.providerNames[id] = validatedName;
+    }
+
+    // Persist to config.json when configPath is explicitly configured
+    if (ctx.configPath) {
+      try {
+        await setProviderNameOverride(id, validatedName, ctx.configPath);
+      } catch (err: any) {
+        console.warn(`[quotacap] failed to persist providerNames to config: ${String(err)}`);
+        return reply.status(500).send({
+          error: `failed to persist configuration: ${err?.message ?? String(err)}`,
+        });
+      }
+    }
+
+
+    const identity = providerIdentity(id, ctx.providerNames);
+    return {
+      ok: true,
+      id,
+      displayName: identity.displayName,
+      builtinName: identity.builtinName,
+      override: validatedName,
+    };
+  });
+
 
   // Graceful-stop request for CLI-driven takeovers. The endpoint restarts
   // nothing by itself: it responds 202, then the service follows its normal

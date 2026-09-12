@@ -15,6 +15,7 @@ export const STALE_MS = 60 * 60 * 1000;
 
 export interface SnapshotOptions {
   enabledProviders: string[];
+  providerNames?: Record<string, string>;
   now?: Date;
   runtime: {
     available: boolean;
@@ -192,7 +193,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
 
     providerSnapshots.push({
       id,
-      ...providerIdentity(id),
+      ...providerIdentity(id, opts.providerNames),
       enabled,
       quota,
       lastAttempt: attempt,
@@ -256,6 +257,7 @@ export function projectQuotasResponse(s: StateSnapshot): any[] {
     .map((p) => ({
       ...p.quota,
       displayName: p.displayName,
+      builtinName: p.builtinName ?? null,
       vendor: p.vendor,
       harness: p.harness,
       description: p.description,

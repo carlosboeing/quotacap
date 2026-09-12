@@ -111,12 +111,13 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
           client,
           dbPath: getDbPath(),
           enabledProviders: cfg.enabledProviders,
+          providerNames: cfg.providerNames,
           now: t,
           openDb,
         });
       } catch (e) {
         if (e instanceof ClientError && e.kind === "no-data") {
-          const rec = projectRecommendationResponse(emptySnapshot(t), task);
+          const rec = projectRecommendationResponse(emptySnapshot(t, cfg.providerNames), task);
           if (o.json) console.log(JSON.stringify(rec, null, 2));
           else {
             console.log(`${rec.use}: ${rec.reason}`);

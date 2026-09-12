@@ -109,3 +109,23 @@ export async function triggerRefresh(): Promise<RefreshResult> {
   if (!r.ok) throw new StateHttpError(r.status, refreshMessage(raw) ?? r.statusText ?? `HTTP ${r.status}`);
   return { ok: r.ok, status: r.status, message: refreshMessage(raw), raw };
 }
+
+/** Rename provider or restore built-in default with null. */
+export async function renameProvider(id: string, displayName: string | null): Promise<void> {
+  const token = await fetchToken();
+  let r: Response;
+  try {
+    r = await fetch(`/api/providers/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-QuotaCap-Token": token,
+      },
+      body: JSON.stringify({ displayName }),
+    });
+  } catch (e) {
+    throw new StateNetworkError(`/api/providers/${id}`, e);
+  }
+  if (!r.ok) throw new StateHttpError(r.status, await serverMessage(r));
+}
+

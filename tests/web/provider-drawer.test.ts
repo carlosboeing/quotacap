@@ -11,7 +11,11 @@ import {
   rankingCopy,
   sourceLabel,
 } from "../../web/src/components/ProviderDrawer.js";
-import { ProviderDrawer } from "../../web/src/components/ProviderDrawer.js";
+import {
+  ProviderDrawer,
+  submitProviderRename,
+} from "../../web/src/components/ProviderDrawer.js";
+import { renameProvider } from "../../web/src/api.js";
 
 describe("provider drawer", () => {
   it("exposes server fields without synthesis", () => {
@@ -103,4 +107,135 @@ describe("provider drawer", () => {
     expect(bare).not.toContain("undefined");
     expect(bare).not.toContain("null");
   });
+
+  it("renders Built-in: label when provider has an active override", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const overridden = {
+      ...kimi,
+      displayName: "My Fast Kimi",
+      builtinName: "Kimi",
+    };
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: overridden,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).toContain("My Fast Kimi");
+    expect(html).toContain("Built-in: Kimi");
+  });
+
+  it("does not render Built-in: label when provider name matches builtinName or builtinName is null", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: kimi,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).not.toContain("Built-in:");
+
+    const unknown = {
+      ...kimi,
+      id: "unknown-prov",
+      displayName: "unknown-prov",
+      builtinName: null,
+    };
+    const unknownHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: unknown,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(unknownHtml).not.toContain("Built-in:");
+  });
+
+  it("renders an inline rename affordance for the provider name", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: kimi,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).toContain("Rename Kimi");
+    expect(html).toContain("title=\"Click to rename\"");
+    expect(html).toMatch(/aria-labelledby="(provider-drawer-title)"/);
+    const match = html.match(/aria-labelledby="([^"]+)"/);
+    const titleId = match ? match[1] : "";
+    expect(html).toContain(`id="${titleId}"`);
+  });
+
+  it("renameProvider sends PATCH /api/providers/:id with token and displayName", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const origFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url === "/api/token") {
+          return new Response(JSON.stringify({ token: "test-token-123" }), { status: 200 });
+        }
+        if (url.startsWith("/api/providers/")) {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      }) as typeof fetch;
+
+      await renameProvider("kimi", "Fast Kimi");
+      expect(calls.length).toBe(2);
+      expect(calls[0].url).toBe("/api/token");
+      expect(calls[1].url).toBe("/api/providers/kimi");
+      expect(calls[1].init?.method).toBe("PATCH");
+      expect((calls[1].init?.headers as any)["X-QuotaCap-Token"]).toBe("test-token-123");
+      expect(JSON.parse(calls[1].init?.body as string)).toEqual({ displayName: "Fast Kimi" });
+
+      // Reset test with null
+      await renameProvider("kimi", null);
+      expect(calls.length).toBe(4);
+      expect(calls[3].url).toBe("/api/providers/kimi");
+      expect(JSON.parse(calls[3].init?.body as string)).toEqual({ displayName: null });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  describe("submitProviderRename", () => {
+    it("trims non-empty input and calls renameFn with trimmed name", async () => {
+      let calledWith: { id: string; name: string | null } | null = null;
+      const result = await submitProviderRename("kimi", "  Work Kimi  ", async (id, name) => {
+        calledWith = { id, name };
+      });
+      expect(calledWith).toEqual({ id: "kimi", name: "Work Kimi" });
+      expect(result).toEqual({ success: true, error: null });
+    });
+
+    it("treats empty or whitespace-only input as null to restore built-in name", async () => {
+      let calledWith: { id: string; name: string | null } | null = null;
+      const result = await submitProviderRename("kimi", "   ", async (id, name) => {
+        calledWith = { id, name };
+      });
+      expect(calledWith).toEqual({ id: "kimi", name: null });
+      expect(result).toEqual({ success: true, error: null });
+    });
+
+    it("catches renameFn error and returns failure without throwing", async () => {
+      const result = await submitProviderRename("kimi", "Bad Name", async () => {
+        throw new Error("server validation failed");
+      });
+      expect(result).toEqual({ success: false, error: "server validation failed" });
+    });
+  });
 });
+

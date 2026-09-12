@@ -283,6 +283,7 @@ function App() {
         asOf={snapshot?.asOf ?? ""}
         recommendation={snapshot?.recommendation ?? null}
         onClose={() => setSelectedProvider(null)}
+        onRenamed={() => void load()}
       />
       {snapshot && (
         <AdviceDrawer

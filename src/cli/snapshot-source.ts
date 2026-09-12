@@ -8,6 +8,7 @@ import { buildSnapshot } from "../advisory/snapshot.js";
 import type { StateSnapshot } from "../advisory/types.js";
 import { migrate } from "../store/db.js";
 import { ServiceError, ServiceUnavailable, type ServiceClient } from "../runtime/client.js";
+import { readConfig } from "../config.js";
 import { VERSION } from "../version.js";
 
 export type ClientErrorKind =
@@ -36,7 +37,7 @@ export function offlineOnlyClient(): ServiceClient {
   const fail = async (): Promise<never> => {
     throw new ServiceUnavailable("service unavailable: skew fallback to stored readings");
   };
-  return { get: fail, post: fail };
+  return { get: fail, post: fail, patch: fail };
 }
 
 const NO_DATA_HINT = "no quotas yet - start the service (quotacap web)";
@@ -204,6 +205,7 @@ export function withProviderNames(snapshot: StateSnapshot): StateSnapshot {
     providers: snapshot.providers.map((p) => ({
       ...p,
       displayName: typeof p.displayName === "string" && p.displayName ? p.displayName : p.id,
+      builtinName: p.builtinName ?? null,
       vendor: p.vendor ?? null,
       harness: p.harness ?? null,
       description: p.description ?? null,
@@ -225,10 +227,20 @@ export interface ResolveSnapshotOptions {
   enabledProviders: string[];
   now?: Date;
   openDb?: (dbPath: string) => any;
+  providerNames?: Record<string, string>;
 }
 
 async function offlineSnapshot(opts: ResolveSnapshotOptions, now: Date): Promise<ResolvedSnapshot> {
   const { dbPath, enabledProviders } = opts;
+  let providerNames = opts.providerNames;
+  if (providerNames === undefined) {
+    try {
+      const cfg = await readConfig();
+      providerNames = cfg.providerNames;
+    } catch {
+      providerNames = undefined;
+    }
+  }
   if (!fs.existsSync(dbPath)) throw new ClientError("no-data", NO_DATA_HINT);
   const open = opts.openDb ?? openOfflineDb;
   const db = open(dbPath);
@@ -236,7 +248,12 @@ async function offlineSnapshot(opts: ResolveSnapshotOptions, now: Date): Promise
     const count = quotaRowCount(db, dbPath);
     if (count === null || count === 0) throw new ClientError("no-data", NO_DATA_HINT);
     assertCompatibleSchema(db, dbPath);
-    const snapshot = buildSnapshot(db, { enabledProviders, now, runtime: offlineRuntime() });
+    const snapshot = buildSnapshot(db, {
+      enabledProviders,
+      now,
+      runtime: offlineRuntime(),
+      providerNames,
+    });
     return { snapshot, source: "offline", asOf: snapshot.asOf };
   } finally {
     try {
@@ -264,12 +281,17 @@ export async function resolveSnapshot(opts: ResolveSnapshotOptions): Promise<Res
 
 // The no-data contract: an empty projection with the offline runtime block,
 // built over a throwaway :memory: database (never the user's file).
-export function emptySnapshot(now: Date): StateSnapshot {
+export function emptySnapshot(now: Date, providerNames?: Record<string, string>): StateSnapshot {
   const { SQLite } = loadSqlite();
   const db = new SQLite(":memory:");
   try {
     migrate(db);
-    return buildSnapshot(db, { enabledProviders: [], now, runtime: offlineRuntime() });
+    return buildSnapshot(db, {
+      enabledProviders: [],
+      now,
+      runtime: offlineRuntime(),
+      providerNames,
+    });
   } finally {
     try {
       db.close();

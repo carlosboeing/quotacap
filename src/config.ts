@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { adapters } from "./adapters/index.js";
+import { validateDisplayName } from "./advisory/validation.js";
 
 export function getConfigPath(p?: string): string {
   if (p) return p;
@@ -14,10 +15,25 @@ export function getDbPath(p?: string): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "quotacap.db");
 }
 
+export const ProviderDisplayNameSchema = z
+  .string()
+  .superRefine((val, ctx) => {
+    try {
+      validateDisplayName(val);
+    } catch (e: any) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: e?.message ?? String(e),
+      });
+    }
+  })
+  .transform((val) => val.trim());
+
 const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
+  providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),
@@ -81,6 +97,7 @@ const ServiceConfigSchema = z.object({
         });
       }
     }),
+  providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   experimentalIngest: z.boolean().optional(),
 });
 
@@ -148,6 +165,73 @@ export async function writeConfig(c: Config, p?: string): Promise<void> {
   await fs.mkdir(path.dirname(getConfigPath(p)), { recursive: true });
   await fs.writeFile(getConfigPath(p), JSON.stringify(c, null, 2));
 }
+
+/**
+ * Safe mutation of providerNames in config.json.
+ * Reads raw JSON without round-tripping through ConfigSchema, preserving
+ * all unknown keys and custom configuration, and fails loudly if the file is corrupt.
+ */
+export async function setProviderNameOverride(
+  id: string,
+  displayName: string | null,
+  p?: string,
+): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider names: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  const names: Record<string, string> =
+    typeof rawObj.providerNames === "object" && rawObj.providerNames !== null && !Array.isArray(rawObj.providerNames)
+      ? { ...rawObj.providerNames }
+      : {};
+
+  if (displayName === null) {
+    delete names[id];
+  } else {
+    names[id] = displayName;
+  }
+
+  rawObj.providerNames = names;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
+export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider names: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  rawObj.providerNames = {};
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
 
 // Private service metadata: install identity plus resolved provider paths
 // only — never tokens, secrets, or environment dumps.

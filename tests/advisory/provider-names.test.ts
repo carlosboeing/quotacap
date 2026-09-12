@@ -31,6 +31,7 @@ describe("provider naming registry", () => {
   it("names manual without a vendor or harness", () => {
     expect(providerIdentity("manual")).toEqual({
       displayName: "Manual",
+      builtinName: "Manual",
       vendor: null,
       harness: null,
       description: "A quota you pasted in by hand. QuotaCap does not poll it.",
@@ -40,6 +41,7 @@ describe("provider naming registry", () => {
   it("pre-seeds muse for the concurrent adapter stream", () => {
     expect(providerIdentity("muse")).toEqual({
       displayName: "Muse",
+      builtinName: "Muse",
       vendor: "Meta",
       harness: "Muse Code",
       description:
@@ -50,6 +52,7 @@ describe("provider naming registry", () => {
   it("falls back to the raw id with null metadata for unknown ids", () => {
     expect(providerIdentity("my-plan")).toEqual({
       displayName: "my-plan",
+      builtinName: null,
       vendor: null,
       harness: null,
       description: null,
@@ -60,10 +63,41 @@ describe("provider naming registry", () => {
     for (const id of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
       expect(providerIdentity(id)).toEqual({
         displayName: id,
+        builtinName: null,
         vendor: null,
         harness: null,
         description: null,
       });
     }
+  });
+
+  describe("user overrides", () => {
+    it("resolves override over built-in name while preserving builtinName", () => {
+      const identity = providerIdentity("muse", { muse: "Work Muse" });
+      expect(identity.displayName).toBe("Work Muse");
+      expect(identity.builtinName).toBe("Muse");
+      expect(identity.vendor).toBe("Meta");
+      expect(identity.harness).toBe("Muse Code");
+    });
+
+    it("resolves override over raw id for unregistered provider with null builtinName", () => {
+      const identity = providerIdentity("custom-llm", { "custom-llm": "My Local LLM" });
+      expect(identity.displayName).toBe("My Local LLM");
+      expect(identity.builtinName).toBeNull();
+      expect(identity.vendor).toBeNull();
+      expect(identity.harness).toBeNull();
+    });
+
+    it("ignores inert overrides for non-matching ids", () => {
+      const identity = providerIdentity("claude", { other: "Something Else" });
+      expect(identity.displayName).toBe("Claude");
+      expect(identity.builtinName).toBe("Claude");
+    });
+
+    it("allows duplicate display names across different providers", () => {
+      const overrides = { claude: "Daily Driver", codex: "Daily Driver" };
+      expect(providerIdentity("claude", overrides).displayName).toBe("Daily Driver");
+      expect(providerIdentity("codex", overrides).displayName).toBe("Daily Driver");
+    });
   });
 });

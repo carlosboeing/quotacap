@@ -6,6 +6,8 @@ import {
   isExperimentalIngestEnabled,
   readServiceConfig,
   readServiceMetadata,
+  resetAllProviderNameOverrides,
+  setProviderNameOverride,
   writeServiceMetadata,
   type ServiceMetadata,
 } from "../../src/config.js";
@@ -39,6 +41,7 @@ describe("strict service config", () => {
       port: 8787,
       pollMinutes: 15,
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
+      providerNames: {},
     });
   });
 
@@ -174,3 +177,113 @@ describe("service metadata", () => {
     }
   });
 });
+
+describe("providerNames config", () => {
+  it("defaults providerNames to empty object when omitted", async () => {
+    isolatedHome();
+    const cfg = await readServiceConfig();
+    expect(cfg.providerNames).toEqual({});
+  });
+
+  it("parses valid providerNames map including unregistered ids", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        "agy:3p": "Google 3P",
+        muse: "Work Muse",
+        "custom-manual": "My Manual Provider",
+      },
+    });
+    const cfg = await readServiceConfig();
+    expect(cfg.providerNames).toEqual({
+      "agy:3p": "Google 3P",
+      muse: "Work Muse",
+      "custom-manual": "My Manual Provider",
+    });
+  });
+
+  it("rejects invalid display name in providerNames naming the field", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        claude: "\x1b[31mRed\x1b[0m",
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.claude/);
+  });
+
+  it("rejects empty display name in providerNames", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        muse: "   ",
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.muse/);
+  });
+
+  it("rejects display name exceeding 32 characters in providerNames", async () => {
+    isolatedHome();
+    writeConfig({
+      providerNames: {
+        codex: "a".repeat(33),
+      },
+    });
+    await expect(readServiceConfig()).rejects.toThrow(/invalid config: providerNames\.codex/);
+  });
+
+  it("setProviderNameOverride preserves unknown fields and custom config without schema round-tripping", async () => {
+    isolatedHome();
+    const cfgPath = path.join(home, ".quotacap", "config.json");
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+    // Write raw JSON with custom port, enabledProviders, and an unknown field
+    fs.writeFileSync(
+      cfgPath,
+      JSON.stringify(
+        {
+          port: 9999,
+          customUnknownKey: "preserve-me",
+          providerNames: { claude: "Old Claude" },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await setProviderNameOverride("muse", "Work Muse", cfgPath);
+
+    const raw = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    expect(raw.port).toBe(9999);
+    expect(raw.customUnknownKey).toBe("preserve-me");
+    expect(raw.providerNames).toEqual({
+      claude: "Old Claude",
+      muse: "Work Muse",
+    });
+
+    // Reset single with null
+    await setProviderNameOverride("claude", null, cfgPath);
+    const afterDelete = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    expect(afterDelete.customUnknownKey).toBe("preserve-me");
+    expect(afterDelete.providerNames).toEqual({ muse: "Work Muse" });
+
+    // Reset all preserves unknown keys
+    await resetAllProviderNameOverrides(cfgPath);
+    const afterResetAll = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    expect(afterResetAll.customUnknownKey).toBe("preserve-me");
+    expect(afterResetAll.providerNames).toEqual({});
+  });
+
+  it("setProviderNameOverride throws and does not overwrite config if file is corrupt", async () => {
+    isolatedHome();
+    const cfgPath = path.join(home, ".quotacap", "config.json");
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+    fs.writeFileSync(cfgPath, "{ this is not valid json");
+
+    await expect(setProviderNameOverride("muse", "Work Muse", cfgPath)).rejects.toThrow(
+      /cannot update provider names/,
+    );
+    expect(fs.readFileSync(cfgPath, "utf8")).toBe("{ this is not valid json");
+  });
+});
+
+
