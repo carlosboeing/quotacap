@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Naming: one server-side provider registry gives every row a `displayName` (the dashboard now reads `Antigravity` and `Antigravity 3P`), carries `vendor`, `harness` and `description` additively on `/api/state` and MCP `get_quotas`, and moves the CLI wide/narrow tables and MCP Markdown labels off raw ids; compact statuslines stay id-based.
+
 ## 0.0.23
 
 - Install: one command from zero to dashboard — `install.sh` verifies checksums, provisions config, registers the background login service, waits for readiness, and opens the browser, with `upgrading existing install` re-runs, `--no-service`/`--no-open` flags, a PATH-shadow warning, and a `loginctl enable-linger` hint on Linux.

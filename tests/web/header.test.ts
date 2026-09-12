@@ -82,12 +82,13 @@ describe("fault repair", () => {
   it("routes auth failures to provider sign-in and stale rows to re-poll", () => {
     const auth = repairFor({
       id: "claude",
+      displayName: "Claude",
       exclusionReason: "provider-failed",
       lastAttempt: { failureCategory: "auth" },
     } as any);
     expect(auth.text).toMatch(/sign in to the claude cli/i);
     expect(auth.text).toMatch(/never handles those credentials/i);
-    const stale = repairFor({ id: "kimi", exclusionReason: "stale", lastAttempt: null } as any);
+    const stale = repairFor({ id: "kimi", displayName: "Kimi", exclusionReason: "stale", lastAttempt: null } as any);
     expect(stale.text).toMatch(/poll again/i);
   });
 });

@@ -1,12 +1,11 @@
 import React from "react";
 import type { ProviderView } from "../../state.js";
 import { ageDuration } from "../../state.js";
-import { isKnownProvider } from "../../names.js";
 import { sourceLabel } from "../ProviderDrawer.js";
 
 /** Settings lists CLI adapters only. */
 export function adapterProviders(providers: ProviderView[]): ProviderView[] {
-  return providers.filter((p) => isKnownProvider(p.id));
+  return providers.filter((p) => p.harness !== null);
 }
 
 const CONNECTION_NAMES = new Map<string, string>([

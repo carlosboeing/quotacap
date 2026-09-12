@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import type { ProviderView, ViewModel } from "../state.js";
 import { ageDuration } from "../state.js";
-import { displayName, isKnownProvider } from "../names.js";
 import { failureWords } from "../components/ProviderDrawer.js";
 
 export interface Readiness {
@@ -14,9 +13,9 @@ export interface Readiness {
  * paths, so this reports what the daemon reported — never a local scan.
  */
 export function readiness(provider: ProviderView): Readiness {
-  const name = displayName(provider.id);
+  const name = provider.displayName;
   // agy:3p shares the agy adapter: there is no separate CLI to install.
-  const cli = provider.id === "agy:3p" ? "Agy" : name;
+  const cli = provider.id === "agy:3p" ? "Antigravity" : name;
   if (provider.exclusionReason === null && provider.quota) {
     const age = ageDuration(provider.ageMs);
     return { status: "Ready", detail: age ? `Last read ${age} ago.` : "Reporting." };
@@ -25,7 +24,7 @@ export function readiness(provider: ProviderView): Readiness {
     return { status: "Ready", detail: "Connected — no readings yet." };
   }
   const credentialNote = "QuotaCap never handles those credentials.";
-  if (!isKnownProvider(provider.id)) {
+  if (provider.harness === null) {
     return {
       status: "Sign in first",
       detail: `QuotaCap has no live adapter for ${name}. Use manual ingest via the CLI to add readings.`,
@@ -58,7 +57,7 @@ function ProviderReadinessList({ providers }: { providers: ProviderView[] }) {
         const isReady = r.status === "Ready";
         return (
           <div key={p.id} className="provrow">
-            <b>{displayName(p.id)}</b>
+            <b>{p.displayName}</b>
             <span className="path">{r.detail}</span>
             <span className={isReady ? "st-ready" : "st-todo"}>
               {isReady ? (

@@ -139,6 +139,19 @@ export function firstRun(s: { providers: Array<{ quota: unknown }> }): boolean {
   return s.providers.every((p) => p.quota === null || p.quota === undefined);
 }
 
+/**
+ * Drawer/tooltip subtitle. Derived, never authored: when the harness name
+ * repeats the display name ("Antigravity · Google" would stutter), only the
+ * vendor shows. Null when neither is registered.
+ */
+export function providerSubtitle(
+  p: Pick<ProviderView, "displayName" | "vendor" | "harness">
+): string | null {
+  if (!p.harness && !p.vendor) return null;
+  if (p.harness && p.vendor && p.harness === p.displayName) return p.vendor;
+  return [p.harness, p.vendor].filter(Boolean).join(" · ");
+}
+
 /** "read Xm ago" from the last good snapshot's server timestamp. */
 export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
   const diff = nowMs - Date.parse(asOf);

@@ -7,8 +7,7 @@ import type {
   ProviderView,
   RecommendationView,
 } from "../state.js";
-import { ageDuration } from "../state.js";
-import { displayName } from "../names.js";
+import { ageDuration, providerSubtitle } from "../state.js";
 import {
   Badge,
   PaceBar,
@@ -90,7 +89,7 @@ export function drawerModel(provider: ProviderView): DrawerModel {
   const advisory = provider.advisory;
   const model: DrawerModel = {
     id: provider.id,
-    name: displayName(provider.id),
+    name: provider.displayName,
     badge: paceBadge(provider),
     burnRate: advisory?.burnRate ?? null,
     idealRate: advisory ? advisory.idealRate : null,
@@ -156,7 +155,7 @@ export function paceBasis(provider: ProviderView, asOfMs?: number): string {
 
 export function credentialLabel(provider: ProviderView): string {
   const source = provider.quota?.source;
-  if (source === "cli" || source === "tui") return `handled by ${displayName(provider.id)}`;
+  if (source === "cli" || source === "tui") return `handled by ${provider.displayName}`;
   return "not stored by QuotaCap";
 }
 
@@ -193,7 +192,7 @@ export function rankingCopy(
   provider: ProviderView,
   recommendation: RecommendationView | null
 ): { known: string; pace: string; decision: string } {
-  const name = displayName(provider.id);
+  const name = provider.displayName;
   const quota = provider.quota;
   const advisory = provider.advisory;
   const stamp = resetStamp(provider);
@@ -335,7 +334,7 @@ export function ProviderDrawer({
           </span>
           <div style={{ flex: 1 }}>
             <h2 id={titleId}>{model.name}</h2>
-            <span className="sub">{sub}</span>
+            <span className="sub">{providerSubtitle(provider) ?? sub}</span>
           </div>
           <button
             className="drawer-close"
@@ -357,6 +356,18 @@ export function ProviderDrawer({
             </svg>
           </button>
         </div>
+
+        {provider.description && (
+          <p
+            style={{
+              margin: "0 var(--s4) var(--s3)",
+              fontSize: "var(--t-2)",
+              color: "var(--ink-soft)",
+            }}
+          >
+            {provider.description}
+          </p>
+        )}
 
         <section className="dsec" aria-label="Current window">
           <h3>Current window</h3>

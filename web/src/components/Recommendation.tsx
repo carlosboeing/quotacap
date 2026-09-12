@@ -7,7 +7,6 @@ import type {
   Urgency,
 } from "../state.js";
 import { ageLabel } from "../state.js";
-import { displayName } from "../names.js";
 import { timeLeft } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
@@ -90,7 +89,7 @@ function LaneSection({
         {members.map((m) => {
           const quota = byId.get(m.provider)?.quota;
           const left = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
-          const name = displayName(m.provider);
+          const name = byId.get(m.provider)?.displayName ?? m.provider;
           return (
             <div key={m.provider} className="rsub">
               <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
@@ -227,7 +226,7 @@ export function Recommendation({
             </p>
           ) : (
             <p className="rec-advice-prose" data-testid="rec-prose">
-              Switch to <strong>{displayName(recommendation.use)}</strong> next
+              Switch to <strong>{pick?.displayName ?? recommendation.use}</strong> next
               {recommendation.wastePct !== null ? (
                 <>
                   {" — "}

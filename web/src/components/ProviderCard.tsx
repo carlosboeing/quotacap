@@ -1,7 +1,6 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
-import { displayName } from "../names.js";
 import {
   Badge,
   PaceBar,
@@ -35,7 +34,7 @@ export function ProviderCard({
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(provider.ageMs);
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
-  const name = displayName(provider.id);
+  const name = provider.displayName;
   return (
     <article
       data-testid={`provider-card-${provider.id}`}
