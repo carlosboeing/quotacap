@@ -250,6 +250,34 @@ describe("systemd user service", () => {
     expect(rec2.calls).toContainEqual(["enable", "--now", SERVICE_UNIT]);
   });
 
+  it("install via runServiceCommand honors an expected version on drift alone", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const rec = recorder();
+    const which = (bin: string) => `/opt/bin/${bin}`;
+    expect(
+      await runServiceCommand(["install"], {}, depsFor(home, rec.run, { which })),
+    ).toBe(0);
+    expect(readServiceMetadata(dataDir)?.version).toBe(VERSION);
+
+    // Same unit, same provider paths, but the post-update caller expects a
+    // newer version: still an upgrade, and the recorded version advances.
+    rec.calls.length = 0;
+    expect(
+      await runServiceCommand(
+        ["install"],
+        { version: "99.0.0" },
+        depsFor(home, rec.run, { which }),
+      ),
+    ).toBe(0);
+    expect(rec.calls).toEqual([
+      ["stop", SERVICE_UNIT],
+      ["daemon-reload"],
+      ["enable", "--now", SERVICE_UNIT],
+    ]);
+    expect(readServiceMetadata(dataDir)?.version).toBe("99.0.0");
+  });
+
   it("(e) uninstall removes only the unit", async () => {
     const home = mkHome();
     const dataDir = path.join(home, ".quotacap");

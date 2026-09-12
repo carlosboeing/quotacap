@@ -52,6 +52,10 @@ export interface SystemdDeps {
   print?: (msg: string) => void;
   error?: (msg: string) => void;
   now?: () => Date;
+  // Expected version for the idempotency comparison and recorded metadata.
+  // Defaults to the in-process VERSION; the post-update path passes the
+  // target version because it runs in the old binary.
+  version?: string;
 }
 
 export function formatSystemctlError(args: string[], detail: string): Error {
@@ -176,6 +180,7 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
     return;
   }
   const { home, dataDir, print, run } = resolved(deps);
+  const version = deps.version ?? VERSION;
   // Provision beside the data dir the service will use (identical to the
   // QUOTACAP_HOME path in production; hermetic under injected test dirs).
   await ensureConfig(path.join(dataDir, "config.json"));
@@ -217,7 +222,7 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
       PROVIDER_BINS.every(
         (bin) => (meta.providerPaths?.[bin] ?? null) === providerPaths[bin],
       );
-    if (sameUnit && samePaths && meta?.version === VERSION) {
+    if (sameUnit && samePaths && meta?.version === version) {
       run(["enable", "--now", SERVICE_UNIT]);
       const port = await waitForReady(deps, dataDir);
       print(`service already installed and up to date; ready on port ${port}`);
@@ -226,7 +231,7 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
     // Upgrade: refresh metadata, stop the old job, replace, load.
     writeServiceMetadata(
       {
-        version: VERSION,
+        version,
         exec: argv[0],
         ...(entry ? { entry } : {}),
         providerPaths,
@@ -238,7 +243,7 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
   } else {
     writeServiceMetadata(
       {
-        version: VERSION,
+        version,
         exec: argv[0],
         ...(entry ? { entry } : {}),
         providerPaths,

@@ -232,6 +232,46 @@ describe("takeoverManaged", () => {
     ).rejects.toThrow(/service restart exited 1/);
   });
 
+  it("refreshes the registration via install with the expected version", async () => {
+    const calls: Array<{ args: string[]; opts?: Record<string, any> }> = [];
+    let version = "0.0.21";
+    const r = await takeoverManaged({
+      port: 1,
+      health: { ok: true, version: "0.0.21", exec: EXEC },
+      cliVersion: CLI,
+      refreshRegistration: true,
+      sleep: instant,
+      timeoutMs: 1000,
+      execService: async (args, opts) => {
+        calls.push({ args, opts });
+        version = CLI;
+        return 0;
+      },
+      createClient: () => ({
+        get: async () => ({ ok: true, ready: true, version }),
+        post: async () => {
+          throw new Error("unused");
+        },
+      }),
+    });
+    expect(calls).toEqual([{ args: ["install"], opts: { version: CLI } }]);
+    expect(r.oldVersion).toBe("0.0.21");
+    expect(r.message).toBe(`Upgraded daemon from 0.0.21 to ${CLI} (service restarted)`);
+  });
+
+  it("fails loudly when the refresh install exits nonzero", async () => {
+    await expect(
+      takeoverManaged({
+        port: 1,
+        health: { ok: true, version: "0.0.21" },
+        cliVersion: CLI,
+        refreshRegistration: true,
+        sleep: instant,
+        execService: async () => 1,
+      }),
+    ).rejects.toThrow(/service install exited 1/);
+  });
+
   it("fails loudly when the new version never reports", async () => {
     await expect(
       takeoverManaged({

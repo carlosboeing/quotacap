@@ -357,6 +357,28 @@ describe("macos login service", () => {
     expect(rec2.calls).toContainEqual(["enable", "gui/501/quotacap"]);
   });
 
+  it("install with an expected version upgrades on version drift alone", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");
+    const rec = recorder();
+    const which = (bin: string) => `/opt/bin/${bin}`;
+    await install(depsFor(home, rec.run, { which }));
+    expect(readServiceMetadata(dataDir)?.version).toBe(VERSION);
+
+    // Same plist, same provider paths, but the caller expects a newer
+    // version (post-update runs in the old binary): still an upgrade, and
+    // the recorded version advances to the expected one.
+    rec.calls.length = 0;
+    await install(depsFor(home, rec.run, { which, version: "99.0.0" }));
+    expect(rec.calls).toEqual([
+      ["bootout", "gui/501/quotacap"],
+      ["bootstrap", "gui/501", plistFile],
+      ["enable", "gui/501/quotacap"],
+    ]);
+    expect(readServiceMetadata(dataDir)?.version).toBe("99.0.0");
+  });
+
   it("(h) uninstall removes only the plist", async () => {
     const home = mkHome();
     const dataDir = path.join(home, ".quotacap");

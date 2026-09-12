@@ -40,6 +40,10 @@ export interface ServiceDeps {
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   bootstrapTimeoutMs?: number;
+  // Expected version for the idempotency comparison and recorded metadata.
+  // Defaults to the in-process VERSION; the post-update path passes the
+  // target version because it runs in the old binary.
+  version?: string;
 }
 
 export function foregroundGuidance(verb: string, platform: string): string {
@@ -371,6 +375,7 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
     return;
   }
   const { home, uid, dataDir, print, run, lint, sleep, bootstrapTimeoutMs } = resolved(deps);
+  const version = deps.version ?? VERSION;
   // Provision beside the data dir the service will use (identical to the
   // QUOTACAP_HOME path in production; hermetic under injected test dirs).
   await ensureConfig(path.join(dataDir, "config.json"));
@@ -420,7 +425,7 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
       PROVIDER_BINS.every(
         (bin) => (meta.providerPaths?.[bin] ?? null) === providerPaths[bin],
       );
-    if (samePlist && samePaths && meta?.version === VERSION) {
+    if (samePlist && samePaths && meta?.version === version) {
       await bootstrapWithRetry(run, uid, plistFile, {
         expectReplace: false,
         sleep,
@@ -433,7 +438,7 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
     // Upgrade: refresh metadata, stop the old job, replace, load.
     writeServiceMetadata(
       {
-        version: VERSION,
+        version,
         exec: argv[0],
         ...(entry ? { entry } : {}),
         providerPaths,
@@ -445,7 +450,7 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
   } else {
     writeServiceMetadata(
       {
-        version: VERSION,
+        version,
         exec: argv[0],
         ...(entry ? { entry } : {}),
         providerPaths,

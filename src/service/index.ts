@@ -130,7 +130,10 @@ export async function runServiceCommand(
   try {
     switch (verb) {
       case "install":
-        await backend.install(deps);
+        // Internal: the post-update refresh passes the target version so
+        // install compares and records it instead of the old in-process
+        // VERSION. The `service install` CLI never sets opts.version.
+        await backend.install({ ...deps, version: opts.version ?? deps.version });
         break;
       case "uninstall":
         await backend.uninstall(deps);

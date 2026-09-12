@@ -266,11 +266,11 @@ describe("update standalone", () => {
     expect(r.logs[2]).toBe("https://x/notes");
   });
 
-  it("restarts managed daemons and reports updated JSON", async () => {
+  it("refreshes the service registration for managed daemons and reports updated JSON", async () => {
     const home = isolatedHome();
     const { execPath, channelEnv } = standaloneEnv(home);
     let version = VERSION;
-    const restarts: string[][] = [];
+    const services: Array<{ args: string[]; opts?: Record<string, any> }> = [];
     const r = await runUpdate(["--json"], {
       channelEnv,
       execPath,
@@ -285,14 +285,14 @@ describe("update standalone", () => {
         },
       }),
       isManaged: async () => true,
-      execService: async (args: string[]) => {
-        restarts.push(args);
+      execService: async (args: string[], opts?: Record<string, any>) => {
+        services.push({ args, opts });
         version = "99.0.0";
         return 0;
       },
       takeoverOpts: { sleep: async () => {}, timeoutMs: 1000 },
     });
-    expect(restarts).toEqual([["restart"]]);
+    expect(services).toEqual([{ args: ["install"], opts: { version: "99.0.0" } }]);
     expect(r.exitCodes).toEqual([]);
     expect(JSON.parse(r.logs.join("\n"))).toEqual({
       channel: "standalone",
