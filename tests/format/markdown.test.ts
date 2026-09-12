@@ -16,13 +16,13 @@ describe("markdown table", () => {
         "| Provider | Used | Elapsed | Resets | State | Forecast |",
         "|---|---|---|---|---|---|",
         "| ★ my-plan | 12% | 50% | 7d | Behind pace | 76% waste in 7.0d |",
-        "| kimi | 22% | 50% | 7d | Behind pace | 56% waste in 7.0d |",
-        "| claude | 40% | 50% | 7d | Behind pace | 20% waste in 7.0d |",
-        "| codex | 40% | 50% | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
-        "| agy | 50% | 0% | 7d | On track | Measuring pace; 50% remains with 7.0d until reset |",
-        "| agy:3p | 60% | 0% | 7d | Not reporting | stale 3h ago |",
-        "| grok | 30% | — | — | Not reporting | invalid reading |",
-        "| manual | — | — | — | Not reporting | no readings yet |",
+        "| Kimi | 22% | 50% | 7d | Behind pace | 56% waste in 7.0d |",
+        "| Claude | 40% | 50% | 7d | Behind pace | 20% waste in 7.0d |",
+        "| Codex | 40% | 50% | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
+        "| Antigravity | 50% | 0% | 7d | On track | Measuring pace; 50% remains with 7.0d until reset |",
+        "| Antigravity 3P | 60% | 0% | 7d | Not reporting | stale 3h ago |",
+        "| Grok | 30% | — | — | Not reporting | invalid reading |",
+        "| Manual | — | — | — | Not reporting | no readings yet |",
       ].join("\n"),
     );
   });
@@ -37,7 +37,7 @@ describe("markdown table", () => {
   it("shows no numeric rate or predicted waste for unknown pace", () => {
     const kimi = unknownPaceStateSnapshot.providers.find((p) => p.id === "kimi")!;
     const out = renderMarkdownTable(unknownPaceStateSnapshot, FIXED_NOW);
-    const line = out.split("\n").find((l) => l.includes("| kimi |"))!;
+    const line = out.split("\n").find((l) => l.includes("| Kimi |"))!;
     expect(line).toContain("Measuring pace;");
     expect(line).not.toMatch(/waste/i);
     expect(line).not.toMatch(/%\/day/);
@@ -46,7 +46,7 @@ describe("markdown table", () => {
 
   it("escapes pipes and newlines in provider ids", () => {
     const p = exampleStateSnapshot.providers.find((x) => x.id === "kimi")!;
-    const weird: ProviderSnapshot = { ...p, id: "a|b\nc" };
+    const weird: ProviderSnapshot = { ...p, id: "a|b\nc", displayName: "a|b\nc" };
     const out = renderMarkdownTable({ ...exampleStateSnapshot, providers: [weird] }, FIXED_NOW);
     expect(out).toContain("| a\\|b c |");
     expect(out).not.toContain("a|b");

@@ -182,8 +182,8 @@ describe("status process", () => {
       expect(run.stdout).not.toContain("\x1b[");
       expect(run.stdout).toContain("PROVIDER");
       expect(run.stdout).toContain("FORECAST");
-      for (const id of ["my-plan", "kimi", "claude", "codex", "agy", "grok"]) {
-        expect(run.stdout).toContain(id);
+      for (const name of ["my-plan", "Kimi", "Claude", "Codex", "Antigravity", "Grok"]) {
+        expect(run.stdout).toContain(name);
       }
     } finally {
       await stub.close();
@@ -226,14 +226,15 @@ describe("status process", () => {
         writeConfig(home, stub.port);
         const run = await runCli(home, ["status", "--sort", key]);
         expect(run.code).toBe(0);
+        const nameById = new Map(exampleStateSnapshot.providers.map((p) => [p.id, p.displayName]));
         const expected = sortProviders(
           exampleStateSnapshot.providers,
           key,
           exampleStateSnapshot.recommendation.use,
-        ).map((p) => p.id);
+        ).map((p) => nameById.get(p.id)!);
         let at = -1;
-        for (const id of expected) {
-          const next = run.stdout.indexOf(id, at + 1);
+        for (const name of expected) {
+          const next = run.stdout.indexOf(name, at + 1);
           expect(next).toBeGreaterThan(at);
           at = next;
         }

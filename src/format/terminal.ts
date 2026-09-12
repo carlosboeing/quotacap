@@ -70,8 +70,8 @@ export function provWidthFor(ids: string[]): number {
   return Math.min(MAX_PROV_WIDTH, Math.max(MIN_PROV_WIDTH, longest));
 }
 
-function rawProviderField(id: string, recommended: boolean, width: number, g: Glyphs): string {
-  const raw = (recommended ? `${g.star} ` : "  ") + id;
+function rawProviderField(name: string, recommended: boolean, width: number, g: Glyphs): string {
+  const raw = (recommended ? `${g.star} ` : "  ") + name;
   const clipped = raw.length > width ? raw.slice(0, width - 1) + g.ellipsis : raw;
   return clipped + " ".repeat(Math.max(0, width - clipped.length));
 }
@@ -106,7 +106,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
   const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.id));
+  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
   const paint = (s: string, code: string): string => (color ? `${code}${s}${RESET}` : s);
   const header = [
     "PROVIDER".padEnd(width),
@@ -120,7 +120,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const lines = sorted.map((p) => {
     const row = buildRow(p, opts.now);
     const recommended = p.id === use && use !== "none";
-    const name = rawProviderField(p.id, recommended, width, g);
+    const name = rawProviderField(p.displayName, recommended, width, g);
     const used = (row.usedPct === null ? g.dash : `${row.usedPct}%`).padStart(6);
     const elapsed = (row.elapsedPct === null ? g.dash : `${row.elapsedPct}%`).padStart(8);
     const rail = renderRail(row.railCells, g, row.state, color);
@@ -145,12 +145,12 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
   const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.id));
+  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
   const lines: string[] = [];
   for (const p of sorted) {
     const row = buildRow(p, opts.now);
     const recommended = p.id === use && use !== "none";
-    const name = rawProviderField(p.id, recommended, width, g);
+    const name = rawProviderField(p.displayName, recommended, width, g);
     const used = row.usedPct === null ? g.dash : `${row.usedPct}%`;
     const elapsed = row.elapsedPct === null ? g.dash : `${row.elapsedPct}%`;
     const rail = renderRail(row.railCells, g, row.state, color);

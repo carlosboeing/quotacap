@@ -105,7 +105,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
     });
 
     const surfaces = () => {
-      const width = provWidthFor(snap.providers.map((p) => p.id));
+      const width = provWidthFor(snap.providers.map((p) => p.displayName));
       const wide = strip(renderWide(snap, { now: FIXED_NOW }));
       const narrow = strip(renderNarrow(snap, { now: FIXED_NOW }));
       return {
@@ -123,10 +123,11 @@ for (const [name, snap, snapJson] of FIXTURES) {
     it("(a) names the same use and waste sentence everywhere", async () => {
       const s = surfaces();
       const { use, reason } = snap.recommendation;
+      const useName = snap.providers.find((p) => p.id === use)?.displayName ?? use;
       expect(s.compact).toContain(`(use: ${use})`);
-      expect(s.wide).toContain(`★ ${use}`);
-      expect(s.narrow).toContain(`★ ${use}`);
-      expect(s.markdown).toContain(`| ★ ${use} |`);
+      expect(s.wide).toContain(`★ ${useName}`);
+      expect(s.narrow).toContain(`★ ${useName}`);
+      expect(s.markdown).toContain(`| ★ ${useName} |`);
       expect(renderRecommendationSummary(snap)).toBe(`${use}: ${reason}`);
       expect(projectRecommendationResponse(snap).reason).toBe(reason);
       const mcpRec: any = await handleTool("get_recommendation", { task: "any" });
@@ -145,9 +146,9 @@ for (const [name, snap, snapJson] of FIXTURES) {
       for (const p of snap.providers) {
         const state = stateWord(p);
         expect(vocab).toContain(state);
-        expect(s.wideById.get(p.id)).toContain(state);
-        expect(s.narrowById.get(p.id)![1]).toContain(state);
-        expect(s.markdownById.get(p.id)![4]).toBe(state);
+        expect(s.wideById.get(p.displayName)).toContain(state);
+        expect(s.narrowById.get(p.displayName)![1]).toContain(state);
+        expect(s.markdownById.get(p.displayName)![4]).toBe(state);
         if (p.quota) {
           expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota.usedPct)}%${compactSuffix(p)}]`);
           const f: any = await handleTool("forecast", { provider: p.id });
@@ -165,10 +166,10 @@ for (const [name, snap, snapJson] of FIXTURES) {
       for (const p of snap.providers) {
         if (p.exclusionReason === null) continue;
         const label = forecastText(p, FIXED_NOW);
-        expect(s.wideById.get(p.id)).toContain(label);
-        expect(s.narrowById.get(p.id)![1]).toContain(label);
-        expect(s.markdownById.get(p.id)![5]).toBe(label);
-        expect(s.markdownById.get(p.id)![4]).toBe("Not reporting");
+        expect(s.wideById.get(p.displayName)).toContain(label);
+        expect(s.narrowById.get(p.displayName)![1]).toContain(label);
+        expect(s.markdownById.get(p.displayName)![5]).toBe(label);
+        expect(s.markdownById.get(p.displayName)![4]).toBe("Not reporting");
         if (p.quota) {
           const f: any = await handleTool("forecast", { provider: p.id });
           const body = JSON.parse(f.content[0].text);
@@ -192,9 +193,9 @@ for (const [name, snap, snapJson] of FIXTURES) {
       expect(unknown.length).toBeGreaterThan(0);
       for (const p of unknown) {
         for (const text of [
-          s.wideById.get(p.id)!,
-          s.narrowById.get(p.id)![1],
-          s.markdownById.get(p.id)![5],
+          s.wideById.get(p.displayName)!,
+          s.narrowById.get(p.displayName)![1],
+          s.markdownById.get(p.displayName)![5],
         ]) {
           expect(text).not.toMatch(/waste/i);
           expect(text).not.toMatch(/%\/day/);
@@ -213,10 +214,10 @@ for (const [name, snap, snapJson] of FIXTURES) {
       const estimated = snap.providers.filter((p) => p.quota?.resetsAtEstimated);
       expect(estimated.length).toBeGreaterThan(0);
       for (const p of estimated) {
-        expect(s.wideById.get(p.id)).toContain("(est.)");
-        expect(s.narrowById.get(p.id)![1]).toContain("(est.)");
-        expect(s.markdownById.get(p.id)![3]).toContain("(est.)");
-        expect(s.markdownById.get(p.id)![5]).toMatch(/estimated/i);
+        expect(s.wideById.get(p.displayName)).toContain("(est.)");
+        expect(s.narrowById.get(p.displayName)![1]).toContain("(est.)");
+        expect(s.markdownById.get(p.displayName)![3]).toContain("(est.)");
+        expect(s.markdownById.get(p.displayName)![5]).toMatch(/estimated/i);
         expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota!.usedPct)}%${compactSuffix(p)}]`);
         const f: any = await handleTool("forecast", { provider: p.id });
         const body = JSON.parse(f.content[0].text);
@@ -233,9 +234,9 @@ for (const [name, snap, snapJson] of FIXTURES) {
       const renderAll = () => {
         const s = surfaces();
         return [
-          s.wideById.get("grok")!,
-          s.narrowById.get("grok")![1],
-          s.markdownById.get("grok")!.join("|"),
+          s.wideById.get("Grok")!,
+          s.narrowById.get("Grok")![1],
+          s.markdownById.get("Grok")!.join("|"),
         ];
       };
       expect(renderAll).not.toThrow();

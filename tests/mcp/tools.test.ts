@@ -205,6 +205,8 @@ describe("forecast", () => {
     process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
     try {
       await expect(handleTool("forecast", { provider: "nope" })).rejects.toThrow(/unknown-provider/);
+      // Display names are output only: the argument stays id-based.
+      await expect(handleTool("forecast", { provider: "Kimi" })).rejects.toThrow(/unknown-provider/);
       await expect(handleTool("forecast", {})).rejects.toThrow(/invalid-argument/);
       await expect(handleTool("forecast", { provider: "" })).rejects.toThrow(/invalid-argument/);
     } finally {

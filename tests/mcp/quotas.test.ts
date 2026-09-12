@@ -18,7 +18,7 @@ describe("mcp get_quotas", () => {
         [
           "| Provider | Used | Elapsed | Resets | State | Forecast |",
           "|---|---|---|---|---|---|",
-          "| claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
+          "| Claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
         ].join("\n"),
       );
       const rows = JSON.parse(res.content[1].text);
