@@ -1,6 +1,10 @@
 # QuotaCap Roadmap
 
-## Unreleased
+## Recently shipped — 0.0.25 — 2026-09-13 (upgrade path & display fixes)
+
+* Service restart race — wait for the port to be released between stop and start, so `quotacap update` stops reporting a failed restart on a successful upgrade (#61)
+* Reset rail labels — full display names instead of the first word, and the estimate marker on the timestamp rather than the provider name (#62)
+* Release smoke retry and doc citation de-rot — five-minute registry window, symbol citations instead of rotting `file:line` references (#60)
 
 * Provider auto-enable on daemon start — `knownProviders` key, PATH detection per unknown adapter, deliberate disables stick, pre-feature configs backfill the five
 * Post-update service registration refresh — managed takeovers reinstall (regenerating the supervisor PATH) with the target version threaded through `install`'s idempotent comparison
