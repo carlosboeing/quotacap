@@ -16,7 +16,7 @@ import { createCoordinator, type Coordinator } from "./poll.js";
 import { killAll } from "./spawn.js";
 import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
-import { ensureConfig, getConfigPath, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
+import { autoEnableNewProviders, ensureConfig, getConfigPath, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
@@ -136,10 +136,19 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
     throw err instanceof Error ? err : new Error(String(err));
   };
 
-  // 1. Provision config when absent, then strict validation (a present-but-
-  // invalid file still fails naming the field). The daemon always leaves a
-  // real file behind.
+  // 1. Provision config when absent, auto-enable newly shipped adapters,
+  // then strict validation (a present-but-invalid file still fails naming
+  // the field). The daemon always leaves a real file behind. Auto-enable
+  // runs before validation on every start so all upgrade channels (npm,
+  // brew, installer, manual binary swap) pick up new adapters; a failed
+  // migration warns and continues with the unmigrated file instead of
+  // refusing to serve.
   await ensureConfig().catch((e) => fail(e));
+  await autoEnableNewProviders().catch((e) => {
+    console.warn(
+      `[quotacap] provider auto-enable skipped: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  });
   const config: Config = await readServiceConfig().catch((e) => fail(e));
   const port = opts?.port ?? config.port;
   const dataDir = opts?.dataDir ?? path.dirname(getDbPath());

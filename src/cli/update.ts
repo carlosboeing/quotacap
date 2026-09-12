@@ -123,8 +123,10 @@ export interface PostUpdateTakeoverResult {
 
 // Restart the running daemon onto the just-installed target version. Unlike
 // the skew paths in web/status/advise, the comparison version is the target
-// (the running CLI is still the old binary), and the unmanaged path leaves
-// the daemon stopped with guidance instead of foreground-starting.
+// (the running CLI is still the old binary), the managed path refreshes the
+// service registration instead of only restarting (regenerating the
+// supervisor PATH), and the unmanaged path leaves the daemon stopped with
+// guidance instead of foreground-starting.
 export async function postUpdateTakeover(
   opts: PostUpdateTakeoverOpts,
 ): Promise<PostUpdateTakeoverResult> {
@@ -179,6 +181,7 @@ export async function postUpdateTakeover(
         cliExec: execPath,
         createClient,
         execService,
+        refreshRegistration: true,
         ...takeoverOpts,
       });
       return { notes: [r.message], warnings: [], error: null, exitCode: 0 };

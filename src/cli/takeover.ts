@@ -180,6 +180,12 @@ export interface TakeoverSharedOpts extends WaitOpts {
 export interface ManagedTakeoverOpts extends TakeoverSharedOpts {
   health: HealthView;
   execService?: ExecServiceFn;
+  // Post-update only: reinstall instead of restarting, so the supervisor
+  // unit regenerates its PATH (a restart keeps the install-time PATH).
+  // The expected version travels with the call because `update` runs in the
+  // old binary, whose in-process VERSION would otherwise make install
+  // conclude it is already up to date and never restart the daemon.
+  refreshRegistration?: boolean;
 }
 
 // Managed path: restart the supervisor-owned job, wait for readiness, and
@@ -194,9 +200,13 @@ export async function takeoverManaged(
       : "unknown";
   const execService =
     opts.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
-  const code = await execService(["restart"]);
+  const verb = opts.refreshRegistration ? "install" : "restart";
+  const code = await execService(
+    [verb],
+    opts.refreshRegistration ? { version: cliVersion } : undefined,
+  );
   if (code !== 0) {
-    throw new TakeoverError(`daemon upgrade failed: service restart exited ${code}`);
+    throw new TakeoverError(`daemon upgrade failed: service ${verb} exited ${code}`);
   }
   const healthy = await waitForHealthy(opts.port, cliVersion, opts);
   if (!healthy) {
