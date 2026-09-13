@@ -25,6 +25,49 @@ export function paceBadge(provider: ProviderView): PaceBadge {
   }
 }
 
+export interface PaceFigures {
+  /** Window average: used % ÷ days elapsed. Null before the window start is known. */
+  avg: number | null;
+  /** Recent burn: last-24h rolling rate. Null unless paceSource is "recent". */
+  recent: number | null;
+}
+
+/** Split the advisory into its two displayed paces. `burnRate` doubles as the
+ * forecast input, so the recent figure only exists when it was measured. */
+export function paceFigures(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceFigures {
+  if (!advisory) return { avg: null, recent: null };
+  const avg = advisory.avgPace ?? null;
+  const recent = advisory.paceSource === "recent" ? advisory.burnRate : null;
+  return { avg, recent };
+}
+
+export interface PaceCell {
+  lines: string[];
+}
+
+/** Card pace cell: one labeled line per known pace, average first. A pair
+ * that renders identically at display precision collapses to one line. */
+export function paceCell(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCell {
+  const { avg, recent } = paceFigures(advisory);
+  if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
+    return { lines: [`Avg ${avg.toFixed(1)}%/day`, `24h ${recent.toFixed(1)}%/day`] };
+  }
+  if (avg !== null) return { lines: [`Avg ${avg.toFixed(1)}%/day`] };
+  if (recent !== null) return { lines: [`24h ${recent.toFixed(1)}%/day`] };
+  return { lines: ["—"] };
+}
+
+/** One-line pace summary for table rows. Null when no pace is known. */
+export function paceSummary(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): string | null {
+  const { avg, recent } = paceFigures(advisory);
+  if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
+    return `Avg ${avg.toFixed(1)}%/day · 24h ${recent.toFixed(1)}%/day`;
+  }
+  if (avg !== null) return `Avg ${avg.toFixed(1)}%/day`;
+  if (recent !== null) return `24h ${recent.toFixed(1)}%/day`;
+  return null;
+}
+
 /** Plain-words reason shown beside "Not reporting". Null when the badge says it all. */
 export function exclusionDetail(reason: ExclusionReason): string | null {
   switch (reason) {
@@ -40,18 +83,6 @@ export function exclusionDetail(reason: ExclusionReason): string | null {
     case null:
       return null;
   }
-}
-
-const EVIDENCE_LABELS: Record<string, string> = {
-  measured: "Measured",
-  "window-average": "Window avg",
-};
-
-/** Coordinator-locked evidence labels. Unknown tokens pass through verbatim. */
-export function evidenceLabels(evidence: string[]): string[] {
-  return evidence
-    .filter((e) => e !== "estimated-reset")
-    .map((e) => EVIDENCE_LABELS[e] ?? e);
 }
 
 export function isEstimated(provider: ProviderView): boolean {
@@ -308,6 +339,9 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   const advisory = provider.advisory;
   if (!advisory) return null;
+  if (advisory.remaining <= 0) {
+    return "Exhausted · quota fully used";
+  }
   if (advisory.paceSource === "unknown") {
     return `Measuring pace · ${Math.round(advisory.remaining)}% remaining`;
   }

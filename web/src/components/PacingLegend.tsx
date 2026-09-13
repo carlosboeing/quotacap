@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 const STATES: Array<{ label: string; cls: string; meaning: string }> = [
-  { label: "On track", cls: "pace-ontrack", meaning: "Usage aligns with time (±20%)" },
+  { label: "On track", cls: "pace-ontrack", meaning: "Burning at a rate the window sustains" },
   { label: "Behind pace", cls: "pace-behind", meaning: "Burning slow; risk of unused quota waste" },
   { label: "Ahead of pace", cls: "pace-ahead", meaning: "Burning faster than time; monitor usage" },
   { label: "Cap risk", cls: "pace-cap", meaning: "Will hit cap before reset window closes" },
@@ -68,6 +68,9 @@ export function PacingLegend() {
           </div>
           <div className="legend-foot">
             <code>█</code> allowance used · <code>│</code> time elapsed · <code>░</code> projected waste
+          </div>
+          <div className="legend-foot">
+            Avg = used ÷ days elapsed · 24h = burn over the last day · Needed = remaining ÷ days left
           </div>
         </div>
       )}

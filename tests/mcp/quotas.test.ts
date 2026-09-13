@@ -14,12 +14,12 @@ describe("mcp get_quotas", () => {
     try {
       const res: any = await handleTool("get_quotas", {});
       expect(res.isError).toBeUndefined();
-      expect(res.content[0].text).toBe(
-        [
-          "| Provider | Used | Elapsed | Resets | State | Forecast |",
-          "|---|---|---|---|---|---|",
-          "| Claude | 40% | 100% | passed | Not reporting | reset passed — awaiting fresh window |",
-        ].join("\n"),
+      const lines = res.content[0].text.split("\n");
+      expect(lines[0]).toBe("| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |");
+      expect(lines[1]).toBe("|---|---|---|---|---|---|---|");
+      // Pace drifts with wall-clock now (fixed periodStart), so pin the shape, not the figure.
+      expect(lines[2]).toMatch(
+        /^\| Claude \| 40% \| 100% \| (?:—|\d+\.\d+ avg) \| passed \| Not reporting \| reset passed — awaiting fresh window \|$/,
       );
       const rows = JSON.parse(res.content[1].text);
       expect(rows).toHaveLength(1);

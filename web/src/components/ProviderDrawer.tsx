@@ -14,6 +14,7 @@ import {
   barGeometry,
   isEstimated,
   paceBadge,
+  paceFigures,
   resetClock,
   timeLeft,
   type PaceBadge,
@@ -203,10 +204,21 @@ export function rankingCopy(
   let pace: string;
   if (!advisory || advisory.paceSource === "unknown" || advisory.burnRate === null) {
     pace = modelFailure(provider) ?? "No current pace.";
-  } else if (advisory.status === "at risk") {
-    pace = `${advisory.burnRate.toFixed(1)}%/day so far this window, against a ${advisory.idealRate.toFixed(1)}%/day target.`;
+  } else if (advisory.remaining <= 0) {
+    pace = `Exhausted at ${quota?.usedPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
   } else {
-    pace = `${advisory.burnRate.toFixed(1)}%/day so far this window. Finishing it needs ${advisory.idealRate.toFixed(1)}%/day.`;
+    const { avg, recent } = paceFigures(advisory);
+    const figures =
+      avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)
+        ? `${avg.toFixed(1)}%/day window average and ${recent.toFixed(1)}%/day over the last 24h`
+        : avg !== null
+          ? `${avg.toFixed(1)}%/day window average`
+          : `${(recent as number).toFixed(1)}%/day over the last 24h`;
+    const target = `${advisory.idealRate.toFixed(1)}%/day`;
+    pace =
+      advisory.status === "at risk"
+        ? `${figures}, against a ${target} target to finish on pace.`
+        : `${figures}. Finishing on pace needs ${target}.`;
   }
   let decision: string;
   if (provider.exclusionReason) {

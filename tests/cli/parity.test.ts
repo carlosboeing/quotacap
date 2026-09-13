@@ -148,7 +148,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
         expect(vocab).toContain(state);
         expect(s.wideById.get(p.displayName)).toContain(state);
         expect(s.narrowById.get(p.displayName)![1]).toContain(state);
-        expect(s.markdownById.get(p.displayName)![4]).toBe(state);
+        expect(s.markdownById.get(p.displayName)![5]).toBe(state);
         if (p.quota) {
           expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota.usedPct)}%${compactSuffix(p)}]`);
           const f: any = await handleTool("forecast", { provider: p.id });
@@ -168,8 +168,8 @@ for (const [name, snap, snapJson] of FIXTURES) {
         const label = forecastText(p, FIXED_NOW);
         expect(s.wideById.get(p.displayName)).toContain(label);
         expect(s.narrowById.get(p.displayName)![1]).toContain(label);
-        expect(s.markdownById.get(p.displayName)![5]).toBe(label);
-        expect(s.markdownById.get(p.displayName)![4]).toBe("Not reporting");
+        expect(s.markdownById.get(p.displayName)![6]).toBe(label);
+        expect(s.markdownById.get(p.displayName)![5]).toBe("Not reporting");
         if (p.quota) {
           const f: any = await handleTool("forecast", { provider: p.id });
           const body = JSON.parse(f.content[0].text);
@@ -195,7 +195,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
         for (const text of [
           s.wideById.get(p.displayName)!,
           s.narrowById.get(p.displayName)![1],
-          s.markdownById.get(p.displayName)![5],
+          s.markdownById.get(p.displayName)![6],
         ]) {
           expect(text).not.toMatch(/waste/i);
           expect(text).not.toMatch(/%\/day/);
@@ -216,8 +216,8 @@ for (const [name, snap, snapJson] of FIXTURES) {
       for (const p of estimated) {
         expect(s.wideById.get(p.displayName)).toContain("(est.)");
         expect(s.narrowById.get(p.displayName)![1]).toContain("(est.)");
-        expect(s.markdownById.get(p.displayName)![3]).toContain("(est.)");
-        expect(s.markdownById.get(p.displayName)![5]).toMatch(/estimated/i);
+        expect(s.markdownById.get(p.displayName)![4]).toContain("(est.)");
+        expect(s.markdownById.get(p.displayName)![6]).toMatch(/estimated/i);
         expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota!.usedPct)}%${compactSuffix(p)}]`);
         const f: any = await handleTool("forecast", { provider: p.id });
         const body = JSON.parse(f.content[0].text);

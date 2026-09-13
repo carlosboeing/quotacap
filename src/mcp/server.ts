@@ -20,7 +20,7 @@ import {
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
   { name:"get_recommendation", description:"Which provider to use next (same advice for every task)", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
-  { name:"forecast", description:"Burn vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
+  { name:"forecast", description:"Burn (24h + window avg) vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
 
 // QUOTACAP_URL is used as configured: scheme, authority, effective port and

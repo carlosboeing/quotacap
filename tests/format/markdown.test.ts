@@ -13,16 +13,16 @@ describe("markdown table", () => {
   it("pins the example fixture exactly in recommended order", () => {
     expect(renderMarkdownTable(exampleStateSnapshot, FIXED_NOW)).toBe(
       [
-        "| Provider | Used | Elapsed | Resets | State | Forecast |",
-        "|---|---|---|---|---|---|",
-        "| ★ my-plan | 12% | 50% | 7d | Behind pace | 76% waste in 7.0d |",
-        "| Kimi | 22% | 50% | 7d | Behind pace | 56% waste in 7.0d |",
-        "| Claude | 40% | 50% | 7d | Behind pace | 20% waste in 7.0d |",
-        "| Codex | 40% | 50% | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
-        "| Antigravity | 50% | 0% | 7d | On track | Measuring pace; 50% remains with 7.0d until reset |",
-        "| Antigravity 3P | 60% | 0% | 7d | Not reporting | stale 3h ago |",
-        "| Grok | 30% | — | — | Not reporting | invalid reading |",
-        "| Manual | — | — | — | Not reporting | no readings yet |",
+        "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |",
+        "|---|---|---|---|---|---|---|",
+        "| ★ my-plan | 12% | 50% | 1.7 avg | 7d | Behind pace | 76% waste in 7.0d |",
+        "| Kimi | 22% | 50% | 3.1 avg | 7d | Behind pace | 56% waste in 7.0d |",
+        "| Claude | 40% | 50% | 5.7 avg | 7d | Behind pace | 20% waste in 7.0d |",
+        "| Codex | 40% | 50% | 5.7 avg | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
+        "| Antigravity | 50% | 0% | — | 7d | On track | Measuring pace; 50% remains with 7.0d until reset |",
+        "| Antigravity 3P | 60% | 0% | — | 7d | Not reporting | stale 3h ago |",
+        "| Grok | 30% | — | — | — | Not reporting | invalid reading |",
+        "| Manual | — | — | — | — | Not reporting | no readings yet |",
       ].join("\n"),
     );
   });

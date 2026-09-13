@@ -40,6 +40,7 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     remaining: Number.isFinite(adv.remaining) ? adv.remaining : 0,
     idealRate: Number.isFinite(adv.idealRate) ? adv.idealRate : 0,
     burnRate: adv.burnRate !== null && Number.isFinite(adv.burnRate) ? adv.burnRate : null,
+    avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,
   };

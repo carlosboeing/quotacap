@@ -107,22 +107,28 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const use = snapshot.recommendation.use;
   const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
   const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
+  const rows = sorted.map((p) => ({ p, row: buildRow(p, opts.now) }));
+  const paceWidth = Math.max(
+    "PACE (%/DAY)".length,
+    ...rows.map(({ row }) => row.pace.length),
+  );
   const paint = (s: string, code: string): string => (color ? `${code}${s}${RESET}` : s);
   const header = [
     "PROVIDER".padEnd(width),
     "USED".padStart(6),
     "ELAPSED".padStart(8),
+    "PACE (%/DAY)".padEnd(paceWidth),
     "USED VS TIME".padEnd(20),
     "RESETS".padEnd(9),
     "STATE".padEnd(15),
     "FORECAST",
   ].join(GAP);
-  const lines = sorted.map((p) => {
-    const row = buildRow(p, opts.now);
+  const lines = rows.map(({ p, row }) => {
     const recommended = p.id === use && use !== "none";
     const name = rawProviderField(p.displayName, recommended, width, g);
     const used = (row.usedPct === null ? g.dash : `${row.usedPct}%`).padStart(6);
     const elapsed = (row.elapsedPct === null ? g.dash : `${row.elapsedPct}%`).padStart(8);
+    const pace = (opts.ascii ? asciiText(row.pace) : row.pace).padEnd(paceWidth);
     const rail = renderRail(row.railCells, g, row.state, color);
     const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
     const state = row.state.padEnd(15);
@@ -131,6 +137,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
       color ? colorProviderField(name, recommended, row.state) : name,
       used,
       elapsed,
+      pace,
       rail,
       countdown,
       paint(state, STATE_COLORS[row.state]),
@@ -156,9 +163,11 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
     const rail = renderRail(row.railCells, g, row.state, color);
     const countdown = opts.ascii ? asciiText(row.countdown) : row.countdown;
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
+    const pace = opts.ascii ? asciiText(row.pace) : row.pace;
+    const paceBits = row.pace === "—" ? pace : `${pace} %/day`;
     const state = color ? `${STATE_COLORS[row.state]}${row.state}${RESET}` : row.state;
     lines.push(
-      `${color ? colorProviderField(name, recommended, row.state) : name} ${used} used ${g.sep} ${elapsed} elapsed`,
+      `${color ? colorProviderField(name, recommended, row.state) : name} ${used} used ${g.sep} ${elapsed} elapsed ${g.sep} ${paceBits}`,
       `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}`,
     );
   }

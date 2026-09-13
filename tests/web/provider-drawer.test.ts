@@ -71,6 +71,43 @@ describe("provider drawer", () => {
     expect(snap.source).toBe("cli");
     expect(snap.pacingStatus).toMatch(/behind|ontrack|ahead|cap|out/);
   });
+  it("explains both paces against the target in ranking rationale", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const flat = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent", status: "on track" },
+    };
+    expect(rankingCopy(flat as any, s.recommendation).pace).toBe(
+      "10.6%/day window average and 0.0%/day over the last 24h. Finishing on pace needs 11.1%/day."
+    );
+    const risky = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, burnRate: 24, avgPace: 10.6, paceSource: "recent", status: "at risk" },
+    };
+    expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
+      "10.6%/day window average and 24.0%/day over the last 24h, against a 11.1%/day target to finish on pace."
+    );
+  });
+  it("names exhausted windows in ranking rationale", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const capped = {
+      ...kimi,
+      quota: { ...kimi.quota!, usedPct: 100 },
+      advisory: {
+        ...kimi.advisory!,
+        remaining: 0,
+        burnRate: 0,
+        avgPace: 14.3,
+        status: "at risk",
+        urgency: "slow down",
+        wastePct: 0,
+        daysToExhaust: 0,
+      },
+    };
+    expect(rankingCopy(capped as any, s.recommendation).pace).toMatch(/^Exhausted at 100% used\. Resets /);
+  });
   it("matches concept JSON snapshot type and does not clip the block", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.draw-code \{[^}]*font-size: var\(--t-2\)/);

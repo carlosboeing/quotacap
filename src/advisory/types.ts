@@ -22,6 +22,13 @@ export interface Advisory {
   remaining: number;
   idealRate: number;
   burnRate: number | null;
+  /**
+   * Window-average pace (used % ÷ days elapsed), always computed when the
+   * window start is known — independent of `burnRate`, which is the forecast
+   * input (recent 24h rolling burn when available, else this same average).
+   * Surfaces show both so a flat 24h (0.0) never hides real window usage.
+   */
+  avgPace: number | null;
   burnMeasured: boolean;
   paceSource: PaceSource;
   daysToExhaust: number | null;
