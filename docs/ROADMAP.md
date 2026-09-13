@@ -1,6 +1,6 @@
 # QuotaCap Roadmap
 
-## Unreleased
+## Recently shipped — 0.0.26 — 2026-09-13 (update-check resilience)
 
 * Version resolution without the API bucket — latest tag from the releases-page redirect, JSON seam kept behind `QUOTACAP_RELEASE_BASE_URL`, rate-limit failures diagnosed with reset time
 * Negative update cache and reachable pin — failed refreshes back off 30 minutes while serving the cached `latest`; `update --version` (shadowed, never worked) renamed to `update --to`

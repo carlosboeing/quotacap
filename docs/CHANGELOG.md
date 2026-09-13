@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.26
 
 - Update checks without the API bucket: `resolveLatestVersion` reads the latest tag from the releases-page redirect `Location` instead of the anonymous GitHub API, whose 60/hour budget is shared with every other API consumer on the machine; the JSON behaviour stays behind `QUOTACAP_RELEASE_BASE_URL` for hermetic tests and mirrors.
 - Negative update cache: failed `refreshUpdateCache` attempts stamp `lastFailureAt` and suppress further network calls for 30 minutes while the previously cached `latest` keeps being served; `checkedAt` is untouched so the daily check is unaffected, success clears the stamp, the field is optional so existing `updates.json` files keep loading, and a late failure re-reads before stamping so it never clobbers a newer successful write.
