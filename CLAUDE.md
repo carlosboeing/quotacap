@@ -39,6 +39,10 @@ Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discove
 * MIT license (LICENSE)
 * One-line summary + trade-offs for proposals; terse lists/tables; file:line sources
 
+## Browser verification
+
+Verify the dashboard headless/isolated only (`playwright-cli open` with the default in-memory profile, headless MCP, `npm run test:smoke` as configured). Never `attach` to the user's running Chrome, never `--headed` against the main profile, and always `close` sessions when done — stray tabs in the user's window are a bug.
+
 ## Current state
 
 * Five live adapters: claude, codex, kimi, grok, agy
