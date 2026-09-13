@@ -5,7 +5,7 @@ import {
   Badge,
   PaceBar,
   isEstimated,
-  paceCell,
+  paceCells,
   resetClock,
   resetCountdown,
   timeLeft,
@@ -32,7 +32,7 @@ export function ProviderCard({
 }) {
   const quota = provider.quota;
   const advisory = provider.advisory;
-  const pace = paceCell(advisory);
+  const pace = paceCells(advisory);
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(provider.ageMs);
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
@@ -78,12 +78,12 @@ export function ProviderCard({
 
         <div className="pstats">
           <div>
-            <span className="l">Pace</span>
-            {pace.lines.map((text) => (
-              <span key={text} className="v">
-                {text}
-              </span>
-            ))}
+            <span className="l">Avg pace</span>
+            <span className="v">{pace.avg}</span>
+          </div>
+          <div>
+            <span className="l">24h pace</span>
+            <span className="v">{pace.recent}</span>
           </div>
           <div>
             <span className="l">Needed</span>

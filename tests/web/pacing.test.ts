@@ -5,7 +5,7 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { forecastLine, hatchGradient, paceBadge, paceCell, paceFigures, paceSummary, resetClock } from "../../web/src/components/PaceBar.js";
+import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceSummary, resetClock } from "../../web/src/components/PaceBar.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -45,20 +45,20 @@ describe("pace figures", () => {
     expect(paceFigures({ avgPace: null, burnRate: null, paceSource: "unknown" })).toEqual({ avg: null, recent: null });
     expect(paceFigures(null)).toEqual({ avg: null, recent: null });
   });
-  it("labels one line per known pace on cards, average first", () => {
-    expect(paceCell({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({
-      lines: ["Avg 10.6%/day", "24h 0.0%/day"],
+  it("renders average and 24h as peer card cells, dash when unknown", () => {
+    expect(paceCells({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({
+      avg: "10.6%/day",
+      recent: "0.0%/day",
     });
-    expect(paceCell({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toEqual({
-      lines: ["Avg 3.1%/day"],
+    expect(paceCells({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toEqual({
+      avg: "3.1%/day",
+      recent: "—",
     });
-    expect(paceCell({ avgPace: 7.03, burnRate: 6.97, paceSource: "recent" })).toEqual({
-      lines: ["Avg 7.0%/day"],
+    expect(paceCells({ avgPace: null, burnRate: 17, paceSource: "recent" })).toEqual({
+      avg: "—",
+      recent: "17.0%/day",
     });
-    expect(paceCell({ avgPace: null, burnRate: 17, paceSource: "recent" })).toEqual({
-      lines: ["24h 17.0%/day"],
-    });
-    expect(paceCell(null)).toEqual({ lines: ["—"] });
+    expect(paceCells(null)).toEqual({ avg: "—", recent: "—" });
   });
   it("summarizes both paces for table rows", () => {
     expect(paceSummary({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toBe(

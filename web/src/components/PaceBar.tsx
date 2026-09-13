@@ -41,20 +41,20 @@ export function paceFigures(advisory: { avgPace?: number | null; burnRate: numbe
   return { avg, recent };
 }
 
-export interface PaceCell {
-  lines: string[];
+export interface PaceCells {
+  avg: string;
+  recent: string;
 }
 
-/** Card pace cell: one labeled line per known pace, average first. A pair
- * that renders identically at display precision collapses to one line. */
-export function paceCell(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCell {
+/** Card pace cells: average and 24h rate side by side, each "—" when unknown.
+ * Unlike the collapsed summaries, both cells always render so the pair
+ * reads as two peer figures. */
+export function paceCells(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCells {
   const { avg, recent } = paceFigures(advisory);
-  if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
-    return { lines: [`Avg ${avg.toFixed(1)}%/day`, `24h ${recent.toFixed(1)}%/day`] };
-  }
-  if (avg !== null) return { lines: [`Avg ${avg.toFixed(1)}%/day`] };
-  if (recent !== null) return { lines: [`24h ${recent.toFixed(1)}%/day`] };
-  return { lines: ["—"] };
+  return {
+    avg: avg !== null ? `${avg.toFixed(1)}%/day` : "—",
+    recent: recent !== null ? `${recent.toFixed(1)}%/day` : "—",
+  };
 }
 
 /** One-line pace summary for table rows. Null when no pace is known. */
