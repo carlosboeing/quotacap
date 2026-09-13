@@ -62,6 +62,7 @@ export interface RuntimeCommandDeps {
 export interface WebLaunchOptions {
   port?: string;
   foreground?: boolean;
+  open?: boolean;
 }
 
 // Shared `web` launcher handler: the `web` command and the bare `quotacap`
@@ -74,7 +75,13 @@ export async function launchWeb(
   deps: RuntimeCommandDeps = {},
 ): Promise<void> {
   const start = deps.startService ?? startService;
-  const openBrowser = deps.openBrowser ?? defaultOpenBrowser;
+  // Tab-free mode for tests and automation: print the URL instead of
+  // opening the user's browser. The env form also covers bare `quotacap`,
+  // which takes no flags.
+  const noOpen = o.open === false || process.env.QUOTACAP_NO_OPEN === "1";
+  const openBrowser = noOpen
+    ? async (url: string) => { console.log(url); }
+    : deps.openBrowser ?? defaultOpenBrowser;
   const exit = deps.exit ?? process.exit;
   const execService: ExecServiceFn =
     deps.execService ?? ((args, opts) => runServiceCommand(args, opts ?? {}, {}));
@@ -284,6 +291,7 @@ export function registerRuntimeCommands(
     .command("web")
     .option("--port <n>")
     .option("--foreground", "hold the terminal with a foreground service instead of using the login service")
+    .option("--no-open", "print the dashboard URL instead of opening a browser")
     .description("open the dashboard, starting the service if needed")
     .action(async (o) =>
       launchWeb(o, {
