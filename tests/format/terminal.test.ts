@@ -375,6 +375,13 @@ describe("pace pair text", () => {
     expect(paceText(p)).toBe("—");
     expect(paceText(ps({ id: "x" }))).toBe("—");
   });
+  it("tolerates advisories from a daemon older than the pace split", () => {
+    const legacy = { ...advisory({ burnRate: 5, paceSource: "recent", burnMeasured: true }) };
+    delete (legacy as any).avgPace;
+    const p = ps({ id: "x", quota: quota(), advisory: legacy });
+    expect(paceText(p)).toBe("5.0 24h");
+    expect(() => buildRow(p, FIXED_NOW)).not.toThrow();
+  });
 });
 
 describe("compact suffix legend (D5)", () => {

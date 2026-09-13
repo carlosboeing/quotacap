@@ -242,7 +242,8 @@ export function sortProviders(
 export function paceText(ps: ProviderSnapshot): string {
   const adv = ps.advisory;
   if (!adv) return "—";
-  const avg = adv.avgPace;
+  // avgPace is absent on advisories from a daemon older than the split.
+  const avg = adv.avgPace ?? null;
   const recent = adv.paceSource === "recent" ? adv.burnRate : null;
   if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
     return `${avg.toFixed(1)} avg · ${recent.toFixed(1)} 24h`;
