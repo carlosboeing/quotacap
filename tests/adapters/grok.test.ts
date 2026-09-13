@@ -133,6 +133,73 @@ describe("parseGrokTui", () => {
     expect((q as any).raw.length).toBeLessThanOrEqual(4096);
     expect((q as any).raw).toMatch(/Weekly limit/);
   });
+
+  // Live-transcript format (grok 1.0.30): the startup status line reports
+  // REMAINING quota ("Weekly limit left: 0%"), while the /usage dialog
+  // header reads "Weekly limt" (cursor reposition drops the "i") with the
+  // used percent on the next line. The dialog wins; the status line must
+  // never be read as used.
+  function liveFixture(overrides?: { left?: string; header?: string; pct?: number; reset?: string }): string {
+    const left = overrides?.left ?? "Weekly limit left: 0%";
+    const header = overrides?.header ?? "Weekly limt (SuperGrok)";
+    const pct = overrides?.pct ?? 100;
+    const reset = overrides?.reset ?? "Resets:September 14, 10:22";
+    return `Start Grok in a fresh worktree somewhere. ${left} · more text here\n` +
+      `│  ${header}  │\n` +
+      `│  ██████████████████████████████  ${pct}%  │\n` +
+      `│  ${reset}  │\n` +
+      `│  Loading session usage…  │\n`;
+  }
+
+  it("prefers the dialog used percent over the 'left' status line", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const q = parseGrokTui(liveFixture(), now);
+    expect(q.usedPct).toBe(100);
+    expect(q.plan).toBe("SuperGrok");
+    const dt = new Date(q.resetsAt);
+    expect(dt.getMonth()).toBe(8);
+    expect(dt.getDate()).toBe(14);
+  });
+
+  it("ignores a disagreeing 'left' line when the dialog disagrees", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const txt = liveFixture({ left: "Weekly limit left: 74%", header: "Weekly limit (SuperGrok)", pct: 26 });
+    const q = parseGrokTui(txt, now);
+    expect(q.usedPct).toBe(26);
+  });
+
+  it("converts a lone 'left' line from remaining to used", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const txt = `Welcome. Weekly limit left: 30% · quota\nResets: September 14, 10:22\n`;
+    const q = parseGrokTui(txt, now);
+    expect(q.usedPct).toBe(70);
+    expect(q.plan).toBe("unknown");
+  });
+
+  it("captures the full tier from a 'limt' header", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const txt = liveFixture({ header: "Weekly limt (SuperGrok Heavy)", pct: 55 });
+    const q = parseGrokTui(txt, now);
+    expect(q.plan).toBe("SuperGrok Heavy");
+    expect(q.usedPct).toBe(55);
+  });
+
+  it("parses the raw cursor-repositioned header after ANSI stripping", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const txt = "Weekly limit left: 0%\nWeekly lim\x1b[14;39Ht (SuperGrok)\n████████████  100%\nResets:September 14, 10:22\n";
+    const q = parseGrokTui(txt, now);
+    expect(q.plan).toBe("SuperGrok");
+    expect(q.usedPct).toBe(100);
+  });
+
+  it("later renders supersede earlier ones", () => {
+    const now = new Date("2026-09-13T00:00:00Z");
+    const txt = liveFixture({ pct: 26, reset: "Resets: September 7, 10:22" }) +
+      liveFixture({ pct: 100, reset: "Resets: September 14, 10:22" });
+    const q = parseGrokTui(txt, now);
+    expect(q.usedPct).toBe(100);
+    expect(new Date(q.resetsAt).getDate()).toBe(14);
+  });
 });
 
 describe("grok TUI via fake PTY", () => {
