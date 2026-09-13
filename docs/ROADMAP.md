@@ -1,6 +1,6 @@
 # QuotaCap Roadmap
 
-## Unreleased
+## Recently shipped — 0.0.27 — 2026-09-13 (seamless updates)
 
 * Seamless updates — install upgrades wait for the port to be released on both backends, and the post-update refresh runs quiet so a good update prints three lines
 * Always-visible versions — `status`/`advise` print the CLI (and differing daemon) version on stderr, the dashboard footer shows the daemon version
