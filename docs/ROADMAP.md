@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.28 — 2026-09-13 (grok accuracy)
+
+* Grok accuracy — the adapter reads the `/usage` dialog used percent instead of the startup `limit left` remaining figure, so Grok reports 100% used instead of a pinned 0%
+
 ## Recently shipped — 0.0.27 — 2026-09-13 (seamless updates)
 
 * Seamless updates — install upgrades wait for the port to be released on both backends, and the post-update refresh runs quiet so a good update prints three lines

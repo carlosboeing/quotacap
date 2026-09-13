@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.28
+
+- Grok accuracy: the adapter matched the TUI startup line `Weekly limit left: N%` (remaining quota) and reported it as used, pinning Grok at 0% while the `/usage` dialog showed 100% used. The parser now reads the dialog header first — tolerating the cursor-repositioned `limt` spelling with the percent on the next line — excludes `left` lines from the legacy same-line match, converts a lone `left` figure to used as 100−N, and takes the last `Resets:` line so re-renders supersede earlier frames; the poll waits for the dialog instead of completing on the startup line.
+
 ## 0.0.27
 
 - Service install upgrades wait for the port to be released before loading the replacement on both backends, closing the stop→start race the post-update refresh path could still hit after it moved from `restart` to `install`; a port that never frees warns and starts anyway, never worse than before.
