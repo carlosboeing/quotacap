@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.27
 
 - Service install upgrades wait for the port to be released before loading the replacement on both backends, closing the stop→start race the post-update refresh path could still hit after it moved from `restart` to `install`; a port that never frees warns and starts anyway, never worse than before.
 - Quiet post-update refresh: managed takeovers pass `quiet` through to `install`, so a good update prints its own three lines (`Updated`, the takeover note, the release URL) instead of ~17 lines of install detail. Failures still throw and stay loud.
