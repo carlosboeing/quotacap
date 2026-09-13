@@ -111,7 +111,7 @@ adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL,
 | `status [--json] [--verbose]` | Latest per-provider table: used, left, resets, days left, ideal burn, burn rate, waste. `--verbose` appends actionable guidance and diagnostics for failing adapters. Strictly read-only; never polls. | `quotacap status --verbose` |
 | `advise [--task <any\|heavy\|light>]` | "Use X next." HTTP API first, in-process fallback. | `quotacap advise --task heavy` |
 | `providers <list\|rename\|reset>` | Manage custom provider display name overrides. | `quotacap providers rename claude "Work"` |
-| `web [--port <n>]` | Serve the dashboard on :8787 and auto-start the daemon if none is running. | `quotacap web` |
+| `web [--port <n>] [--no-open]` | Serve the dashboard on :8787 and auto-start the daemon if none is running. `--no-open` (or `QUOTACAP_NO_OPEN=1`, which also covers bare `quotacap`) prints the URL instead of opening a browser. | `quotacap web` |
 | `daemon [--foreground]` | Run the daemon in the foreground (default) and poll `enabledProviders`. | `quotacap daemon` |
 | `init` | Write `~/.quotacap/config.json` with defaults. | `quotacap init` |
 | `mcp` | Start the MCP stdio server for harness integration. | `quotacap mcp` |
