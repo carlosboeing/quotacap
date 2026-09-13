@@ -326,7 +326,7 @@ describe("update standalone", () => {
       },
       takeoverOpts: { sleep: async () => {}, timeoutMs: 1000 },
     });
-    expect(services).toEqual([{ args: ["install"], opts: { version: "99.0.0" } }]);
+    expect(services).toEqual([{ args: ["install"], opts: { version: "99.0.0", quiet: true } }]);
     expect(r.exitCodes).toEqual([]);
     expect(JSON.parse(r.logs.join("\n"))).toEqual({
       channel: "standalone",

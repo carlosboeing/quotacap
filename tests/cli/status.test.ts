@@ -578,13 +578,46 @@ describe("status wiring", () => {
     try {
       Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
       await runWired(["status"], onlineDeps({ checkUpdates: async () => stale }));
-      expect(errors).toEqual([footer]);
+      expect(errors).toEqual([`quotacap ${VERSION}`, footer]);
       reset();
       await runWired(["status", "--json"], onlineDeps({ checkUpdates: async () => stale }));
       expect(errors).toEqual([]);
       reset();
       Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
       await runWired(["status"], onlineDeps({ checkUpdates: async () => stale }));
+      expect(errors).toEqual([]);
+    } finally {
+      if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
+    }
+  });
+
+  it("prints the version line on TTY stderr, with the daemon when it differs", async () => {
+    const desc = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      await runWired(["status"], onlineDeps());
+      expect(errors).toEqual([`quotacap ${VERSION}`]);
+      logs.length = 0;
+      errors.length = 0;
+      await runWired(
+        ["status"],
+        onlineDeps({
+          createClient: () => ({
+            get: async (p: string) =>
+              p === "/health"
+                ? { ok: true, version: "99.0.0", exec: "/new/q" }
+                : servedState(),
+            post: async () => {
+              throw new Error("unused");
+            },
+          }),
+        }),
+      );
+      expect(errors[0]).toContain("daemon is newer (99.0.0)");
+      expect(errors[1]).toBe(`quotacap ${VERSION} · daemon 99.0.0`);
+      logs.length = 0;
+      errors.length = 0;
+      await runWired(["status", "--compact"], onlineDeps());
       expect(errors).toEqual([]);
     } finally {
       if (desc) Object.defineProperty(process.stderr, "isTTY", desc);

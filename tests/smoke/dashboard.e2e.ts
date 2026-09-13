@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 import { buildFixtureDb } from "../fixtures/stable-state.js";
+import { VERSION } from "../../src/version.js";
 
 /**
  * Live smoke suite. Spawns the real daemon (`node dist/cli/index.js daemon`)
@@ -142,6 +143,7 @@ test("live dashboard renders provider cards with zero console errors", async ({ 
     for (const id of PROVIDERS) {
       await expect(page.getByTestId(`provider-card-${id}`)).toBeVisible();
     }
+    await expect(page.locator("footer.sitefoot")).toContainText(`QuotaCap v${VERSION}`);
     expect(consoleErrors, `browser console errors:\n${consoleErrors.join("\n")}`).toEqual([]);
     expect(pageErrors, `page errors:\n${pageErrors.join("\n")}`).toEqual([]);
   } finally {

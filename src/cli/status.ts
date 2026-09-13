@@ -13,6 +13,7 @@ import { isServiceManaged, runServiceCommand } from "../service/index.js";
 import {
   detectChannel,
   printUpdateFooter,
+  printVersionLine,
   readUpdateCache,
   refreshUpdateCache,
   updateFooter,
@@ -96,6 +97,9 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
                 ...takeoverOpts,
               });
               console.error(r.message);
+              // The takeover verified the daemon now reports the CLI version;
+              // keep the pre-check health from mislabeling the version line.
+              health.version = VERSION;
             } catch (e) {
               console.error(e instanceof Error ? e.message : String(e));
               exit(1);
@@ -138,6 +142,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
             return;
           }
           console.log(e.message);
+          printVersionLine(o, VERSION, health?.version);
           printUpdateFooter(o, footer);
           return;
         }
@@ -169,6 +174,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
         const issues = renderIssues(snapshot, ascii);
         if (issues) console.log("\n" + issues);
       }
+      printVersionLine(o, VERSION, health?.version);
       printUpdateFooter(o, footer);
     });
 }

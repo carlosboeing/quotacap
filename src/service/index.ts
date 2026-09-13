@@ -132,8 +132,14 @@ export async function runServiceCommand(
       case "install":
         // Internal: the post-update refresh passes the target version so
         // install compares and records it instead of the old in-process
-        // VERSION. The `service install` CLI never sets opts.version.
-        await backend.install({ ...deps, version: opts.version ?? deps.version });
+        // VERSION, plus quiet so a good update prints its own three lines
+        // instead of the install chatter. The `service install` CLI never
+        // sets opts.version or opts.quiet.
+        await backend.install({
+          ...deps,
+          version: opts.version ?? deps.version,
+          quiet: opts.quiet ?? deps.quiet,
+        });
         break;
       case "uninstall":
         await backend.uninstall(deps);

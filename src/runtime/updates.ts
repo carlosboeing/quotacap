@@ -394,6 +394,22 @@ export function printUpdateFooter(o: { json?: boolean }, footer: string | null):
   console.error(footer);
 }
 
+// Version identity line, printed next to the update footer under the same
+// stderr/TTY rules, plus never under --compact (prompt renderers must not
+// see per-render noise). The daemon part appears only when the reachable
+// daemon reports a version that differs from the CLI.
+export function printVersionLine(
+  o: { json?: boolean; compact?: boolean },
+  cliVersion: string,
+  daemonVersion: unknown,
+): void {
+  if (o.json || o.compact || !process.stderr.isTTY) return;
+  const daemon =
+    typeof daemonVersion === "string" && daemonVersion ? daemonVersion : null;
+  const suffix = daemon && daemon !== cliVersion ? ` · daemon ${daemon}` : "";
+  console.error(`quotacap ${cliVersion}${suffix}`);
+}
+
 export function platformAssetName(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,

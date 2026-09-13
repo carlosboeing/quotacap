@@ -72,11 +72,13 @@ function depsFor(
     home,
     uid: 501,
     dataDir: path.join(home, ".quotacap"),
+    port: 1,
     execPath: "/stable/quotacap",
     argv1: undefined,
     runLaunchctl: run,
     which: () => null,
     lintPlist: () => {},
+    waitReleased: async () => true,
     print: (m: string) => printed.push(m),
     error: (m: string) => printed.push(m),
     printed,
@@ -379,6 +381,15 @@ describe("macos login service", () => {
     expect(readServiceMetadata(dataDir)?.version).toBe("99.0.0");
   });
 
+  it("quiet install prints nothing on success", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const d = depsFor(home, rec.run, { quiet: true });
+    await install(d);
+    expect((d as unknown as { printed: string[] }).printed).toEqual([]);
+    expect(rec.calls.length).toBeGreaterThan(0);
+  });
+
   it("(h) uninstall removes only the plist", async () => {
     const home = mkHome();
     const dataDir = path.join(home, ".quotacap");
@@ -460,6 +471,58 @@ describe("macos login service", () => {
         print: (m: string) => printed.push(m),
       }),
     );
+    expect(printed.some((m) => /still in use/.test(m))).toBe(true);
+    expect(rec.calls.map((c) => c[0])).toEqual(["bootout", "bootstrap", "enable"]);
+  });
+
+  function writeStalePlist(home: string): string {
+    const dataDir = path.join(home, ".quotacap");
+    const plistFile = path.join(home, "Library/LaunchAgents/quotacap.plist");
+    fs.mkdirSync(path.dirname(plistFile), { recursive: true });
+    fs.writeFileSync(
+      plistFile,
+      buildPlist({
+        label: SERVICE_LABEL,
+        argv: ["/old/quotacap", "daemon", "--foreground"],
+        workingDirectory: dataDir,
+        path: "/usr/bin:/bin",
+        logFile: path.join(dataDir, "logs", "service.log"),
+        stdoutPath: path.join(dataDir, "logs", "service.log"),
+        stderrPath: path.join(dataDir, "logs", "service.log"),
+      }),
+    );
+    return plistFile;
+  }
+
+  // The post-update path reinstalls instead of restarting (#63), so the
+  // upgrade path needs the same port-release wait #61 gave restart: bootout
+  // returns before the job is gone on this path too.
+  it("upgrade waits for the port to be released before bootstrapping again", async () => {
+    const home = mkHome();
+    writeStalePlist(home);
+    const order: string[] = [];
+    const run = (args: string[]) => {
+      order.push(args[0]);
+      return "";
+    };
+    await install(
+      depsFor(home, run, {
+        waitReleased: async () => {
+          order.push("wait-released");
+          return true;
+        },
+      }),
+    );
+    expect(order).toEqual(["bootout", "wait-released", "bootstrap", "enable"]);
+  });
+
+  it("upgrade starts anyway, with a warning, when the port never frees", async () => {
+    const home = mkHome();
+    writeStalePlist(home);
+    const rec = recorder();
+    const d = depsFor(home, rec.run, { waitReleased: async () => false });
+    await install(d);
+    const printed = (d as unknown as { printed: string[] }).printed;
     expect(printed.some((m) => /still in use/.test(m))).toBe(true);
     expect(rec.calls.map((c) => c[0])).toEqual(["bootout", "bootstrap", "enable"]);
   });

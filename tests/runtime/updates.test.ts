@@ -7,6 +7,7 @@ import {
   detectChannel,
   platformAssetName,
   printUpdateFooter,
+  printVersionLine,
   readUpdateCache,
   refreshUpdateCache,
   releasesPageUrl,
@@ -630,6 +631,41 @@ describe("update footer", () => {
       Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
       printUpdateFooter({}, "x");
       expect(errSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
+    }
+  });
+
+  it("prints the CLI version, naming the daemon only when it differs", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const desc = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      printVersionLine({}, "0.0.26", "0.0.26");
+      expect(errSpy).toHaveBeenCalledWith("quotacap 0.0.26");
+      printVersionLine({}, "0.0.26", "99.0.0");
+      expect(errSpy).toHaveBeenCalledWith("quotacap 0.0.26 · daemon 99.0.0");
+      for (const unknown of [null, undefined, "", 42]) {
+        errSpy.mockClear();
+        printVersionLine({}, "0.0.26", unknown);
+        expect(errSpy).toHaveBeenCalledWith("quotacap 0.0.26");
+      }
+    } finally {
+      if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
+    }
+  });
+
+  it("stays silent under --json, --compact, and piped stderr", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const desc = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      printVersionLine({ json: true }, "0.0.26", "0.0.26");
+      printVersionLine({ compact: true }, "0.0.26", "0.0.26");
+      expect(errSpy).not.toHaveBeenCalled();
+      Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
+      printVersionLine({}, "0.0.26", "0.0.26");
+      expect(errSpy).not.toHaveBeenCalled();
     } finally {
       if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
     }

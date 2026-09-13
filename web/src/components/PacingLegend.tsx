@@ -83,12 +83,13 @@ function servingHost(): string {
   }
 }
 
-export function SiteFooter() {
+export function SiteFooter({ version }: { version?: string }) {
+  const name = version ? `QuotaCap v${version}` : "QuotaCap";
   return (
     <footer className="sitefoot">
       <div className="sitefoot-start">
         <span>
-          QuotaCap · local quota tracker · bound to <code>{servingHost()}</code>
+          {name} · local quota tracker · bound to <code>{servingHost()}</code>
         </span>
         <PacingLegend />
       </div>

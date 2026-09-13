@@ -44,6 +44,9 @@ export interface ServiceDeps {
   // Defaults to the in-process VERSION; the post-update path passes the
   // target version because it runs in the old binary.
   version?: string;
+  // Silence success-path prints; the caller reports the outcome instead.
+  // Errors still throw and stay loud. Only the post-update refresh sets it.
+  quiet?: boolean;
 }
 
 export function foregroundGuidance(verb: string, platform: string): string {
@@ -374,6 +377,7 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
     (deps.print ?? console.log)(foregroundGuidance("install", platform));
     return;
   }
+  if (deps.quiet) deps = { ...deps, print: () => {} };
   const { home, uid, dataDir, print, run, lint, sleep, bootstrapTimeoutMs } = resolved(deps);
   const version = deps.version ?? VERSION;
   // Provision beside the data dir the service will use (identical to the
@@ -447,6 +451,14 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
       dataDir,
     );
     bootoutQuiet(run, uid, print);
+    // bootout is asynchronous: without this the replacement races the dying
+    // process for the port, the same race restart() guards against.
+    // deps.port keeps tests off the real daemon's port.
+    const upgradePort = deps.port ?? (await readConfig()).port;
+    const waitReleased = deps.waitReleased ?? defaultWaitReleased;
+    if (!(await waitReleased(upgradePort))) {
+      print(`port ${upgradePort} is still in use after stopping; starting anyway`);
+    }
   } else {
     writeServiceMetadata(
       {
