@@ -76,6 +76,7 @@ function depsFor(
     runSystemctl: run,
     which: () => null,
     waitReady: async () => true,
+    waitReleased: async () => true,
     print: (m: string) => printed.push(m),
     error: (m: string) => printed.push(m),
     printed,
@@ -248,6 +249,61 @@ describe("systemd user service", () => {
     expect(rec2.calls[0][0]).toBe("stop");
     expect(rec2.calls).toContainEqual(["daemon-reload"]);
     expect(rec2.calls).toContainEqual(["enable", "--now", SERVICE_UNIT]);
+  });
+
+  // The post-update path reinstalls instead of restarting (#63), so the
+  // upgrade path needs the same port-release wait #61 gave restart:
+  // systemctl stop returns before the port is released on this path too.
+  it("upgrade waits for the port to be released before reloading", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const file = unitFile(home);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      buildUnit({
+        argv: ["/old/quotacap", "daemon", "--foreground"],
+        workingDirectory: dataDir,
+        path: "/usr/bin:/bin",
+        logFile: path.join(dataDir, "logs", "service.log"),
+      }),
+    );
+    const order: string[] = [];
+    const run = (args: string[]) => {
+      order.push(args[0]);
+      return "";
+    };
+    await install(
+      depsFor(home, run, {
+        waitReleased: async () => {
+          order.push("wait-released");
+          return true;
+        },
+      }),
+    );
+    expect(order).toEqual(["stop", "wait-released", "daemon-reload", "enable"]);
+  });
+
+  it("upgrade starts anyway, with a warning, when the port never frees", async () => {
+    const home = mkHome();
+    const dataDir = path.join(home, ".quotacap");
+    const file = unitFile(home);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      buildUnit({
+        argv: ["/old/quotacap", "daemon", "--foreground"],
+        workingDirectory: dataDir,
+        path: "/usr/bin:/bin",
+        logFile: path.join(dataDir, "logs", "service.log"),
+      }),
+    );
+    const rec = recorder();
+    const d = depsFor(home, rec.run, { waitReleased: async () => false });
+    await install(d);
+    const printed = (d as unknown as { printed: string[] }).printed;
+    expect(printed.some((m) => /still in use/.test(m))).toBe(true);
+    expect(rec.calls.map((c) => c[0])).toEqual(["stop", "daemon-reload", "enable"]);
   });
 
   it("install via runServiceCommand honors an expected version on drift alone", async () => {

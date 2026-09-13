@@ -240,6 +240,14 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
       dataDir,
     );
     stopQuiet(run, print);
+    // systemctl stop can return before the port is released; same race as
+    // launchd. deps.port mirrors start(): tests must never probe the real
+    // daemon's port.
+    const upgradePort = deps.port ?? (await readConfig()).port;
+    const waitReleased = deps.waitReleased ?? defaultWaitReleased;
+    if (!(await waitReleased(upgradePort))) {
+      print(`port ${upgradePort} is still in use after stopping; starting anyway`);
+    }
   } else {
     writeServiceMetadata(
       {

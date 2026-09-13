@@ -447,6 +447,14 @@ export async function install(deps: ServiceDeps = {}): Promise<void> {
       dataDir,
     );
     bootoutQuiet(run, uid, print);
+    // bootout is asynchronous: without this the replacement races the dying
+    // process for the port, the same race restart() guards against.
+    // deps.port keeps tests off the real daemon's port.
+    const upgradePort = deps.port ?? (await readConfig()).port;
+    const waitReleased = deps.waitReleased ?? defaultWaitReleased;
+    if (!(await waitReleased(upgradePort))) {
+      print(`port ${upgradePort} is still in use after stopping; starting anyway`);
+    }
   } else {
     writeServiceMetadata(
       {
