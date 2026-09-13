@@ -57,9 +57,17 @@ export function paceCells(advisory: { avgPace?: number | null; burnRate: number 
   };
 }
 
+/** Hover explanations shared by cards and rows. Plain words, no jargon. */
+export const PACE_TIPS = {
+  avg: "Window average — quota used ÷ days elapsed. Your overall pace this window.",
+  recent: "Burn over the last 24 hours. Forecasts use this rate when recent readings exist.",
+  ideal: "The even pace that lands exactly on 100% at reset: remaining ÷ days left.",
+} as const;
+
 export interface PaceLine {
   label: string;
   value: string;
+  tip: string;
 }
 
 /** Table-row pace stack: one labeled line per known pace plus the needed
@@ -71,9 +79,9 @@ export function paceLines(
   if (!advisory) return [];
   const { avg, recent } = paceFigures(advisory);
   const lines: PaceLine[] = [];
-  if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day` });
-  if (recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day` });
-  lines.push({ label: "Need", value: `${advisory.idealRate.toFixed(1)}%/day` });
+  if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day`, tip: PACE_TIPS.avg });
+  if (recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
+  lines.push({ label: "Ideal", value: `${advisory.idealRate.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
   return lines;
 }
 

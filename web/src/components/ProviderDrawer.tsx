@@ -214,11 +214,11 @@ export function rankingCopy(
         : avg !== null
           ? `${avg.toFixed(1)}%/day window average`
           : `${(recent as number).toFixed(1)}%/day over the last 24h`;
-    const target = `${advisory.idealRate.toFixed(1)}%/day`;
+    const ideal = `${advisory.idealRate.toFixed(1)}%/day`;
     pace =
       advisory.status === "at risk"
-        ? `${figures}, against a ${target} target to finish on pace.`
-        : `${figures}. Finishing on pace needs ${target}.`;
+        ? `${figures}, against an ideal pace of ${ideal}.`
+        : `${figures}. The ideal pace to finish is ${ideal}.`;
   }
   let decision: string;
   if (provider.exclusionReason) {

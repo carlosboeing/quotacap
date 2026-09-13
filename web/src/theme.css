@@ -1437,6 +1437,10 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   display: flex;
   gap: var(--s2);
 }
+.pstats .l[title],
+.paceline span[title] {
+  cursor: help;
+}
 .paceline > span:first-child {
   flex: none;
   width: 30px;

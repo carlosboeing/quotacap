@@ -79,14 +79,14 @@ describe("provider drawer", () => {
       advisory: { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent", status: "on track" },
     };
     expect(rankingCopy(flat as any, s.recommendation).pace).toBe(
-      "10.6%/day window average and 0.0%/day over the last 24h. Finishing on pace needs 11.1%/day."
+      "10.6%/day window average and 0.0%/day over the last 24h. The ideal pace to finish is 11.1%/day."
     );
     const risky = {
       ...kimi,
       advisory: { ...kimi.advisory!, burnRate: 24, avgPace: 10.6, paceSource: "recent", status: "at risk" },
     };
     expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
-      "10.6%/day window average and 24.0%/day over the last 24h, against a 11.1%/day target to finish on pace."
+      "10.6%/day window average and 24.0%/day over the last 24h, against an ideal pace of 11.1%/day."
     );
   });
   it("names exhausted windows in ranking rationale", () => {

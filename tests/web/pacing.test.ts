@@ -5,7 +5,12 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { toViewModel } from "../../web/src/state.js";
 import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { ProviderCard } from "../../web/src/components/ProviderCard.js";
+import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -60,17 +65,35 @@ describe("pace figures", () => {
     });
     expect(paceCells(null)).toEqual({ avg: "—", recent: "—" });
   });
-  it("stacks labeled pace lines plus need for table rows", () => {
+  it("stacks labeled pace lines plus ideal for table rows", () => {
     expect(paceLines({ avgPace: 10.6, burnRate: 0, paceSource: "recent", idealRate: 24.1 })).toEqual([
-      { label: "Avg", value: "10.6%/day" },
-      { label: "24h", value: "0.0%/day" },
-      { label: "Need", value: "24.1%/day" },
+      { label: "Avg", value: "10.6%/day", tip: expect.stringContaining("Window average") },
+      { label: "24h", value: "0.0%/day", tip: expect.stringContaining("last 24 hours") },
+      { label: "Ideal", value: "24.1%/day", tip: expect.stringContaining("exactly on 100%") },
     ]);
     expect(paceLines({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average", idealRate: 5 })).toEqual([
-      { label: "Avg", value: "3.1%/day" },
-      { label: "Need", value: "5.0%/day" },
+      { label: "Avg", value: "3.1%/day", tip: expect.stringContaining("Window average") },
+      { label: "Ideal", value: "5.0%/day", tip: expect.stringContaining("exactly on 100%") },
     ]);
     expect(paceLines(null)).toEqual([]);
+  });
+  it("exposes hover explanations on card and row pace labels", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    kimi.advisory = { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent" };
+    const card = renderToString(
+      React.createElement(ProviderCard, { provider: kimi, recommended: true, asOf: s.asOf, onSelect: () => {} }),
+    );
+    for (const tip of ["Window average", "last 24 hours", "exactly on 100%"]) {
+      expect(card).toContain(`title="`);
+      expect(card).toContain(tip);
+    }
+    const row = renderToString(
+      React.createElement(ProviderRow, { provider: kimi, recommended: true, asOf: s.asOf, onSelect: () => {} }),
+    );
+    for (const tip of ["Window average", "last 24 hours", "exactly on 100%"]) {
+      expect(row).toContain(tip);
+    }
   });
   it("names exhausted windows in the forecast line", () => {
     const capped = {

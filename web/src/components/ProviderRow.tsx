@@ -65,7 +65,7 @@ export function ProviderRow({
           <div style={{ marginTop: 2 }}>
             {lines.map((l) => (
               <div key={l.label} className="cell-s paceline">
-                <span>{l.label}</span>
+                <span title={l.tip}>{l.label}</span>
                 <span className="cell-b">{l.value}</span>
               </div>
             ))}
