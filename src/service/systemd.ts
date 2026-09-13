@@ -56,6 +56,9 @@ export interface SystemdDeps {
   // Defaults to the in-process VERSION; the post-update path passes the
   // target version because it runs in the old binary.
   version?: string;
+  // Silence success-path prints; the caller reports the outcome instead.
+  // Errors still throw and stay loud. Only the post-update refresh sets it.
+  quiet?: boolean;
 }
 
 export function formatSystemctlError(args: string[], detail: string): Error {
@@ -179,6 +182,7 @@ export async function install(deps: SystemdDeps = {}): Promise<void> {
     (deps.print ?? console.log)(foregroundGuidance("install", platform));
     return;
   }
+  if (deps.quiet) deps = { ...deps, print: () => {} };
   const { home, dataDir, print, run } = resolved(deps);
   const version = deps.version ?? VERSION;
   // Provision beside the data dir the service will use (identical to the

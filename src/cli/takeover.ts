@@ -203,7 +203,7 @@ export async function takeoverManaged(
   const verb = opts.refreshRegistration ? "install" : "restart";
   const code = await execService(
     [verb],
-    opts.refreshRegistration ? { version: cliVersion } : undefined,
+    opts.refreshRegistration ? { version: cliVersion, quiet: true } : undefined,
   );
   if (code !== 0) {
     throw new TakeoverError(`daemon upgrade failed: service ${verb} exited ${code}`);

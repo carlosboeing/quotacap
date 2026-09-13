@@ -334,6 +334,23 @@ describe("systemd user service", () => {
     expect(readServiceMetadata(dataDir)?.version).toBe("99.0.0");
   });
 
+  it("quiet install prints nothing on success", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const d = depsFor(home, rec.run, { quiet: true });
+    await install(d);
+    expect((d as unknown as { printed: string[] }).printed).toEqual([]);
+    expect(rec.calls.length).toBeGreaterThan(0);
+  });
+
+  it("runServiceCommand threads quiet through to install", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const d = depsFor(home, rec.run);
+    expect(await runServiceCommand(["install"], { quiet: true }, d)).toBe(0);
+    expect((d as unknown as { printed: string[] }).printed).toEqual([]);
+  });
+
   it("(e) uninstall removes only the unit", async () => {
     const home = mkHome();
     const dataDir = path.join(home, ".quotacap");

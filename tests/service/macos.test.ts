@@ -381,6 +381,15 @@ describe("macos login service", () => {
     expect(readServiceMetadata(dataDir)?.version).toBe("99.0.0");
   });
 
+  it("quiet install prints nothing on success", async () => {
+    const home = mkHome();
+    const rec = recorder();
+    const d = depsFor(home, rec.run, { quiet: true });
+    await install(d);
+    expect((d as unknown as { printed: string[] }).printed).toEqual([]);
+    expect(rec.calls.length).toBeGreaterThan(0);
+  });
+
   it("(h) uninstall removes only the plist", async () => {
     const home = mkHome();
     const dataDir = path.join(home, ".quotacap");

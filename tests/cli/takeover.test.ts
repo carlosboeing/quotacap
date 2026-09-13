@@ -232,7 +232,7 @@ describe("takeoverManaged", () => {
     ).rejects.toThrow(/service restart exited 1/);
   });
 
-  it("refreshes the registration via install with the expected version", async () => {
+  it("refreshes the registration via a quiet install with the expected version", async () => {
     const calls: Array<{ args: string[]; opts?: Record<string, any> }> = [];
     let version = "0.0.21";
     const r = await takeoverManaged({
@@ -254,7 +254,7 @@ describe("takeoverManaged", () => {
         },
       }),
     });
-    expect(calls).toEqual([{ args: ["install"], opts: { version: CLI } }]);
+    expect(calls).toEqual([{ args: ["install"], opts: { version: CLI, quiet: true } }]);
     expect(r.oldVersion).toBe("0.0.21");
     expect(r.message).toBe(`Upgraded daemon from 0.0.21 to ${CLI} (service restarted)`);
   });
