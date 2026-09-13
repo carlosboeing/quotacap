@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Service install upgrades wait for the port to be released before loading the replacement on both backends, closing the stop→start race the post-update refresh path could still hit after it moved from `restart` to `install`; a port that never frees warns and starts anyway, never worse than before.
+- Quiet post-update refresh: managed takeovers pass `quiet` through to `install`, so a good update prints its own three lines (`Updated`, the takeover note, the release URL) instead of ~17 lines of install detail. Failures still throw and stay loud.
+- CLI version line: `status` and `advise` print `quotacap <cli>` on stderr (TTY only, never under `--json` or `--compact`), appending the daemon version when the reachable daemon reports one that differs. Stdout stays byte-clean.
+- Dashboard footer shows `QuotaCap v<version>` from the running daemon, falling back to the existing text when the version is unknown.
+
 ## 0.0.26
 
 - Update checks without the API bucket: `resolveLatestVersion` reads the latest tag from the releases-page redirect `Location` instead of the anonymous GitHub API, whose 60/hour budget is shared with every other API consumer on the machine; the JSON behaviour stays behind `QUOTACAP_RELEASE_BASE_URL` for hermetic tests and mirrors.
