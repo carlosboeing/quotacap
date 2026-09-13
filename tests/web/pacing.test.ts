@@ -5,7 +5,7 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceSummary, resetClock } from "../../web/src/components/PaceBar.js";
+import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -60,12 +60,17 @@ describe("pace figures", () => {
     });
     expect(paceCells(null)).toEqual({ avg: "—", recent: "—" });
   });
-  it("summarizes both paces for table rows", () => {
-    expect(paceSummary({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toBe(
-      "Avg 10.6%/day · 24h 0.0%/day"
-    );
-    expect(paceSummary({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toBe("Avg 3.1%/day");
-    expect(paceSummary(null)).toBeNull();
+  it("stacks labeled pace lines plus need for table rows", () => {
+    expect(paceLines({ avgPace: 10.6, burnRate: 0, paceSource: "recent", idealRate: 24.1 })).toEqual([
+      { label: "Avg", value: "10.6%/day" },
+      { label: "24h", value: "0.0%/day" },
+      { label: "Need", value: "24.1%/day" },
+    ]);
+    expect(paceLines({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average", idealRate: 5 })).toEqual([
+      { label: "Avg", value: "3.1%/day" },
+      { label: "Need", value: "5.0%/day" },
+    ]);
+    expect(paceLines(null)).toEqual([]);
   });
   it("names exhausted windows in the forecast line", () => {
     const capped = {

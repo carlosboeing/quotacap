@@ -4,7 +4,7 @@ import {
   Badge,
   PaceBar,
   forecastLine,
-  paceSummary,
+  paceLines,
   resetCountdown,
 } from "./PaceBar.js";
 
@@ -22,7 +22,7 @@ export function ProviderRow({
   const quota = provider.quota;
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
-  const summary = paceSummary(advisory);
+  const lines = paceLines(advisory);
   const name = provider.displayName;
   return (
     <div
@@ -61,14 +61,14 @@ export function ProviderRow({
       </div>
       <div data-label="Pace">
         <Badge provider={provider} />
-        {summary && (
-          <div className="cell-s" style={{ marginTop: 2 }}>
-            {summary}
-          </div>
-        )}
-        {advisory && (
-          <div className="cell-s" style={{ marginTop: 2 }}>
-            Needed {advisory.idealRate.toFixed(1)}%/day
+        {lines.length > 0 && (
+          <div style={{ marginTop: 2 }}>
+            {lines.map((l) => (
+              <div key={l.label} className="cell-s paceline">
+                <span>{l.label}</span>
+                <span className="cell-b">{l.value}</span>
+              </div>
+            ))}
           </div>
         )}
       </div>

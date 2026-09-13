@@ -86,7 +86,7 @@ export function ProviderCard({
             <span className="v">{pace.recent}</span>
           </div>
           <div>
-            <span className="l">Needed</span>
+            <span className="l">Needed pace</span>
             <span className="v">
               {advisory ? `${advisory.idealRate.toFixed(1)}%/day` : "—"}
             </span>

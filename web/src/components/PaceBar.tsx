@@ -57,15 +57,24 @@ export function paceCells(advisory: { avgPace?: number | null; burnRate: number 
   };
 }
 
-/** One-line pace summary for table rows. Null when no pace is known. */
-export function paceSummary(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): string | null {
+export interface PaceLine {
+  label: string;
+  value: string;
+}
+
+/** Table-row pace stack: one labeled line per known pace plus the needed
+ * rate. Both paces always show when known (no collapsing) so rows read
+ * uniformly. Empty when no advisory is present. */
+export function paceLines(
+  advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string; idealRate: number } | null | undefined,
+): PaceLine[] {
+  if (!advisory) return [];
   const { avg, recent } = paceFigures(advisory);
-  if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
-    return `Avg ${avg.toFixed(1)}%/day · 24h ${recent.toFixed(1)}%/day`;
-  }
-  if (avg !== null) return `Avg ${avg.toFixed(1)}%/day`;
-  if (recent !== null) return `24h ${recent.toFixed(1)}%/day`;
-  return null;
+  const lines: PaceLine[] = [];
+  if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day` });
+  if (recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day` });
+  lines.push({ label: "Need", value: `${advisory.idealRate.toFixed(1)}%/day` });
+  return lines;
 }
 
 /** Plain-words reason shown beside "Not reporting". Null when the badge says it all. */

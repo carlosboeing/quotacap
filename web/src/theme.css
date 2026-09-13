@@ -1433,6 +1433,14 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: var(--t-2);
   color: var(--ink-soft);
 }
+.paceline {
+  display: flex;
+  gap: var(--s2);
+}
+.paceline > span:first-child {
+  flex: none;
+  width: 30px;
+}
 
 /* Density Segmented Control */
 .seg {
