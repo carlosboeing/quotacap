@@ -205,7 +205,7 @@ function App() {
           refreshing={refreshing}
           onClose={() => setSettingsOpen(false)}
         />
-        <SiteFooter />
+        <SiteFooter version={snapshot.runtime.version} />
       </>
     );
   }
@@ -301,7 +301,7 @@ function App() {
         refreshing={refreshing}
         onClose={() => setSettingsOpen(false)}
       />
-      <SiteFooter />
+      <SiteFooter version={snapshot?.runtime.version} />
     </>
   );
 }
