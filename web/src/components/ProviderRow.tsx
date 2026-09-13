@@ -5,6 +5,7 @@ import {
   PaceBar,
   evidenceLabels,
   forecastLine,
+  paceSummary,
   resetCountdown,
 } from "./PaceBar.js";
 
@@ -22,6 +23,7 @@ export function ProviderRow({
   const quota = provider.quota;
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
+  const summary = paceSummary(advisory);
   const evidence = evidenceLabels(provider.evidence);
   const name = provider.displayName;
   return (
@@ -61,9 +63,14 @@ export function ProviderRow({
       </div>
       <div data-label="Pace">
         <Badge provider={provider} />
-        {advisory && advisory.burnRate !== null && (
+        {summary && (
           <div className="cell-s" style={{ marginTop: 2 }}>
-            Pace {advisory.burnRate.toFixed(1)}%/d · needed {advisory.idealRate.toFixed(1)}%/d
+            {summary}
+          </div>
+        )}
+        {advisory && (
+          <div className="cell-s" style={{ marginTop: 2 }}>
+            Needed {advisory.idealRate.toFixed(1)}%/day
           </div>
         )}
         {evidence.length > 0 && <div className="cell-s" style={{ marginTop: 2 }}>{evidence.join(" · ")}</div>}

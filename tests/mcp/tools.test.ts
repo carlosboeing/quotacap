@@ -111,7 +111,7 @@ describe("get_quotas", () => {
       expect(res.isError).toBeUndefined();
       const [markdown, json] = res.content;
       expect(markdown.type).toBe("text");
-      expect(markdown.text).toContain("| Provider | Used | Elapsed | Resets | State | Forecast |");
+      expect(markdown.text).toContain("| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |");
       for (const p of exampleStateSnapshot.providers) {
         if (p.quota) expect(markdown.text).toContain(`| ${Math.round(p.quota.usedPct)}% |`);
         expect(markdown.text).toContain(`| ${stateWord(p)} |`);

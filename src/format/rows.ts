@@ -17,6 +17,8 @@ export interface Row {
   elapsedPct: number | null;
   usedPct: number | null;
   railCells: RailCell[];
+  /** Compact pace pair without units, e.g. "10.6 avg · 0.0 24h". Surfaces label %/day once. */
+  pace: string;
 }
 
 export const RAIL_CELLS = 20;
@@ -131,7 +133,9 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   const adv = ps.advisory;
   if (!adv) return "no readings yet";
   let text: string;
-  if (adv.paceSource === "unknown" || adv.burnRate === null) {
+  if (adv.remaining <= 0) {
+    text = "Exhausted";
+  } else if (adv.paceSource === "unknown" || adv.burnRate === null) {
     text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${adv.daysLeft.toFixed(1)}d until reset`;
   } else if (adv.wastePct !== null && adv.wastePct > 0) {
     text = `${Math.round(adv.wastePct)}% waste in ${adv.daysLeft.toFixed(1)}d`;
@@ -233,6 +237,21 @@ export function sortProviders(
   }
 }
 
+// Compact pace pair: window average first, 24h rate alongside. A pair that
+// renders identically at display precision collapses to one figure.
+export function paceText(ps: ProviderSnapshot): string {
+  const adv = ps.advisory;
+  if (!adv) return "—";
+  const avg = adv.avgPace;
+  const recent = adv.paceSource === "recent" ? adv.burnRate : null;
+  if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
+    return `${avg.toFixed(1)} avg · ${recent.toFixed(1)} 24h`;
+  }
+  if (avg !== null) return `${avg.toFixed(1)} avg`;
+  if (recent !== null) return `${recent.toFixed(1)} 24h`;
+  return "—";
+}
+
 export function buildRow(ps: ProviderSnapshot, now: Date): Row {
   return {
     id: ps.id,
@@ -242,5 +261,6 @@ export function buildRow(ps: ProviderSnapshot, now: Date): Row {
     elapsedPct: elapsedPct(ps, now),
     usedPct: usedPctOf(ps),
     railCells: railCells(ps, now),
+    pace: paceText(ps),
   };
 }

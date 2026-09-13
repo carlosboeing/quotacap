@@ -236,4 +236,45 @@ describe("advisory", () => {
     expect(rec.recommendationBasis).toBe("none");
     expect(rec.reason).toBe("all quotas at risk or exhausted");
   });
+
+  it("carries the window average alongside the forecast pace", () => {
+    const now = new Date("2026-08-31T06:00:00+10:00");
+    const q = { provider:"kimi", usedPct:60, periodStart:"2026-08-28T06:00:00+10:00",
+                resetsAt:"2026-09-04T06:00:00+10:00" } as any;
+    const adv = computeAdvisory(q, 3, now, "recent");
+    expect(adv.burnRate).toBe(3);
+    expect(adv.avgPace).toBeCloseTo(20, 5);
+    expect(adv.paceSource).toBe("recent");
+  });
+
+  it("reports a null average before the window start is known", () => {
+    const now = new Date("2026-08-31T06:00:00+10:00");
+    const q = { provider:"kimi", usedPct:60, resetsAt:"2026-09-04T06:00:00+10:00" } as any;
+    expect(computeAdvisory(q, 3, now, "recent").avgPace).toBeNull();
+  });
+
+  it("forces the capped verdict when nothing remains, even with flat burn", () => {
+    const now = new Date("2026-08-31T06:00:00+10:00");
+    const q = { provider:"grok", usedPct:100, periodStart:"2026-08-28T06:00:00+10:00",
+                resetsAt:"2026-09-04T06:00:00+10:00" } as any;
+    for (const burn of [0, 100.3]) {
+      const adv = computeAdvisory(q, burn, now, "recent");
+      expect(adv.status).toBe("at risk");
+      expect(adv.urgency).toBe("slow down");
+      expect(adv.daysToExhaust).toBe(0);
+      expect(adv.wastePct).toBe(0);
+      expect(adv.avgPace).toBeCloseTo(100 / 3, 5);
+    }
+  });
+
+  it("forces the capped verdict when nothing remains and pace is unknown", () => {
+    const now = new Date("2026-08-28T06:30:00+10:00");
+    const q = { provider:"grok", usedPct:100, periodStart:"2026-08-28T06:00:00+10:00",
+                resetsAt:"2026-09-04T06:00:00+10:00" } as any;
+    const adv = computeAdvisory(q, null, now, "unknown");
+    expect(adv.status).toBe("at risk");
+    expect(adv.urgency).toBe("slow down");
+    expect(adv.daysToExhaust).toBe(0);
+    expect(adv.wastePct).toBe(0);
+  });
 });

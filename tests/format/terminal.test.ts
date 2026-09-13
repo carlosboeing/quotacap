@@ -12,6 +12,7 @@ import {
   countdownText,
   elapsedPct,
   forecastText,
+  paceText,
   railCells,
   sortProviders,
   stateWord,
@@ -56,6 +57,7 @@ function advisory(over: Partial<Advisory> = {}): Advisory {
     remaining: 90,
     idealRate: 12,
     burnRate: 3,
+    avgPace: 3,
     burnMeasured: false,
     paceSource: "window-average",
     daysToExhaust: 30,
@@ -278,6 +280,23 @@ describe("forecast sentences (D7)", () => {
     });
     expect(forecastText(p, FIXED_NOW)).toBe("Exhausts before reset");
   });
+  it("names exhausted windows without a rate", () => {
+    const p = ps({
+      id: "x",
+      quota: quota({ usedPct: 100 }),
+      reporting: true,
+      advisory: advisory({
+        remaining: 0,
+        idealRate: 0,
+        burnRate: 0,
+        avgPace: 33.3,
+        status: "at risk",
+        wastePct: 0,
+        urgency: "slow down",
+      }),
+    });
+    expect(forecastText(p, FIXED_NOW)).toBe("Exhausted");
+  });
   it("estimated resets use the engine estimate vocabulary", () => {
     const codex = exampleStateSnapshot.providers.find((p) => p.id === "codex")!;
     expect(forecastText(codex, FIXED_NOW)).toBe("20% estimated waste in 7.0d");
@@ -318,6 +337,46 @@ describe("forecast sentences (D7)", () => {
   });
 });
 
+describe("pace pair text", () => {
+  it("shows the average first with the 24h rate alongside", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({ burnRate: 0, avgPace: 10.6, burnMeasured: true, paceSource: "recent" }),
+    });
+    expect(paceText(p)).toBe("10.6 avg · 0.0 24h");
+  });
+  it("collapses a pair that renders identically to one figure", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({ burnRate: 6.97, avgPace: 7.03, burnMeasured: true, paceSource: "recent" }),
+    });
+    expect(paceText(p)).toBe("7.0 avg");
+  });
+  it("shows the average alone for window-average pace", () => {
+    const p = ps({ id: "x", quota: quota(), advisory: advisory() });
+    expect(paceText(p)).toBe("3.0 avg");
+  });
+  it("shows the 24h rate alone when the window just started", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({ burnRate: 17, avgPace: null, burnMeasured: true, paceSource: "recent" }),
+    });
+    expect(paceText(p)).toBe("17.0 24h");
+  });
+  it("shows a dash when pace is unknown", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({ burnRate: null, avgPace: null, paceSource: "unknown", status: "unknown", wastePct: null }),
+    });
+    expect(paceText(p)).toBe("—");
+    expect(paceText(ps({ id: "x" }))).toBe("—");
+  });
+});
+
 describe("compact suffix legend (D5)", () => {
   const cases: Array<[string, Partial<ProviderSnapshot>, string]> = [
     ["on track has no suffix", { quota: quota(), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, ""],
@@ -347,6 +406,7 @@ describe("buildRow composes one presentation row", () => {
       elapsedPct: 50,
       usedPct: 22,
       railCells: railCells(kimi, FIXED_NOW),
+      pace: "3.1 avg",
     });
   });
   it("maps the invalid grok snapshot without throwing", () => {
@@ -462,30 +522,30 @@ describe("wide table", () => {
     const lines = wide();
     expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.length);
     expect(lines[0]).toBe(
-      line(["PROVIDER        ", "  USED", " ELAPSED", "USED VS TIME        ", "RESETS   ", "STATE          ", "FORECAST"]),
+      line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS   ", "STATE          ", "FORECAST"]),
     );
   });
   it("pins the recommended row exactly", () => {
     expect(wide()[1]).toBe(
-      line(["★ my-plan       ", "   12%", "     50%", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "76% waste in 7.0d"]),
+      line(["★ my-plan       ", "   12%", "     50%", "1.7 avg     ", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "76% waste in 7.0d"]),
     );
   });
   it("pins reporting, unknown-pace, stale, invalid, and not-reporting rows", () => {
     const lines = wide();
     expect(lines[2]).toBe(
-      line(["  Kimi          ", "   22%", "     50%", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
+      line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
     );
     expect(lines[5]).toBe(
-      line(["  Antigravity   ", "   50%", "      0%", "│█████████░░░░░░░░░░", "7d       ", "On track       ", "Measuring pace; 50% remains with 7.0d until reset"]),
+      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "On track       ", "Measuring pace; 50% remains with 7.0d until reset"]),
     );
     expect(lines[6]).toBe(
-      line(["  Antigravity 3P", "   60%", "      0%", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
+      line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
     );
     expect(lines[7]).toBe(
-      line(["  Grok          ", "   30%", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "invalid reading"]),
+      line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "invalid reading"]),
     );
     expect(lines[8]).toBe(
-      line(["  Manual        ", "     —", "       —", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "no readings yet"]),
+      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "no readings yet"]),
     );
   });
   it("every row honors the column contract", () => {
@@ -496,13 +556,15 @@ describe("wide table", () => {
       expect(line.slice(24, 26)).toBe("  ");
       expect(line.slice(26, 34)).toMatch(/^ *(?:\d+%|—)$/);
       expect(line.slice(34, 36)).toBe("  ");
-      expect(line.slice(36, 56)).toMatch(/^[█│░]{20}$/);
-      expect(line.slice(56, 58)).toBe("  ");
-      expect(line.slice(58, 67)).toMatch(/^.{1,9}$/);
-      expect(line.slice(67, 69)).toBe("  ");
-      expect(line.slice(69, 84)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Not reporting) *$/);
-      expect(line.slice(84, 86)).toBe("  ");
-      expect(line.slice(86).length).toBeGreaterThan(0);
+      expect(line.slice(36, 48)).toMatch(/^(?:—|\d+\.\d+ avg(?: · \d+\.\d+ 24h)?) *$/);
+      expect(line.slice(48, 50)).toBe("  ");
+      expect(line.slice(50, 70)).toMatch(/^[█│░]{20}$/);
+      expect(line.slice(70, 72)).toBe("  ");
+      expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
+      expect(line.slice(81, 83)).toBe("  ");
+      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Not reporting) *$/);
+      expect(line.slice(98, 100)).toBe("  ");
+      expect(line.slice(100).length).toBeGreaterThan(0);
     }
   });
   it("honors the requested sort key", () => {
@@ -541,7 +603,8 @@ describe("wide table", () => {
     expect(out).not.toMatch(/[█│░★…·—]/);
     const lines = out.split("\n");
     expect(lines[1].slice(0, 16)).toBe("* my-plan       ");
-    expect(lines[1].slice(36, 56)).toBe("##::::::::|:::::::::");
+    expect(lines[1].slice(36, 48)).toBe("1.7 avg     ");
+    expect(lines[1].slice(50, 70)).toBe("##::::::::|:::::::::");
   });
 });
 
@@ -550,12 +613,12 @@ describe("narrow table (D8)", () => {
   it("renders two lines per provider in recommended order", () => {
     const lines = narrow();
     expect(lines).toHaveLength(2 * exampleStateSnapshot.providers.length);
-    expect(lines[0]).toBe("★ my-plan        12% used · 50% elapsed");
+    expect(lines[0]).toBe("★ my-plan        12% used · 50% elapsed · 1.7 avg %/day");
     expect(lines[1]).toBe("██░░░░░░░░│░░░░░░░░░ resets 7d · Behind pace · 76% waste in 7.0d");
   });
   it("renders unknown values without placeholders leaking percents", () => {
     const lines = narrow();
-    expect(lines[14]).toBe("  Manual         — used · — elapsed");
+    expect(lines[14]).toBe("  Manual         — used · — elapsed · —");
     expect(lines[15]).toBe("░░░░░░░░░░░░░░░░░░░░ resets — · Not reporting · no readings yet");
   });
   it("keeps the wide provider width, colors, and words", () => {
@@ -566,7 +629,7 @@ describe("narrow table (D8)", () => {
   });
   it("--ascii replaces separators and glyphs", () => {
     const lines = renderNarrow(exampleStateSnapshot, { now: FIXED_NOW, ascii: true }).split("\n");
-    expect(lines[0]).toBe("* my-plan        12% used - 50% elapsed");
+    expect(lines[0]).toBe("* my-plan        12% used - 50% elapsed - 1.7 avg %/day");
     expect(lines[1]).toBe("##::::::::|::::::::: resets 7d - Behind pace - 76% waste in 7.0d");
   });
 });
