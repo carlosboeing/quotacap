@@ -79,12 +79,11 @@ export function ProviderCard({
         <div className="pstats">
           <div>
             <span className="l">Pace</span>
-            <span className="v">
-              {pace.primary}
-              {pace.secondary && (
-                <span className="s">{pace.secondary}</span>
-              )}
-            </span>
+            {pace.lines.map((text) => (
+              <span key={text} className="v">
+                {text}
+              </span>
+            ))}
           </div>
           <div>
             <span className="l">Needed</span>

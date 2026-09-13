@@ -1264,17 +1264,10 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   margin-bottom: 2px;
 }
 .pstats .v {
+  display: block;
   font-size: var(--t-3);
   font-weight: 600;
   font-family: var(--font-mono);
-}
-.pstats .s {
-  display: block;
-  font-size: var(--t-1);
-  font-weight: 500;
-  font-family: var(--font-mono);
-  color: var(--ink-soft);
-  margin-top: 1px;
 }
 
 .pcard-foot {

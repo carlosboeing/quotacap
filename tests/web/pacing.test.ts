@@ -45,24 +45,20 @@ describe("pace figures", () => {
     expect(paceFigures({ avgPace: null, burnRate: null, paceSource: "unknown" })).toEqual({ avg: null, recent: null });
     expect(paceFigures(null)).toEqual({ avg: null, recent: null });
   });
-  it("prefers the average on cards with the 24h rate beneath", () => {
+  it("labels one line per known pace on cards, average first", () => {
     expect(paceCell({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({
-      primary: "10.6%/day",
-      secondary: "24h 0.0%/day",
+      lines: ["Avg 10.6%/day", "24h 0.0%/day"],
     });
     expect(paceCell({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toEqual({
-      primary: "3.1%/day",
-      secondary: null,
+      lines: ["Avg 3.1%/day"],
     });
     expect(paceCell({ avgPace: 7.03, burnRate: 6.97, paceSource: "recent" })).toEqual({
-      primary: "7.0%/day",
-      secondary: null,
+      lines: ["Avg 7.0%/day"],
     });
     expect(paceCell({ avgPace: null, burnRate: 17, paceSource: "recent" })).toEqual({
-      primary: "17.0%/day",
-      secondary: "24h rate",
+      lines: ["24h 17.0%/day"],
     });
-    expect(paceCell(null)).toEqual({ primary: "—", secondary: null });
+    expect(paceCell(null)).toEqual({ lines: ["—"] });
   });
   it("summarizes both paces for table rows", () => {
     expect(paceSummary({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toBe(

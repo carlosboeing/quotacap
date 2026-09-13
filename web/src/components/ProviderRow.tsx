@@ -3,7 +3,6 @@ import type { ProviderView } from "../state.js";
 import {
   Badge,
   PaceBar,
-  evidenceLabels,
   forecastLine,
   paceSummary,
   resetCountdown,
@@ -24,7 +23,6 @@ export function ProviderRow({
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
   const summary = paceSummary(advisory);
-  const evidence = evidenceLabels(provider.evidence);
   const name = provider.displayName;
   return (
     <div
@@ -73,7 +71,6 @@ export function ProviderRow({
             Needed {advisory.idealRate.toFixed(1)}%/day
           </div>
         )}
-        {evidence.length > 0 && <div className="cell-s" style={{ marginTop: 2 }}>{evidence.join(" · ")}</div>}
       </div>
       <button
         type="button"

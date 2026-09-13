@@ -42,20 +42,19 @@ export function paceFigures(advisory: { avgPace?: number | null; burnRate: numbe
 }
 
 export interface PaceCell {
-  primary: string;
-  secondary: string | null;
+  lines: string[];
 }
 
-/** Card pace cell: window average first, 24h rate beneath it. A pair that
- * renders identically at display precision collapses to one figure. */
+/** Card pace cell: one labeled line per known pace, average first. A pair
+ * that renders identically at display precision collapses to one line. */
 export function paceCell(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCell {
   const { avg, recent } = paceFigures(advisory);
   if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
-    return { primary: `${avg.toFixed(1)}%/day`, secondary: `24h ${recent.toFixed(1)}%/day` };
+    return { lines: [`Avg ${avg.toFixed(1)}%/day`, `24h ${recent.toFixed(1)}%/day`] };
   }
-  if (avg !== null) return { primary: `${avg.toFixed(1)}%/day`, secondary: null };
-  if (recent !== null) return { primary: `${recent.toFixed(1)}%/day`, secondary: "24h rate" };
-  return { primary: "—", secondary: null };
+  if (avg !== null) return { lines: [`Avg ${avg.toFixed(1)}%/day`] };
+  if (recent !== null) return { lines: [`24h ${recent.toFixed(1)}%/day`] };
+  return { lines: ["—"] };
 }
 
 /** One-line pace summary for table rows. Null when no pace is known. */
@@ -84,18 +83,6 @@ export function exclusionDetail(reason: ExclusionReason): string | null {
     case null:
       return null;
   }
-}
-
-const EVIDENCE_LABELS: Record<string, string> = {
-  measured: "Measured",
-  "window-average": "Window avg",
-};
-
-/** Coordinator-locked evidence labels. Unknown tokens pass through verbatim. */
-export function evidenceLabels(evidence: string[]): string[] {
-  return evidence
-    .filter((e) => e !== "estimated-reset")
-    .map((e) => EVIDENCE_LABELS[e] ?? e);
 }
 
 export function isEstimated(provider: ProviderView): boolean {
