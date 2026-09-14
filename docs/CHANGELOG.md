@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.31
+
+- Refresh settle: the dashboard fetched state only on load and after Refresh, so the post-refresh snapshot — always mid-cooldown — froze the header pill on "Cooling down" forever. The dashboard now re-reads `/api/state` every 5s while the daemon reports a non-idle poll state, and a refresh that lands inside the server cooldown shows a "Refresh cooling down — showing last readings" notice instead of silently returning cached rows.
+- Plan labels: Codex parses the plan from the `/status` panel's `Account: <email> (<plan>)` line instead of reporting unknown; providers that expose no tier (kimi, agy — both verified live to carry no plan signal) now hide the `unknown` placeholder in cards, rows, and the drawer subtitle rather than printing it.
+- Window terminology: the drawer speaks each vendor's own `/usage` or `/status` words — `Current window` becomes `Weekly limit`, and the short window reads `5-hour limit` (codex/kimi/agy), `Current session` (claude, a 5-hour rolling window), or `Current window` (muse). Table rows carry the same labels (e.g. `5-hour limit · 0% used`).
+- Table polish: the Reset cell stacks clock over countdown (`Thu 16:53` / `in 2d 17h`) in a widened column instead of wrapping mid-phrase; columns rebalance, header/body padding aligns, rows gain a hover tint, pace labels get breathing room, and the `N% used` headline never breaks.
+
 ## 0.0.30
 
 - Codex 5h reset: the `/status` panel renders the 5h reset date-qualified (`resets 02:43 on 15 Sep`) when it falls on another day, but the parser only accepted bare `HH:MM` — every poll since the window turned over failed with `bad 5h reset`. The 5h parser now accepts the weekly-shaped qualified form and keeps the bare form for same-day resets.
