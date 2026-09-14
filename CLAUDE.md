@@ -39,6 +39,10 @@ Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discove
 * MIT license (LICENSE)
 * One-line summary + trade-offs for proposals; terse lists/tables; file:line sources
 
+## Browser verification
+
+Headed smoke tests of the dashboard are fine when an agent needs eyes on it — but in the agent's own window or profile, never tabs injected into the user's existing browser session, and always `close` sessions when done. Automated tests must never open tabs at all (run with `QUOTACAP_NO_OPEN=1`; see PR 73).
+
 ## Current state
 
 * Five live adapters: claude, codex, kimi, grok, agy
