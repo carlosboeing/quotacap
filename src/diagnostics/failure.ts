@@ -244,6 +244,51 @@ function matchPrecedence(
   if (/\bparse error\b/i.test(text) || /\bsyntax error\b/i.test(text) || /\bfailed to parse\b/i.test(text)) {
     return { code: "parse_error", phrase: "parse error" };
   }
+  // QuotaCap-authored adapter parse vocabulary (`src/adapters/*.ts` throws).
+  // Fixed subjects only: a quoted provider value after "bad … reset" is never
+  // echoed, per the sanitization policy.
+  if (/\bweekly limit not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "weekly limit not found" };
+  }
+  if (/\b5h limit not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "5h limit not found" };
+  }
+  if (/\bweekly percent not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "weekly percent not found" };
+  }
+  if (/\bweekly usage not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "weekly usage not found" };
+  }
+  if (/\bcurrent-window usage not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "current-window usage not found" };
+  }
+  if (/\bbad weekly pct\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad weekly pct" };
+  }
+  if (/\bbad 5h pct\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad 5h pct" };
+  }
+  if (/\bbad current pct\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad current pct" };
+  }
+  if (/\bbad weekly reset\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad weekly reset" };
+  }
+  if (/\bbad 5h reset\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad 5h reset" };
+  }
+  if (/\bbad weekly reset_time\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad weekly reset_time" };
+  }
+  if (/\bstatus is not SUCCESS\b/i.test(text)) {
+    return { code: "parse_error", phrase: "status is not SUCCESS" };
+  }
+  if (/\bno usage groups\b/i.test(text)) {
+    return { code: "parse_error", phrase: "no usage groups" };
+  }
+  if (/\bno weekly bucket\b/i.test(text)) {
+    return { code: "parse_error", phrase: "no weekly bucket" };
+  }
 
   // Order 9: timeout — Remaining explicit timeout or timed out errors
   if (/\btimed out\b/i.test(text) || /\btimeout\b/i.test(text)) {

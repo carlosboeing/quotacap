@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Codex 5h reset: the `/status` panel renders the 5h reset date-qualified (`resets 02:43 on 15 Sep`) when it falls on another day, but the parser only accepted bare `HH:MM` — every poll since the window turned over failed with `bad 5h reset`. The 5h parser now accepts the weekly-shaped qualified form and keeps the bare form for same-day resets.
+- Diagnostics: adapter parse failures are recognized as `parse_error` instead of collapsing to `unknown` — the classifier now matches QuotaCap's own adapter vocabulary (`bad 5h reset`, `weekly limit not found`, `no weekly bucket`, …) and emits the canonical phrase only, never the quoted provider value. Logs, `status --verbose`, and MCP show e.g. `Unable to read Codex usage: bad 5h reset` with the update-or-report recovery step.
+- Dashboard: the failure banner renders the server diagnosis (summary, detail, action) when the attempt carries one, falling back to the legacy `Unknown error — check the X CLI, then re-poll` wording for old daemons and legacy attempts.
+
 ## 0.0.29
 
 - Reset rail fan-out: pins within a collision window now render individually up to three per window (was two), with the band alternation and tier staggering carrying the layout; windows of four or more still group into a cluster pin with the per-provider popover. Trios with sub-hour gaps render with overlapping labels — accepted trade-off, the cluster popover remains the clean view for four-plus.

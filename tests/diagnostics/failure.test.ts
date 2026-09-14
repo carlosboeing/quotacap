@@ -202,6 +202,35 @@ describe("diagnostic boundary and failure classification", () => {
       }
     });
 
+    it("Order 8: parse_error (adapter parse vocabulary)", () => {
+      const cases: Array<[string, string, string]> = [
+        ["codex", "codex: weekly limit not found in TUI output", "weekly limit not found"],
+        ["codex", "codex: 5h limit not found in TUI output", "5h limit not found"],
+        ["grok", "grok: weekly percent not found in TUI output", "weekly percent not found"],
+        ["muse", "muse: weekly usage not found in TUI output", "weekly usage not found"],
+        ["muse", "muse: current-window usage not found in TUI output", "current-window usage not found"],
+        ["codex", "codex: bad weekly pct", "bad weekly pct"],
+        ["kimi", "kimi: bad 5h pct", "bad 5h pct"],
+        ["muse", "muse: bad current pct", "bad current pct"],
+        ["muse", "muse: bad weekly reset", "bad weekly reset"],
+        ["codex", 'codex: bad 5h reset "02:43 on 15 Sep"', "bad 5h reset"],
+        ["agy", "agy: bad weekly reset_time", "bad weekly reset_time"],
+        ["agy", "agy: status is not SUCCESS", "status is not SUCCESS"],
+        ["agy", "agy: no usage groups", "no usage groups"],
+        ["agy", "agy: no weekly bucket", "no weekly bucket"],
+      ];
+      for (const [provider, message, phrase] of cases) {
+        const failure = classifyFailure(provider, new Error(message));
+        expect(failure.diagnosticCode).toBe("parse_error");
+        expect(failure.category).toBe("parse");
+        // Canonical phrase only: the quoted variable suffix is never echoed.
+        expect(failure.errorDetail).toBe(phrase);
+      }
+      const failure = classifyFailure("codex", new Error('codex: bad 5h reset "02:43 on 15 Sep"'));
+      expect(failure.summary).toBe("Unable to read Codex usage");
+      expect(failure.action).toContain("Check for a QuotaCap update");
+    });
+
     it("Order 9: timeout (remaining explicit timeout / timed out)", () => {
       const f1 = classifyFailure("kimi", new Error("request timed out after 5000ms"));
       expect(f1.diagnosticCode).toBe("timeout");

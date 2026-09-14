@@ -66,6 +66,11 @@ export interface AttemptView {
   succeededAt: string | null;
   success: boolean;
   failureCategory: FailureCategory;
+  diagnosticCode?: string | null;
+  summary?: string | null;
+  action?: string | null;
+  errorDetail?: string | null;
+  error?: string | null;
 }
 
 export interface ProviderView {

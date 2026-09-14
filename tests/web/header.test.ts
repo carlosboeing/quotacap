@@ -91,4 +91,30 @@ describe("fault repair", () => {
     const stale = repairFor({ id: "kimi", displayName: "Kimi", exclusionReason: "stale", lastAttempt: null } as any);
     expect(stale.text).toMatch(/poll again/i);
   });
+  it("prefers the server diagnosis over generic failure words when present", () => {
+    const enriched = repairFor({
+      id: "codex",
+      displayName: "Codex",
+      exclusionReason: "provider-failed",
+      lastAttempt: {
+        failureCategory: "parse",
+        diagnosticCode: "parse_error",
+        summary: "Unable to read Codex usage",
+        action: "QuotaCap could not read the usage output. Check for a QuotaCap update or report the adapter failure.",
+        errorDetail: "bad 5h reset",
+      },
+    } as any);
+    expect(enriched.text).toBe(
+      "Unable to read Codex usage: bad 5h reset. QuotaCap could not read the usage output. Check for a QuotaCap update or report the adapter failure.",
+    );
+  });
+  it("keeps the legacy wording for attempts without a diagnosis", () => {
+    const legacy = repairFor({
+      id: "codex",
+      displayName: "Codex",
+      exclusionReason: "provider-failed",
+      lastAttempt: { failureCategory: "unknown" },
+    } as any);
+    expect(legacy.text).toBe("Unknown error — check the Codex CLI, then re-poll.");
+  });
 });

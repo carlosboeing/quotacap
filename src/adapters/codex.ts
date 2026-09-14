@@ -30,6 +30,10 @@ function parseWeeklyReset(raw: string, now: Date): string | null {
 }
 
 function parseFiveReset(raw: string, now: Date): string | null {
+  // The 5h reset is bare ("19:38") when it falls today and date-qualified
+  // ("02:43 on 15 Sep", weekly shape) otherwise; accept both.
+  const qualified = parseWeeklyReset(raw, now);
+  if (qualified) return qualified;
   const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
   const hours = parseInt(m[1], 10);
