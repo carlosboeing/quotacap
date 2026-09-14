@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.29
 
 - Reset rail fan-out: pins within a collision window now render individually up to three per window (was two), with the band alternation and tier staggering carrying the layout; windows of four or more still group into a cluster pin with the per-provider popover. Trios with sub-hour gaps render with overlapping labels — accepted trade-off, the cluster popover remains the clean view for four-plus.
 - Codex reset accuracy: the poll completed on Codex v0.154.0's startup statusline footer (`· 5h N% left · weekly N% left`), which carries no reset timestamps, so the adapter fell back to a `now + 7d` estimate that drifted forward on every poll (and pinned time-elapsed at 0%). The scrape now submits `/status` two-phase (the slash-command autocomplete swallows a same-burst Enter) and completes only on the rendered panel, whose progress-bar rows (`Weekly limit: [████…] 77% left (resets 23:04 on 19 Sep)`) the parser now reads — Codex reports a real reset timestamp again instead of `(est.)`.
