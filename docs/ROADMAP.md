@@ -1,5 +1,12 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.31 — 2026-09-15 (refresh settle, plan labels & table)
+
+* Refresh settle — the header pill re-reads state until the daemon goes idle instead of sticking on Cooling down, and a refresh inside the server cooldown explains itself with a notice (#82)
+* Plan labels — Codex reads the plan from the `/status` Account line; providers with no tier signal no longer print `unknown` in cards, rows, or the drawer (#82)
+* Vendor window words — the drawer and table use each provider's own `/usage` or `/status` terms: Weekly limit plus 5-hour limit, Current session, or Current window (#82)
+* Table polish — Reset stacks clock over countdown in a widened column, columns rebalance, rows gain hover, and usage headlines never break (#82)
+
 ## Recently shipped — 0.0.30 — 2026-09-14 (codex 5h reset & parse diagnostics)
 
 * Codex 5h reset — the parser accepts the date-qualified 5h reset (`resets 02:43 on 15 Sep`) the `/status` panel renders once the window falls on another day, keeping the bare form for same-day resets; polls stay green across the turnover (#80)
