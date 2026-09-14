@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Table Reset column: the ledger's `Resets in` column is renamed `Reset` and shows the actual reset day/time ahead of the countdown — `Tue 10:25 · in 20h 30m` — with the estimate marker on the timestamp (`Mon 13:34 (est.) · in 6d 23h`), matching the reset rail's convention. Reset-passed, invalid, and reading-less rows keep their existing wording.
 - Pace split: every advisory now carries `avgPace` (used % / days elapsed over the window) alongside the forecast input `burnRate`, and all surfaces show both — dashboard cards lead with the window average with the 24h rate beneath (`10.6%/day` + `24h 0.0%/day`), the CLI `status` wide table gains a `PACE (%/DAY)` column (narrow appends the pair, `--json` gains `avgPace`), and the MCP markdown table gains the Pace column, with units unified on `%/day`. Forecasts still use recent pace when measured; rankings and badges are unchanged.
 - Exhausted windows: a provider with nothing remaining now forces at-risk + an `Exhausted` forecast instead of reading on-track when recent burn is flat.
 

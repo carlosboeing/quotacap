@@ -153,6 +153,27 @@ export function resetCountdown(provider: ProviderView, asOfMs: number): string {
   return `in ${left}${estimated}`;
 }
 
+/**
+ * Reset cell for the table view: clock time plus countdown, e.g.
+ * "Tue 10:25 · in 20h 30m". Estimated resets mark the timestamp, per the
+ * 0.0.25 convention. Falls back to the countdown-only wording for
+ * reset-passed, missing, and unparseable rows.
+ */
+export function resetCell(provider: ProviderView, asOfMs: number): string {
+  if (provider.exclusionReason === "reset-passed") return "awaiting fresh window";
+  if (!provider.quota) return "no readings";
+  const clock = resetClock(provider.quota.resetsAt);
+  const left = timeLeft(provider.quota.resetsAt, asOfMs);
+  const estimated = isEstimated(provider) ? " (est.)" : "";
+  if (clock && left) return `${clock}${estimated} · in ${left}`;
+  if (left === null) {
+    const resetMs = Date.parse(provider.quota.resetsAt);
+    if (Number.isFinite(resetMs) && resetMs <= asOfMs) return "awaiting fresh window";
+    return "reset unknown";
+  }
+  return "reset unknown";
+}
+
 export interface BarGeometry {
   usedPct: number;
   elapsedPct: number | null;

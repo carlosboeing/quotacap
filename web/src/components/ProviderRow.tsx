@@ -5,7 +5,7 @@ import {
   PaceBar,
   forecastLine,
   paceLines,
-  resetCountdown,
+  resetCell,
 } from "./PaceBar.js";
 
 export function ProviderRow({
@@ -56,8 +56,8 @@ export function ProviderRow({
       <div data-label="Used vs elapsed">
         {quota ? <PaceBar provider={provider} asOf={asOf} /> : "—"}
       </div>
-      <div data-label="Resets in">
-        <span className="cell-b">{resetCountdown(provider, asOfMs)}</span>
+      <div data-label="Reset">
+        <span className="cell-b">{resetCell(provider, asOfMs)}</span>
       </div>
       <div data-label="Pace">
         <Badge provider={provider} />

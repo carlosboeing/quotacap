@@ -229,7 +229,7 @@ export function SubscriptionList({
             <div className="lrow lhead" role="row">
               <span role="columnheader">Provider</span>
               <span role="columnheader">Used vs elapsed</span>
-              <span role="columnheader">Resets in</span>
+              <span role="columnheader">Reset</span>
               <span role="columnheader">Pace</span>
               <span role="columnheader" />
             </div>
