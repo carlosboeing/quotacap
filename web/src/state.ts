@@ -24,6 +24,8 @@ export interface AdvisoryView {
   remaining: number;
   idealRate: number;
   burnRate: number | null;
+  /** Window-average pace (used % ÷ days elapsed); null before the window start is known. */
+  avgPace: number | null;
   burnMeasured: boolean;
   paceSource: PaceSource;
   daysToExhaust: number | null;

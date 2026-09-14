@@ -2,7 +2,7 @@ import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Behind pace" | "Ahead of pace" | "On track";
+export type PaceBadge = "Not reporting" | "Cap risk" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring";
 
 /**
  * Pace-state badge from the mapping table. Exclusion always wins; otherwise
@@ -13,6 +13,7 @@ export function paceBadge(provider: ProviderView): PaceBadge {
   const advisory = provider.advisory;
   if (!advisory) return "Not reporting";
   if (advisory.status === "at risk") return "Cap risk";
+  if (advisory.status === "unknown") return "Measuring";
   switch (advisory.urgency) {
     case "burn now":
     case "use soon":
@@ -23,6 +24,66 @@ export function paceBadge(provider: ProviderView): PaceBadge {
     case "on track":
       return "On track";
   }
+}
+
+export interface PaceFigures {
+  /** Window average: used % ÷ days elapsed. Null before the window start is known. */
+  avg: number | null;
+  /** Recent burn: last-24h rolling rate. Null unless paceSource is "recent". */
+  recent: number | null;
+}
+
+/** Split the advisory into its two displayed paces. `burnRate` doubles as the
+ * forecast input, so the recent figure only exists when it was measured. */
+export function paceFigures(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceFigures {
+  if (!advisory) return { avg: null, recent: null };
+  const avg = advisory.avgPace ?? null;
+  const recent = advisory.paceSource === "recent" ? advisory.burnRate : null;
+  return { avg, recent };
+}
+
+export interface PaceCells {
+  avg: string;
+  recent: string;
+}
+
+/** Card pace cells: average and 24h rate side by side, each "—" when unknown.
+ * Unlike the collapsed summaries, both cells always render so the pair
+ * reads as two peer figures. */
+export function paceCells(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCells {
+  const { avg, recent } = paceFigures(advisory);
+  return {
+    avg: avg !== null ? `${avg.toFixed(1)}%/day` : "—",
+    recent: recent !== null ? `${recent.toFixed(1)}%/day` : "—",
+  };
+}
+
+/** Hover explanations shared by cards and rows. Plain words, no jargon. */
+export const PACE_TIPS = {
+  avg: "Window average — quota used ÷ days elapsed. Your overall pace this window.",
+  recent: "Burn over the last 24 hours. Forecasts use this rate when recent readings exist.",
+  ideal: "The even pace that lands exactly on 100% at reset: remaining ÷ days left.",
+} as const;
+
+export interface PaceLine {
+  label: string;
+  value: string;
+  tip: string;
+}
+
+/** Table-row pace stack: one labeled line per known pace plus the needed
+ * rate. Both paces always show when known (no collapsing) so rows read
+ * uniformly. Empty when no advisory is present. */
+export function paceLines(
+  advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string; idealRate: number } | null | undefined,
+): PaceLine[] {
+  if (!advisory) return [];
+  const { avg, recent } = paceFigures(advisory);
+  const lines: PaceLine[] = [];
+  if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day`, tip: PACE_TIPS.avg });
+  if (recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
+  lines.push({ label: "Ideal", value: `${advisory.idealRate.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
+  return lines;
 }
 
 /** Plain-words reason shown beside "Not reporting". Null when the badge says it all. */
@@ -40,18 +101,6 @@ export function exclusionDetail(reason: ExclusionReason): string | null {
     case null:
       return null;
   }
-}
-
-const EVIDENCE_LABELS: Record<string, string> = {
-  measured: "Measured",
-  "window-average": "Window avg",
-};
-
-/** Coordinator-locked evidence labels. Unknown tokens pass through verbatim. */
-export function evidenceLabels(evidence: string[]): string[] {
-  return evidence
-    .filter((e) => e !== "estimated-reset")
-    .map((e) => EVIDENCE_LABELS[e] ?? e);
 }
 
 export function isEstimated(provider: ProviderView): boolean {
@@ -133,6 +182,8 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--ahead)";
     case "Cap risk":
       return "var(--danger)";
+    case "Measuring":
+      return "var(--ink-soft)";
     case "Not reporting":
       return "var(--line-strong)";
   }
@@ -148,6 +199,8 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-ahead)";
     case "Cap risk":
       return "var(--fill-cap)";
+    case "Measuring":
+      return "var(--fill-out)";
     case "Not reporting":
       return "var(--fill-out)";
   }
@@ -163,6 +216,8 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-ahead)";
     case "Cap risk":
       return "var(--edge-cap)";
+    case "Measuring":
+      return "var(--edge-out)";
     case "Not reporting":
       return "var(--edge-out)";
   }
@@ -201,7 +256,7 @@ export function Badge({ provider }: { provider: ProviderView }) {
       ? "pace-ahead"
       : badge === "Cap risk"
       ? "pace-cap"
-      : "pace-out";
+      : "pace-out"; // Not reporting and Measuring share the neutral style
   return (
     <span
       data-testid="pace-badge"
@@ -308,6 +363,9 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   const advisory = provider.advisory;
   if (!advisory) return null;
+  if (advisory.remaining <= 0) {
+    return "Exhausted · quota fully used";
+  }
   if (advisory.paceSource === "unknown") {
     return `Measuring pace · ${Math.round(advisory.remaining)}% remaining`;
   }

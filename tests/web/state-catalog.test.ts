@@ -145,7 +145,7 @@ describe("state catalog: server-rendered components", () => {
     );
     expect(html).toContain("Behind pace");
     expect(html).toContain("Not reporting");
-    expect(html).toContain("On track");
+    expect(html).toContain("Measuring");
     expect(html).toContain("used in ranking");
     expect(html).toContain("Measuring pace");
     expect(html).not.toContain("predicted");

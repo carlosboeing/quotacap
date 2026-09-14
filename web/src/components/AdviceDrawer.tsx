@@ -72,6 +72,8 @@ export function AdviceDrawer({
         ? Math.round(pick.advisory.wastePct)
         : null;
   const left = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
+  const basis =
+    pick?.advisory?.paceSource === "window-average" ? "window-average pace" : "current 24h pace";
   const othersMore = useMore.filter((a) => a.provider !== pickId);
   const titleId = "advice-drawer-title";
 
@@ -162,7 +164,7 @@ export function AdviceDrawer({
                 {remaining !== null && left && waste !== null ? (
                   <>
                     <b>{pickName}</b> has {remaining}% quota remaining with its reset window closing in {left}.
-                    Current pacing projects {waste}% unused quota at reset. Using this subscription now avoids unused quota expiration.
+                    At the {basis}, {waste}% unused quota is projected at reset. Using this subscription now avoids unused quota expiration.
                   </>
                 ) : (
                   recommendation.reason

@@ -1,6 +1,14 @@
 import type { Quota } from "../adapters/types.js";
 import type { AttemptRecord } from "../store/attempts.js";
 
+/**
+ * Minimum data span before a pace annualizes, in days. Under 6h a single
+ * 1% quantum annualizes to 4%/day of noise — enough to fabricate Cap-risk
+ * and burn-now verdicts on a fresh window. Applies to the window average
+ * (elapsed time) and the recent rate (reading span) alike.
+ */
+export const MIN_PACE_SPAN_DAYS = 6 / 24;
+
 export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track";
 export type BurnStatus = "at risk" | "on track" | "unknown";
 export type PaceSource = "recent" | "window-average" | "unknown";
@@ -22,6 +30,13 @@ export interface Advisory {
   remaining: number;
   idealRate: number;
   burnRate: number | null;
+  /**
+   * Window-average pace (used % ÷ days elapsed), always computed when the
+   * window start is known — independent of `burnRate`, which is the forecast
+   * input (recent 24h rolling burn when available, else this same average).
+   * Surfaces show both so a flat 24h (0.0) never hides real window usage.
+   */
+  avgPace: number | null;
   burnMeasured: boolean;
   paceSource: PaceSource;
   daysToExhaust: number | null;

@@ -5,7 +5,12 @@ import {
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
 } from "../fixtures/stable-state.js";
-import { hatchGradient, paceBadge, resetClock } from "../../web/src/components/PaceBar.js";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { toViewModel } from "../../web/src/state.js";
+import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { ProviderCard } from "../../web/src/components/ProviderCard.js";
+import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
 
 describe("pace badges", () => {
@@ -24,17 +29,91 @@ describe("pace badges", () => {
     const byId = new Map<string, any>(s.providers.map((p: any) => [p.id, p]));
     expect(paceBadge(byId.get("claude"))).toBe("Behind pace"); // urgency save
     expect(paceBadge(byId.get("kimi"))).toBe("Behind pace");
-    expect(paceBadge(byId.get("agy"))).toBe("On track"); // unknown pace, urgency on track
+    expect(paceBadge(byId.get("agy"))).toBe("Measuring"); // unknown pace reads Measuring, not On track
     expect(paceBadge(byId.get("manual"))).toBe("Not reporting");
     const u = JSON.parse(unknownPaceStateSnapshotJson);
-    expect(paceBadge(u.providers.find((p: any) => p.id === "kimi"))).toBe("On track");
+    expect(paceBadge(u.providers.find((p: any) => p.id === "kimi"))).toBe("Measuring");
     // No fixture carries at-risk or slow-down advisories; map them synthetically.
+    expect(paceBadge({ exclusionReason: null, advisory: { status: "unknown", urgency: "on track" } } as any)).toBe(
+      "Measuring"
+    );
     expect(paceBadge({ exclusionReason: null, advisory: { status: "at risk", urgency: "on track" } } as any)).toBe(
       "Cap risk"
     );
     expect(paceBadge({ exclusionReason: null, advisory: { status: "on track", urgency: "slow down" } } as any)).toBe(
       "Ahead of pace"
     );
+  });
+});
+
+describe("pace figures", () => {
+  it("splits the advisory into window average and 24h rate", () => {
+    expect(paceFigures({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({ avg: 10.6, recent: 0 });
+    expect(paceFigures({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toEqual({ avg: 3.1, recent: null });
+    expect(paceFigures({ avgPace: null, burnRate: null, paceSource: "unknown" })).toEqual({ avg: null, recent: null });
+    expect(paceFigures(null)).toEqual({ avg: null, recent: null });
+  });
+  it("renders average and 24h as peer card cells, dash when unknown", () => {
+    expect(paceCells({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({
+      avg: "10.6%/day",
+      recent: "0.0%/day",
+    });
+    expect(paceCells({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average" })).toEqual({
+      avg: "3.1%/day",
+      recent: "—",
+    });
+    expect(paceCells({ avgPace: null, burnRate: 17, paceSource: "recent" })).toEqual({
+      avg: "—",
+      recent: "17.0%/day",
+    });
+    expect(paceCells(null)).toEqual({ avg: "—", recent: "—" });
+  });
+  it("stacks labeled pace lines plus ideal for table rows", () => {
+    expect(paceLines({ avgPace: 10.6, burnRate: 0, paceSource: "recent", idealRate: 24.1 })).toEqual([
+      { label: "Avg", value: "10.6%/day", tip: expect.stringContaining("Window average") },
+      { label: "24h", value: "0.0%/day", tip: expect.stringContaining("last 24 hours") },
+      { label: "Ideal", value: "24.1%/day", tip: expect.stringContaining("exactly on 100%") },
+    ]);
+    expect(paceLines({ avgPace: 3.1, burnRate: 3.1, paceSource: "window-average", idealRate: 5 })).toEqual([
+      { label: "Avg", value: "3.1%/day", tip: expect.stringContaining("Window average") },
+      { label: "Ideal", value: "5.0%/day", tip: expect.stringContaining("exactly on 100%") },
+    ]);
+    expect(paceLines(null)).toEqual([]);
+  });
+  it("exposes hover explanations on card and row pace labels", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    kimi.advisory = { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent" };
+    const card = renderToString(
+      React.createElement(ProviderCard, { provider: kimi, recommended: true, asOf: s.asOf, onSelect: () => {} }),
+    );
+    for (const tip of ["Window average", "last 24 hours", "exactly on 100%"]) {
+      expect(card).toContain(`title="`);
+      expect(card).toContain(tip);
+    }
+    const row = renderToString(
+      React.createElement(ProviderRow, { provider: kimi, recommended: true, asOf: s.asOf, onSelect: () => {} }),
+    );
+    for (const tip of ["Window average", "last 24 hours", "exactly on 100%"]) {
+      expect(row).toContain(tip);
+    }
+  });
+  it("names exhausted windows in the forecast line", () => {
+    const capped = {
+      exclusionReason: null,
+      quota: { usedPct: 100 },
+      advisory: {
+        remaining: 0,
+        paceSource: "recent",
+        burnRate: 0,
+        status: "at risk",
+        urgency: "slow down",
+        daysToExhaust: 0,
+        wastePct: 0,
+        daysLeft: 0.9,
+      },
+    };
+    expect(forecastLine(capped as any)).toBe("Exhausted · quota fully used");
   });
 });
 
