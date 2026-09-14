@@ -1441,12 +1441,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   flex: none;
   width: 30px;
 }
-/* Pace labels with hover explanations: abbr-style affordance on the label
- * only (the tooltip itself triggers from the whole cell). */
-.pstats div[title] > .l,
-.paceline[title] > span:first-child {
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
+/* Pace cells with hover explanations get the help cursor. */
+.pstats div[title],
+.paceline[title] {
   cursor: help;
 }
 
