@@ -41,7 +41,7 @@ Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discove
 
 ## Browser verification
 
-Verify the dashboard headless/isolated only (`playwright-cli open` with the default in-memory profile, headless MCP, `npm run test:smoke` as configured). Never `attach` to the user's running Chrome, never `--headed` against the main profile, and always `close` sessions when done — stray tabs in the user's window are a bug.
+Headed smoke tests of the dashboard are fine when an agent needs eyes on it — but in the agent's own window or profile, never tabs injected into the user's existing browser session, and always `close` sessions when done. Automated tests must never open tabs at all (run with `QUOTACAP_NO_OPEN=1`; see PR 73).
 
 ## Current state
 
