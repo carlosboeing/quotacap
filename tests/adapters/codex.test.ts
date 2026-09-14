@@ -84,6 +84,20 @@ describe("parseCodexTui", () => {
     expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
   });
 
+  it("parses a date-qualified 5h reset (live 2026-09-14 shape)", () => {
+    const now = new Date(2026, 8, 14, 21, 44);
+    const txt = [
+      "• You have 1 usage limit reset available. Run /usage to use one. · 5h 100% left · weekly 73% left",
+      "│  5h limit:             [████████████████████] 100% left (resets 02:43 on 15 Sep) │",
+      "│  Weekly limit:         [███████████████░░░░░] 73% left (resets 23:04 on 19 Sep)  │",
+    ].join("\n");
+    const q = parseCodexTui(txt, now);
+    expect(q.usedPct).toBe(27);
+    expect(q.sessionPct).toBe(0);
+    expect(q.resetsAtEstimated).toBeUndefined();
+    expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
+  });
+
   it("throws when weekly limit absent (fail-closed)", () => {
     const txt = `5h limit: 9% left (resets 14:12)\n`;
     expect(() => parseCodexTui(txt, new Date())).toThrow(/weekly limit/i);

@@ -28,6 +28,12 @@ export function repairFor(provider: ProviderView): Repair {
     case "invalid":
       return { text: `Check the ${name} CLI output, then re-poll.` };
     case "provider-failed": {
+      const attempt = provider.lastAttempt;
+      if (attempt?.summary) {
+        const detail = attempt.errorDetail ? `: ${attempt.errorDetail}` : "";
+        const action = attempt.action ?? `Check the ${name} CLI, then re-poll.`;
+        return { text: `${attempt.summary}${detail}. ${action}` };
+      }
       const failure = failureWords(provider.lastAttempt?.failureCategory ?? null);
       return { text: `${failure ?? "Provider failed"} — check the ${name} CLI, then re-poll.` };
     }
