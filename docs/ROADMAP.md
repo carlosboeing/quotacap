@@ -2,6 +2,7 @@
 
 ## Recently shipped — unreleased (pace display)
 
+* Table Reset column — the ledger's `Resets in` column becomes `Reset` and shows the actual reset day/time ahead of the countdown (`Tue 10:25 · in 20h 30m`), with the estimate marker staying on the timestamp
 * Pace split — every advisory carries `avgPace` (used % / days elapsed) alongside the forecast input `burnRate`, and all surfaces show both: dashboard cards lead with the window average with the 24h rate beneath, CLI `status` gains a `PACE (%/DAY)` column, MCP markdown gains the Pace column, units unified on `%/day`; exhausted windows force at-risk + `Exhausted` forecast instead of reading on-track when recent burn is flat (#71)
 
 ## Recently shipped — 0.0.28 — 2026-09-13 (grok accuracy)

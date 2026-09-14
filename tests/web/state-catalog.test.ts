@@ -19,7 +19,7 @@ import { ProviderDrawer } from "../../web/src/components/ProviderDrawer.js";
 import { Header } from "../../web/src/components/Header.js";
 import { FaultBanner } from "../../web/src/components/FaultBanner.js";
 import { Onboarding } from "../../web/src/pages/Onboarding.js";
-import { resetCountdown } from "../../web/src/components/PaceBar.js";
+import { resetCell, resetClock, resetCountdown } from "../../web/src/components/PaceBar.js";
 import App from "../../web/src/App.js";
 
 afterEach(() => {
@@ -74,6 +74,19 @@ describe("state catalog: mapping over fixtures", () => {
     const kimi = u.providers.find((p: any) => p.id === "kimi");
     expect(kimi.advisory.paceSource).toBe("unknown");
     expect(kimi.advisory.wastePct).toBeNull();
+  });
+  it("composes the table reset cell as clock plus countdown", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const asOfMs = Date.parse(s.asOf);
+    const kimi = s.providers.find((p: any) => p.id === "kimi");
+    expect(resetCell(kimi, asOfMs)).toBe(`${resetClock(kimi.quota.resetsAt)} · in 7d 0h`);
+    const codex = s.providers.find((p: any) => p.id === "codex");
+    expect(resetCell(codex, asOfMs)).toBe(`${resetClock(codex.quota.resetsAt)} (est.) · in 7d 0h`);
+    const grok = s.providers.find((p: any) => p.id === "grok");
+    expect(resetCell(grok, asOfMs)).toBe("reset unknown");
+    const r = JSON.parse(resetPassedStateSnapshotJson);
+    const passed = r.providers.find((p: any) => p.id === "kimi");
+    expect(resetCell(passed, Date.parse(r.asOf))).toBe("awaiting fresh window");
   });
   it("renders the balanced state with empty lanes", () => {
     const advisory = {
