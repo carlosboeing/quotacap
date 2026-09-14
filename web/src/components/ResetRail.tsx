@@ -7,7 +7,7 @@ const RAIL_MS = RAIL_DAYS * 24 * 60 * 60 * 1000;
 /** Pins within this span of rail group into one collision window. */
 const COLLISION_PCT = 3;
 /** Pins per window before they group into a cluster pin. */
-const WINDOW_CAPACITY = 2;
+const WINDOW_CAPACITY = 3;
 
 export interface RailRow {
   id: string;

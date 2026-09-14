@@ -12,13 +12,30 @@ describe("reset rail", () => {
         { id: "a", resetsAt: "2026-09-08T06:00:00+10:00" },
         { id: "b", resetsAt: "2026-09-08T06:20:00+10:00" },
         { id: "c", resetsAt: "2026-09-08T06:40:00+10:00" },
+        { id: "d", resetsAt: "2026-09-08T07:00:00+10:00" },
         { id: "far", resetsAt: "2026-10-01T06:00:00+10:00" },
       ],
       new Date("2026-09-07T06:00:00+10:00")
     );
-    expect(pins.clusters.length).toBeGreaterThan(0);
+    expect(pins.clusters).toHaveLength(1);
+    expect(pins.clusters[0].ids).toHaveLength(4);
     expect(pins.overflow.map((o: any) => o.id)).toContain("far");
     expect(pins.invalid).toHaveLength(0);
+  });
+  it("places three crowded pins individually instead of clustering", () => {
+    const pins = placePins(
+      [
+        { id: "a", resetsAt: "2026-09-08T06:00:00+10:00" },
+        { id: "b", resetsAt: "2026-09-08T06:20:00+10:00" },
+        { id: "c", resetsAt: "2026-09-08T06:40:00+10:00" },
+      ],
+      new Date("2026-09-07T06:00:00+10:00")
+    );
+    expect(pins.clusters).toHaveLength(0);
+    expect(pins.placed.map((p: any) => p.id)).toEqual(["a", "b", "c"]);
+    // band alternation plus tier staggering keep the tight trio readable
+    expect(pins.placed.map((p: any) => p.band)).toEqual(["above", "below", "above"]);
+    expect(pins.placed[2].tier).toBeGreaterThan(0);
   });
   it("drops invalid and reset-passed rows from the future rail", () => {
     const pins = placePins(
