@@ -70,6 +70,20 @@ describe("parseCodexTui", () => {
     expect(q.sessionPct).toBeDefined();
   });
 
+  it("parses the v0.154.0 /status panel with progress bars, ignoring the startup footer", () => {
+    const now = new Date("2026-09-14T14:00:00");
+    const txt = [
+      "• You have 1 usage limit reset available. · 5h 89% left · weekly 11% left",
+      "│  5h limit:             [█████░░░░░░░░░░░░░░░] 23% left (resets 19:38)           │",
+      "│  Weekly limit:         [███████████████░░░░░] 77% left (resets 23:04 on 19 Sep) │",
+    ].join("\n");
+    const q = parseCodexTui(txt, now);
+    expect(q.usedPct).toBe(23);
+    expect(q.sessionPct).toBe(77);
+    expect(q.resetsAtEstimated).toBeUndefined();
+    expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
+  });
+
   it("throws when weekly limit absent (fail-closed)", () => {
     const txt = `5h limit: 9% left (resets 14:12)\n`;
     expect(() => parseCodexTui(txt, new Date())).toThrow(/weekly limit/i);
