@@ -89,6 +89,43 @@ describe("launchWeb branches", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
+  it("prints the URL without opening a browser when open is false", async () => {
+    isolatedHome();
+    const openBrowser = vi.fn();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await launchWeb(
+      { open: false },
+      {
+        createClient: (() => ({ get: async () => healthy })) as unknown as RuntimeCommandDeps["createClient"],
+        openBrowser,
+        checkUpdates: noUpdateCheck,
+      },
+    );
+    expect(openBrowser).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("http://127.0.0.1:8787");
+  });
+
+  it("prints the URL without opening a browser when QUOTACAP_NO_OPEN=1", async () => {
+    isolatedHome();
+    process.env.QUOTACAP_NO_OPEN = "1";
+    try {
+      const openBrowser = vi.fn();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await launchWeb(
+        {},
+        {
+          createClient: (() => ({ get: async () => healthy })) as unknown as RuntimeCommandDeps["createClient"],
+          openBrowser,
+          checkUpdates: noUpdateCheck,
+        },
+      );
+      expect(openBrowser).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith("http://127.0.0.1:8787");
+    } finally {
+      delete process.env.QUOTACAP_NO_OPEN;
+    }
+  });
+
   it("takes over a healthy older unmanaged daemon, then opens the successor", async () => {
     isolatedHome();
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -266,17 +303,17 @@ function isolatedHomeWithPort(port: number): string {
 }
 
 // Bare `quotacap` routes through the shared launcher; flags keep Commander
-// behavior. Browser-open success is environment-dependent (spawn succeeding
-// prints nothing; failure prints the URL), so black-box asserts exit code.
+// behavior. Black-box runs stay tab-free via QUOTACAP_NO_OPEN / --no-open,
+// which print the URL instead of opening the developer's browser.
 describe("bare invocation and foreground preservation", () => {
   it("bare quotacap against a healthy daemon exits 0", async () => {
     const port = await freePort();
     const dir = isolatedHomeWithPort(port);
     const daemon = await startDaemon({ port, signals: false });
     handles.push(daemon);
-    const res = await runCli(dir, []);
+    const res = await runCli(dir, [], { QUOTACAP_NO_OPEN: "1" });
     expect(res.code).toBe(0);
-    expect(["", `http://127.0.0.1:${port}`]).toContain(res.stdout.trim());
+    expect(res.stdout.trim()).toBe(`http://127.0.0.1:${port}`);
   });
 
   it("quotacap --help keeps Commander behavior", async () => {
@@ -293,7 +330,7 @@ describe("bare invocation and foreground preservation", () => {
     // graceful exit 0): only a still-running process can be SIGKILLed.
     let killed = false;
     try {
-      await exec("node", ["--no-warnings", "dist/cli/index.js", "web", "--foreground"], {
+      await exec("node", ["--no-warnings", "dist/cli/index.js", "web", "--foreground", "--no-open"], {
         timeout: 8000,
         killSignal: "SIGKILL",
         env: {
