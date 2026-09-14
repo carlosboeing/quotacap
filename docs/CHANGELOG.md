@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.30
 
 - Codex 5h reset: the `/status` panel renders the 5h reset date-qualified (`resets 02:43 on 15 Sep`) when it falls on another day, but the parser only accepted bare `HH:MM` — every poll since the window turned over failed with `bad 5h reset`. The 5h parser now accepts the weekly-shaped qualified form and keeps the bare form for same-day resets.
 - Diagnostics: adapter parse failures are recognized as `parse_error` instead of collapsing to `unknown` — the classifier now matches QuotaCap's own adapter vocabulary (`bad 5h reset`, `weekly limit not found`, `no weekly bucket`, …) and emits the canonical phrase only, never the quoted provider value. Logs, `status --verbose`, and MCP show e.g. `Unable to read Codex usage: bad 5h reset` with the update-or-report recovery step.
