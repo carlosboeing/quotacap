@@ -78,16 +78,16 @@ export function ProviderCard({
         <PaceBar provider={provider} asOf={asOf} />
 
         <div className="pstats">
-          <div>
-            <span className="l" title={PACE_TIPS.avg}>Avg pace</span>
+          <div title={PACE_TIPS.avg}>
+            <span className="l">Avg pace</span>
             <span className="v">{pace.avg}</span>
           </div>
-          <div>
-            <span className="l" title={PACE_TIPS.recent}>24h pace</span>
+          <div title={PACE_TIPS.recent}>
+            <span className="l">24h pace</span>
             <span className="v">{pace.recent}</span>
           </div>
-          <div>
-            <span className="l" title={PACE_TIPS.ideal}>Ideal pace</span>
+          <div title={PACE_TIPS.ideal}>
+            <span className="l">Ideal pace</span>
             <span className="v">
               {advisory ? `${advisory.idealRate.toFixed(1)}%/day` : "—"}
             </span>
