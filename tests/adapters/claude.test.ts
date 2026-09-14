@@ -27,6 +27,13 @@ describe("parseClaudeUsage", () => {
     expect(q.periodStart).toBe(new Date(now.getTime() - 7 * 86400000).toISOString());
     expect(q.fetchedAt).toBe(now.toISOString());
   });
+
+  it("parses 0% session usage and handles missing timezone in resets", () => {
+    const txt = `Current session: 0% used · resets 1:30pm\nCurrent week (all models): 10% used · resets Sep 17 at 9pm (Australia/Brisbane)\n`;
+    const q = parseClaudeUsage(txt, new Date("2026-09-15T00:00:00Z"));
+    expect(q.usedPct).toBe(10);
+    expect(q.sessionPct).toBe(0);
+  });
 });
 
 describe("pollAll isolation", () => {

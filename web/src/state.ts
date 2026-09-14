@@ -173,21 +173,18 @@ export function displayPlan(plan: string | null | undefined): string | null {
 }
 
 /**
- * Short-window display name, mirroring each vendor's own /usage or /status
- * wording: codex, kimi, and agy call it a "5h" or "Five Hour" limit, claude
- * a "Current session" (a 5-hour rolling window), muse a "Current" window.
- * Null when the provider reports no short window (grok, manual).
+ * Short-window display name ("5h Limit"). Codex, Kimi, and Agy report a 5h limit;
+ * Claude (current session) and Muse (current window) report an equivalent 5-hour
+ * rolling window. Returns null when the provider reports no short window (grok, manual).
  */
 export function shortWindowLabel(id: string): string | null {
   switch (id.split(":")[0]) {
     case "codex":
     case "kimi":
     case "agy":
-      return "5-hour limit";
     case "claude":
-      return "Current session";
     case "muse":
-      return "Current window";
+      return "5h Limit";
     default:
       return null;
   }

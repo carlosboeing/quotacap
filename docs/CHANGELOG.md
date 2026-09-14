@@ -4,7 +4,7 @@
 
 - Refresh settle: the dashboard fetched state only on load and after Refresh, so the post-refresh snapshot — always mid-cooldown — froze the header pill on "Cooling down" forever. The dashboard now re-reads `/api/state` every 5s while the daemon reports a non-idle poll state, and a refresh that lands inside the server cooldown shows a "Refresh cooling down — showing last readings" notice instead of silently returning cached rows.
 - Plan labels: Codex parses the plan from the `/status` panel's `Account: <email> (<plan>)` line instead of reporting unknown; providers that expose no tier (kimi, agy — both verified live to carry no plan signal) now hide the `unknown` placeholder in cards, rows, and the drawer subtitle rather than printing it.
-- Window terminology: the drawer speaks each vendor's own `/usage` or `/status` words — `Current window` becomes `Weekly limit`, and the short window reads `5-hour limit` (codex/kimi/agy), `Current session` (claude, a 5-hour rolling window), or `Current window` (muse). Table rows carry the same labels (e.g. `5-hour limit · 0% used`).
+- Unified 5h limit window: the drawer displays the granular 5-hour reset window titled "5h Limit" under "Weekly limit" consistently across all providers that report a short window (Codex, Kimi, Agy, Claude Code's "Current session", Muse Code's "Current window"), rendering even when 0% is used rather than hiding flat windows. Table rows use the unified "5h Limit" label.
 - Table polish: the Reset cell stacks clock over countdown (`Thu 16:53` / `in 2d 17h`) in a widened column instead of wrapping mid-phrase; columns rebalance, header/body padding aligns, rows gain a hover tint, pace labels get breathing room, and the `N% used` headline never breaks.
 
 ## 0.0.30

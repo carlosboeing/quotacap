@@ -37,13 +37,13 @@ describe("state mapping", () => {
     expect(displayPlan("Plus")).toBe("Plus");
     expect(displayPlan("SuperGrok")).toBe("SuperGrok");
   });
-  it("names each short window in its vendor's own words", () => {
-    expect(shortWindowLabel("codex")).toBe("5-hour limit");
-    expect(shortWindowLabel("kimi")).toBe("5-hour limit");
-    expect(shortWindowLabel("agy")).toBe("5-hour limit");
-    expect(shortWindowLabel("agy:3p")).toBe("5-hour limit");
-    expect(shortWindowLabel("claude")).toBe("Current session");
-    expect(shortWindowLabel("muse")).toBe("Current window");
+  it("names each short window as 5h Limit", () => {
+    expect(shortWindowLabel("codex")).toBe("5h Limit");
+    expect(shortWindowLabel("kimi")).toBe("5h Limit");
+    expect(shortWindowLabel("agy")).toBe("5h Limit");
+    expect(shortWindowLabel("agy:3p")).toBe("5h Limit");
+    expect(shortWindowLabel("claude")).toBe("5h Limit");
+    expect(shortWindowLabel("muse")).toBe("5h Limit");
     expect(shortWindowLabel("grok")).toBeNull();
     expect(shortWindowLabel("manual")).toBeNull();
   });

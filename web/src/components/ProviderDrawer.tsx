@@ -595,13 +595,13 @@ export function ProviderDrawer({
           )}
         </section>
 
-        {model.sessionPct !== undefined && model.sessionPct > 0 && (
-          <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "Session"}>
-            <h3>{shortWindowLabel(provider.id) ?? "Session"}</h3>
+        {model.sessionPct !== undefined && model.sessionPct !== null && Number.isFinite(model.sessionPct) && (
+          <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "5h Limit"}>
+            <h3>{shortWindowLabel(provider.id) ?? "5h Limit"}</h3>
             <div className="pcard-topline">
               <span className="used">{model.sessionPct}% used</span>
             </div>
-            <div className="track" role="img" aria-label={`${model.sessionPct} percent of ${(shortWindowLabel(provider.id) ?? "session").toLowerCase()} used`}>
+            <div className="track" role="img" aria-label={`${model.sessionPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
               <div
                 className="fill"
                 style={{

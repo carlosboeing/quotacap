@@ -71,7 +71,7 @@ describe("provider drawer", () => {
     expect(snap.source).toBe("cli");
     expect(snap.pacingStatus).toMatch(/behind|ontrack|ahead|cap|out/);
   });
-  it("names the short window in the vendor's own words", () => {
+  it("displays the 5h Limit section in the drawer", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const claude = s.providers.find((p) => p.id === "claude")!;
     const html = renderToString(
@@ -83,9 +83,36 @@ describe("provider drawer", () => {
       })
     );
     expect(html).toContain("Weekly limit");
-    expect(html).toContain("Current session");
+    expect(html).toContain("5h Limit");
     expect(html.replace(/<!-- -->/g, "")).toContain("22% used");
-    expect(html).not.toContain(">Session<");
+  });
+  it("renders 5h Limit even when 0% used, and omits it when provider reports no short window", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const zeroSession = {
+      ...s.providers.find((p) => p.id === "claude")!,
+      quota: { ...s.providers.find((p) => p.id === "claude")!.quota!, sessionPct: 0 },
+    };
+    const htmlZero = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: zeroSession,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(htmlZero).toContain("5h Limit");
+    expect(htmlZero.replace(/<!-- -->/g, "")).toContain("0% used");
+
+    const grok = s.providers.find((p) => p.id === "grok")!;
+    const htmlGrok = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: grok,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(htmlGrok).not.toContain("5h Limit");
   });
   it("explains both paces against the target in ranking rationale", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));

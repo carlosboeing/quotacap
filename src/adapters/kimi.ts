@@ -11,19 +11,28 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   const w = cleaned.match(weeklyRe);
   if (!w) throw new Error("kimi: weekly limit not found in TUI output");
   const f = cleaned.match(fiveRe);
-  if (!f) throw new Error("kimi: 5h limit not found in TUI output");
+  let sessionPct: number | null = null;
+  let fiveRaw: string | null = null;
+  if (f) {
+    sessionPct = parseInt(f[1], 10);
+    fiveRaw = f[2].trim();
+  } else {
+    const fallback = cleaned.match(/5h limit[^\d%]*(\d+)%\s+used/i);
+    if (fallback) sessionPct = parseInt(fallback[1], 10);
+  }
+  if (sessionPct === null) throw new Error("kimi: 5h limit not found in TUI output");
   const usedPct = parseInt(w[1], 10);
-  const sessionPct = parseInt(f[1], 10);
   if (!Number.isFinite(usedPct) || usedPct < 0 || usedPct > 100)
     throw new Error("kimi: bad weekly pct");
   if (!Number.isFinite(sessionPct) || sessionPct < 0 || sessionPct > 100)
     throw new Error("kimi: bad 5h pct");
   const weeklyRaw = w[2].trim();
-  const fiveRaw = f[2].trim();
   const weeklyIso = parseResetText(`resets ${weeklyRaw}`, now);
   if (!weeklyIso) throw new Error(`kimi: bad weekly reset "${weeklyRaw}"`);
-  const fiveIso = parseResetText(`resets ${fiveRaw}`, now);
-  if (!fiveIso) throw new Error(`kimi: bad 5h reset "${fiveRaw}"`);
+  if (fiveRaw) {
+    const fiveIso = parseResetText(`resets ${fiveRaw}`, now);
+    if (!fiveIso) throw new Error(`kimi: bad 5h reset "${fiveRaw}"`);
+  }
 
   let plan = "unknown";
   const paren = cleaned.match(/Weekly limit\s*\(([^)]+)\)/i);

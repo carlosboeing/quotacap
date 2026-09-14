@@ -7,10 +7,17 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
   const parsedReset = parseResetText(text, now);
   const resetsAt = parsedReset ?? new Date(now.getTime() + 3 * 86400000).toISOString();
   const periodStart = (parsedReset ? new Date(new Date(resetsAt).getTime() - 7 * 86400000) : new Date(now.getTime() - 7 * 86400000)).toISOString();
+  let sessionPct: number | undefined;
+  const sm = text.match(/(?:5h|5-hour|session|current)[^\d%\n]*(\d+)%\s*used/i);
+  if (sm) {
+    const v = parseInt(sm[1], 10);
+    if (Number.isFinite(v) && v >= 0 && v <= 100) sessionPct = v;
+  }
   return {
     provider,
     plan: "unknown",
     usedPct,
+    sessionPct,
     resetsAt,
     periodStart,
     source: "manual",
