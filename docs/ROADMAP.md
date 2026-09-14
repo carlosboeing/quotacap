@@ -1,5 +1,10 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.30 — 2026-09-14 (codex 5h reset & parse diagnostics)
+
+* Codex 5h reset — the parser accepts the date-qualified 5h reset (`resets 02:43 on 15 Sep`) the `/status` panel renders once the window falls on another day, keeping the bare form for same-day resets; polls stay green across the turnover (#80)
+* Parse diagnostics — adapter parse failures classify as `parse_error` with canonical wording instead of collapsing to unknown, and the dashboard failure banner renders the server diagnosis when the attempt carries one (#80)
+
 ## Recently shipped — 0.0.29 — 2026-09-14 (pace, reset accuracy & display)
 
 * Reset rail fan-out — pins within a collision window now render individually up to three per window (was two), with band alternation and tier staggering carrying tight trios; clusters start at four (#78)
