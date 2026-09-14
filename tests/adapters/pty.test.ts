@@ -489,7 +489,7 @@ describe("runPty two-phase write", () => {
     expect(parseInt(m![1], 10)).toBeGreaterThanOrEqual(700);
   });
 
-  it("leaves codex, kimi and grok on the single-write path (new flags absent)", async () => {
+  it("leaves kimi and grok on the single-write path while codex submits two-phase", async () => {
     const seen: Array<{ file: string; opts: Record<string, unknown> }> = [];
     const spy = vi.spyOn(ptyMod, "runPty").mockImplementation(async (opts) => {
       seen.push({ file: opts.file, opts: opts as unknown as Record<string, unknown> });
@@ -512,12 +512,17 @@ describe("runPty two-phase write", () => {
       spy.mockRestore();
     }
     expect(seen).toHaveLength(3);
-    for (const { file, opts } of seen) {
+    // The codex slash-command autocomplete swallows a same-burst Enter, so
+    // the command and the submit go in two writes.
+    const codex = seen.find((s) => s.file === "codex")!;
+    expect(codex.opts["submitInput"]).toBe("\r");
+    expect(codex.opts["submitAfterMs"]).toBe(1500);
+    expect(codex.opts["settleDelayMs"]).toBe(2000);
+    for (const { file, opts } of seen.filter((s) => s.file !== "codex")) {
       expect(opts["respondToQueries"], file).toBeUndefined();
       expect(opts["submitInput"], file).toBeUndefined();
       expect(opts["submitAfterMs"], file).toBeUndefined();
     }
-    expect(seen.find((s) => s.file === "codex")!.opts["settleDelayMs"]).toBe(2000);
     expect(seen.find((s) => s.file === "grok")!.opts["settleDelayMs"]).toBe(5000);
     expect(seen.find((s) => s.file === "kimi")!.opts["settleDelayMs"]).toBeUndefined();
   });

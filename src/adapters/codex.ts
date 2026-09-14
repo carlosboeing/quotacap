@@ -48,8 +48,8 @@ export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   let fiveLeft: number | null = null;
   let weeklyRaw: string | null = null;
   let fiveRaw: string | null = null;
-  const weeklyRe = /Weekly limit:\s*(\d+)%\s*left\s*\(resets\s+([^)]+)\)/i;
-  const fiveRe = /5h limit:\s*(\d+)%\s*left\s*\(resets\s+([^)]+)\)/i;
+  const weeklyRe = /Weekly limit:\s*(?:\[[^\]]*\]\s*)?(\d+)%\s*left\s*\(resets\s+([^)]+)\)/i;
+  const fiveRe = /5h limit:\s*(?:\[[^\]]*\]\s*)?(\d+)%\s*left\s*\(resets\s+([^)]+)\)/i;
   const w = cleaned.match(weeklyRe);
   const f = cleaned.match(fiveRe);
   if (w) {
@@ -116,8 +116,15 @@ export const codexAdapter = {
       cols: 140,
       rows: 50,
       settleDelayMs: 2000,
-      input: "/status\r",
-      completionRegex: /\d+%\s*left/i,
+      // Two-phase submit: the slash-command autocomplete swallows a
+      // same-burst Enter, so the command never runs.
+      input: "/status",
+      submitInput: "\r",
+      submitAfterMs: 1500,
+      // Complete on the /status panel only. The startup statusline footer
+      // ("· 5h N% left · weekly N% left") carries no reset timestamps and
+      // would otherwise win the race, forcing a drifting now+7d estimate.
+      completionRegex: /Weekly limit:/i,
       abortOn: /Do you trust|Trust.*folder|trust the files in this folder/i,
       timeoutMs: 12000,
       maxBytes: 256 * 1024,
