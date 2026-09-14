@@ -250,10 +250,13 @@ describe("STATE words follow the shared badge mapping", () => {
       ).toBe(expected);
     });
   }
-  it("unknown pace keeps the locked On track word (disambiguated by forecast and compact ?)", () => {
+  it("unknown pace reads Measuring (disambiguated by forecast and compact ?)", () => {
     const agy = exampleStateSnapshot.providers.find((p) => p.id === "agy")!;
     expect(agy.advisory?.paceSource).toBe("unknown");
-    expect(stateWord(agy)).toBe("On track");
+    expect(stateWord(agy)).toBe("Measuring");
+    expect(
+      stateWord(ps({ id: "x", quota: quota(), advisory: advisory({ status: "unknown", urgency: "on track" }) })),
+    ).toBe("Measuring");
   });
 });
 
@@ -543,7 +546,7 @@ describe("wide table", () => {
       line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
     );
     expect(lines[5]).toBe(
-      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "On track       ", "Measuring pace; 50% remains with 7.0d until reset"]),
+      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "Measuring      ", "Measuring pace; 50% remains with 7.0d until reset"]),
     );
     expect(lines[6]).toBe(
       line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
@@ -569,7 +572,7 @@ describe("wide table", () => {
       expect(line.slice(70, 72)).toBe("  ");
       expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
       expect(line.slice(81, 83)).toBe("  ");
-      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Not reporting) *$/);
+      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Measuring|Not reporting) *$/);
       expect(line.slice(98, 100)).toBe("  ");
       expect(line.slice(100).length).toBeGreaterThan(0);
     }

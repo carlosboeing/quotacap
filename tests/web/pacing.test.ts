@@ -29,11 +29,14 @@ describe("pace badges", () => {
     const byId = new Map<string, any>(s.providers.map((p: any) => [p.id, p]));
     expect(paceBadge(byId.get("claude"))).toBe("Behind pace"); // urgency save
     expect(paceBadge(byId.get("kimi"))).toBe("Behind pace");
-    expect(paceBadge(byId.get("agy"))).toBe("On track"); // unknown pace, urgency on track
+    expect(paceBadge(byId.get("agy"))).toBe("Measuring"); // unknown pace reads Measuring, not On track
     expect(paceBadge(byId.get("manual"))).toBe("Not reporting");
     const u = JSON.parse(unknownPaceStateSnapshotJson);
-    expect(paceBadge(u.providers.find((p: any) => p.id === "kimi"))).toBe("On track");
+    expect(paceBadge(u.providers.find((p: any) => p.id === "kimi"))).toBe("Measuring");
     // No fixture carries at-risk or slow-down advisories; map them synthetically.
+    expect(paceBadge({ exclusionReason: null, advisory: { status: "unknown", urgency: "on track" } } as any)).toBe(
+      "Measuring"
+    );
     expect(paceBadge({ exclusionReason: null, advisory: { status: "at risk", urgency: "on track" } } as any)).toBe(
       "Cap risk"
     );

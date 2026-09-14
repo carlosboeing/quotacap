@@ -142,7 +142,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
 
     it("(b) shares STATE words and compact entries per provider", async () => {
       const s = surfaces();
-      const vocab = ["On track", "Behind pace", "Ahead of pace", "Cap risk", "Not reporting"];
+      const vocab = ["On track", "Behind pace", "Ahead of pace", "Cap risk", "Measuring", "Not reporting"];
       for (const p of snap.providers) {
         const state = stateWord(p);
         expect(vocab).toContain(state);

@@ -171,6 +171,8 @@ export function pacingStatusToken(provider: ProviderView): string {
       return "ahead";
     case "Cap risk":
       return "cap";
+    case "Measuring":
+      return "measuring";
     case "Not reporting":
       return "out";
   }

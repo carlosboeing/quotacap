@@ -247,6 +247,19 @@ describe("advisory", () => {
     expect(adv.paceSource).toBe("recent");
   });
 
+  it("withholds verdicts on a fresh window instead of annualizing noise", () => {
+    // Live Muse case: 2% used ~2h into a new window. Annualizing would
+    // fabricate ~24%/day and a Cap risk; the 6h gate keeps it unknown.
+    const now = new Date("2026-09-14T02:00:00+10:00");
+    const q = { provider:"muse", usedPct:2, periodStart:"2026-09-14T00:00:00+10:00",
+                resetsAt:"2026-09-21T06:00:00+10:00" } as any;
+    const adv = computeAdvisory(q, null, now, "unknown");
+    expect(adv.avgPace).toBeNull();
+    expect(adv.status).toBe("unknown");
+    expect(adv.urgency).toBe("on track");
+    expect(adv.wastePct).toBeNull();
+  });
+
   it("reports a null average before the window start is known", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     const q = { provider:"kimi", usedPct:60, resetsAt:"2026-09-04T06:00:00+10:00" } as any;

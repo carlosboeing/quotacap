@@ -19,7 +19,7 @@ describe("markdown table", () => {
         "| Kimi | 22% | 50% | 3.1 avg | 7d | Behind pace | 56% waste in 7.0d |",
         "| Claude | 40% | 50% | 5.7 avg | 7d | Behind pace | 20% waste in 7.0d |",
         "| Codex | 40% | 50% | 5.7 avg | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
-        "| Antigravity | 50% | 0% | — | 7d | On track | Measuring pace; 50% remains with 7.0d until reset |",
+        "| Antigravity | 50% | 0% | — | 7d | Measuring | Measuring pace; 50% remains with 7.0d until reset |",
         "| Antigravity 3P | 60% | 0% | — | 7d | Not reporting | stale 3h ago |",
         "| Grok | 30% | — | — | — | Not reporting | invalid reading |",
         "| Manual | — | — | — | — | Not reporting | no readings yet |",

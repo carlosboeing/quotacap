@@ -4,7 +4,7 @@
 // pace rules stay in src/advisory and are never recomputed.
 import type { ProviderSnapshot } from "../advisory/types.js";
 
-export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Not reporting";
+export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Measuring" | "Not reporting";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
 export type CompactSuffix = "" | "!" | "~" | "?";
@@ -89,6 +89,7 @@ export function stateWord(ps: ProviderSnapshot): StateWord {
   const adv = ps.advisory;
   if (!adv) return "Not reporting";
   if (adv.status === "at risk") return "Cap risk";
+  if (adv.status === "unknown") return "Measuring";
   switch (adv.urgency) {
     case "burn now":
     case "use soon":

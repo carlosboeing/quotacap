@@ -2,7 +2,7 @@ import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Behind pace" | "Ahead of pace" | "On track";
+export type PaceBadge = "Not reporting" | "Cap risk" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring";
 
 /**
  * Pace-state badge from the mapping table. Exclusion always wins; otherwise
@@ -13,6 +13,7 @@ export function paceBadge(provider: ProviderView): PaceBadge {
   const advisory = provider.advisory;
   if (!advisory) return "Not reporting";
   if (advisory.status === "at risk") return "Cap risk";
+  if (advisory.status === "unknown") return "Measuring";
   switch (advisory.urgency) {
     case "burn now":
     case "use soon":
@@ -181,6 +182,8 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--ahead)";
     case "Cap risk":
       return "var(--danger)";
+    case "Measuring":
+      return "var(--ink-soft)";
     case "Not reporting":
       return "var(--line-strong)";
   }
@@ -196,6 +199,8 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-ahead)";
     case "Cap risk":
       return "var(--fill-cap)";
+    case "Measuring":
+      return "var(--fill-out)";
     case "Not reporting":
       return "var(--fill-out)";
   }
@@ -211,6 +216,8 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-ahead)";
     case "Cap risk":
       return "var(--edge-cap)";
+    case "Measuring":
+      return "var(--edge-out)";
     case "Not reporting":
       return "var(--edge-out)";
   }
@@ -249,7 +256,7 @@ export function Badge({ provider }: { provider: ProviderView }) {
       ? "pace-ahead"
       : badge === "Cap risk"
       ? "pace-cap"
-      : "pace-out";
+      : "pace-out"; // Not reporting and Measuring share the neutral style
   return (
     <span
       data-testid="pace-badge"

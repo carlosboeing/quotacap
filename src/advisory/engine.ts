@@ -1,5 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
+import { MIN_PACE_SPAN_DAYS } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -8,14 +9,16 @@ const DAY_MS = 86400000;
  *
  * `usedPct` is a running total since the window opened, and `periodStart` is
  * a required field every adapter sets, so a pace is always computable from
- * one poll. Returns null only when `periodStart` is missing or unparseable.
+ * one poll. Returns null when `periodStart` is missing or unparseable, or
+ * when less than MIN_PACE_SPAN_DAYS has elapsed (annualizing a smaller
+ * denominator fabricates verdicts).
  */
 export function averagePace(q: Quota, now = new Date()): number | null {
   if (!q.periodStart) return null;
   const start = new Date(q.periodStart).getTime();
   if (Number.isNaN(start)) return null;
   const elapsedDays = (now.getTime() - start) / DAY_MS;
-  if (elapsedDays < 1 / 24) return null; // under an hour in: not yet meaningful
+  if (elapsedDays < MIN_PACE_SPAN_DAYS) return null;
   const pace = q.usedPct / elapsedDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
