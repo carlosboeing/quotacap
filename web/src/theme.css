@@ -1295,6 +1295,11 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 }
 .trackwrap .tline .used {
   font-weight: 600;
+  white-space: nowrap;
+  flex: none;
+}
+.trackwrap .tline .out {
+  text-align: right;
 }
 .track {
   position: relative;
@@ -1378,14 +1383,17 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   display: grid;
   gap: var(--s4);
   align-items: center;
-  padding: var(--s4) var(--s3);
-  grid-template-columns: 244px minmax(210px, 1fr) 100px 244px 84px;
+  padding: var(--s4);
+  grid-template-columns: 224px minmax(240px, 1fr) 148px 224px 84px;
   border-bottom: 1px solid var(--line);
   font-size: var(--t-3);
   cursor: pointer;
 }
 .lrow:last-child {
   border-bottom: 0;
+}
+.lrow:not(.lhead):hover {
+  background: var(--hover);
 }
 .lhead {
   background: var(--surface-raised);
@@ -1404,8 +1412,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 }
 .prov {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s2);
+  min-width: 0;
 }
 .prov .pl {
   display: block;
@@ -1417,6 +1426,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   height: 8px;
   border-radius: 50%;
   flex: none;
+  margin-top: 7px;
 }
 .prov .nm {
   font-weight: 600;
@@ -1433,13 +1443,20 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: var(--t-2);
   color: var(--ink-soft);
 }
+.reset-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.4;
+}
 .paceline {
   display: flex;
   gap: var(--s2);
+  line-height: 1.5;
 }
 .paceline > span:first-child {
   flex: none;
-  width: 30px;
+  width: 36px;
 }
 /* Pace cells with hover explanations get the help cursor. */
 .pstats div[title],

@@ -98,6 +98,16 @@ describe("parseCodexTui", () => {
     expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
   });
 
+  it("takes plan from the /status Account line when present", () => {
+    const now = new Date("2026-09-01T10:00:00");
+    const txt = `Account:              carlosboeing@gmail.com (Plus)\n${codexFixture()}`;
+    expect(parseCodexTui(txt, now).plan).toBe("Plus");
+  });
+
+  it("leaves plan unknown when the /status Account line is absent", () => {
+    expect(parseCodexTui(codexFixture(), new Date()).plan).toBe("unknown");
+  });
+
   it("throws when weekly limit absent (fail-closed)", () => {
     const txt = `5h limit: 9% left (resets 14:12)\n`;
     expect(() => parseCodexTui(txt, new Date())).toThrow(/weekly limit/i);

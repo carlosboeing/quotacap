@@ -57,7 +57,7 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(html).toContain("Current window");
+    expect(html).toContain("Weekly limit");
     expect(html).toContain("Adapter and provenance");
     expect(html).toContain("Ranking rationale");
     expect(html).toMatch(/averaged over|Window avg|Measured/);
@@ -70,6 +70,22 @@ describe("provider drawer", () => {
     expect(snap.provider).toBe("kimi");
     expect(snap.source).toBe("cli");
     expect(snap.pacingStatus).toMatch(/behind|ontrack|ahead|cap|out/);
+  });
+  it("names the short window in the vendor's own words", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const claude = s.providers.find((p) => p.id === "claude")!;
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: claude,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).toContain("Weekly limit");
+    expect(html).toContain("Current session");
+    expect(html.replace(/<!-- -->/g, "")).toContain("22% used");
+    expect(html).not.toContain(">Session<");
   });
   it("explains both paces against the target in ranking rationale", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));

@@ -1,11 +1,11 @@
 import React from "react";
-import type { ProviderView } from "../state.js";
+import { displayPlan, shortWindowLabel, type ProviderView } from "../state.js";
 import {
   Badge,
   PaceBar,
   forecastLine,
   paceLines,
-  resetCell,
+  resetCellLines,
 } from "./PaceBar.js";
 
 export function ProviderRow({
@@ -24,6 +24,9 @@ export function ProviderRow({
   const asOfMs = Date.parse(asOf);
   const lines = paceLines(advisory);
   const name = provider.displayName;
+  const plan = displayPlan(quota?.plan);
+  const shortWindow = shortWindowLabel(provider.id);
+  const reset = resetCellLines(provider, asOfMs);
   return (
     <div
       data-testid={`provider-row-${provider.id}`}
@@ -47,17 +50,18 @@ export function ProviderRow({
               </span>
             )}
           </span>
-          {quota?.plan && <span className="pl">{quota.plan}</span>}
+          {plan && <span className="pl">{plan}</span>}
           {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-            <span className="src">Session use {quota.sessionPct}%</span>
+            <span className="src">{shortWindow ?? "Session"} · {quota.sessionPct}% used</span>
           )}
         </span>
       </div>
       <div data-label="Used vs elapsed">
         {quota ? <PaceBar provider={provider} asOf={asOf} /> : "—"}
       </div>
-      <div data-label="Reset">
-        <span className="cell-b">{resetCell(provider, asOfMs)}</span>
+      <div data-label="Reset" className="reset-cell">
+        <span className="cell-b">{reset.top}</span>
+        {reset.bottom && <span className="cell-s">{reset.bottom}</span>}
       </div>
       <div data-label="Pace">
         <Badge provider={provider} />

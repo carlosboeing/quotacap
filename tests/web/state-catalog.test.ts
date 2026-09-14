@@ -19,7 +19,8 @@ import { ProviderDrawer } from "../../web/src/components/ProviderDrawer.js";
 import { Header } from "../../web/src/components/Header.js";
 import { FaultBanner } from "../../web/src/components/FaultBanner.js";
 import { Onboarding } from "../../web/src/pages/Onboarding.js";
-import { resetCell, resetClock, resetCountdown } from "../../web/src/components/PaceBar.js";
+import { resetCell, resetCellLines, resetClock, resetCountdown } from "../../web/src/components/PaceBar.js";
+import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import App from "../../web/src/App.js";
 
 afterEach(() => {
@@ -87,6 +88,47 @@ describe("state catalog: mapping over fixtures", () => {
     const r = JSON.parse(resetPassedStateSnapshotJson);
     const passed = r.providers.find((p: any) => p.id === "kimi");
     expect(resetCell(passed, Date.parse(r.asOf))).toBe("awaiting fresh window");
+  });
+  it("splits the table reset cell into clock and countdown lines", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const asOfMs = Date.parse(s.asOf);
+    const kimi = s.providers.find((p: any) => p.id === "kimi");
+    expect(resetCellLines(kimi, asOfMs)).toEqual({
+      top: resetClock(kimi.quota.resetsAt),
+      bottom: "in 7d 0h",
+    });
+    const codex = s.providers.find((p: any) => p.id === "codex");
+    expect(resetCellLines(codex, asOfMs)).toEqual({
+      top: `${resetClock(codex.quota.resetsAt)} (est.)`,
+      bottom: "in 7d 0h",
+    });
+    const grok = s.providers.find((p: any) => p.id === "grok");
+    expect(resetCellLines(grok, asOfMs)).toEqual({ top: "reset unknown", bottom: null });
+    const r = JSON.parse(resetPassedStateSnapshotJson);
+    const passed = r.providers.find((p: any) => p.id === "kimi");
+    expect(resetCellLines(passed, Date.parse(r.asOf))).toEqual({
+      top: "awaiting fresh window",
+      bottom: null,
+    });
+  });
+  it("renders the table row with stacked reset, vendor short window, and no unknown plan", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const claude = {
+      ...s.providers.find((p) => p.id === "claude")!,
+      quota: { ...s.providers.find((p) => p.id === "claude")!.quota!, plan: "unknown" },
+    };
+    const html = renderToString(
+      React.createElement(ProviderRow, {
+        provider: claude,
+        recommended: false,
+        asOf: s.asOf,
+        onSelect: () => {},
+      })
+    );
+    expect(html).toContain("reset-cell");
+    expect(html.replace(/<!-- -->/g, "")).toContain("Current session · 22% used");
+    expect(html).not.toContain("unknown");
+    expect(html).not.toContain("Session use");
   });
   it("renders the balanced state with empty lanes", () => {
     const advisory = {

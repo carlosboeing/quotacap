@@ -94,10 +94,15 @@ export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   if (!fiveIso) fiveIso = new Date(now.getTime() + 5 * 3600000).toISOString();
   const usedPct = 100 - weeklyLeft;
   const sessionPct = 100 - fiveLeft;
+  // The /status panel carries "Account: <email> (<plan>)" above the limits.
+  // Vendor casing preserved (grok/muse precedent); unknown when absent.
+  let plan = "unknown";
+  const account = cleaned.match(/Account:\s*\S+\s*\(([^)]+)\)/i);
+  if (account && account[1].trim()) plan = account[1].trim();
   const periodStart = new Date(new Date(weeklyIso).getTime() - 7 * 86400000).toISOString();
   return {
     provider: "codex",
-    plan: "unknown",
+    plan,
     usedPct,
     sessionPct,
     resetsAt: weeklyIso,

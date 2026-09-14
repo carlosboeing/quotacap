@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { exampleStateSnapshotJson, staleStateSnapshotJson } from "../fixtures/stable-state.js";
-import { toViewModel, firstRun, ageLabel, nextRefreshLabel } from "../../web/src/state.js";
+import { toViewModel, firstRun, ageLabel, nextRefreshLabel, displayPlan, shortWindowLabel } from "../../web/src/state.js";
 
 describe("state mapping", () => {
   it("keeps server words and flags untouched", () => {
@@ -28,5 +28,23 @@ describe("state mapping", () => {
       "Next automatic refresh due",
     );
     expect(nextRefreshLabel("2026-09-10T11:52:00Z", "in-progress", now)).toBe("Refreshing now");
+  });
+  it("hides the unknown plan placeholder from display", () => {
+    expect(displayPlan("unknown")).toBeNull();
+    expect(displayPlan("")).toBeNull();
+    expect(displayPlan(null)).toBeNull();
+    expect(displayPlan(undefined)).toBeNull();
+    expect(displayPlan("Plus")).toBe("Plus");
+    expect(displayPlan("SuperGrok")).toBe("SuperGrok");
+  });
+  it("names each short window in its vendor's own words", () => {
+    expect(shortWindowLabel("codex")).toBe("5-hour limit");
+    expect(shortWindowLabel("kimi")).toBe("5-hour limit");
+    expect(shortWindowLabel("agy")).toBe("5-hour limit");
+    expect(shortWindowLabel("agy:3p")).toBe("5-hour limit");
+    expect(shortWindowLabel("claude")).toBe("Current session");
+    expect(shortWindowLabel("muse")).toBe("Current window");
+    expect(shortWindowLabel("grok")).toBeNull();
+    expect(shortWindowLabel("manual")).toBeNull();
   });
 });

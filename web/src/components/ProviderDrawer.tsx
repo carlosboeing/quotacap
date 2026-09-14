@@ -7,7 +7,7 @@ import type {
   ProviderView,
   RecommendationView,
 } from "../state.js";
-import { ageDuration, providerSubtitle } from "../state.js";
+import { ageDuration, displayPlan, providerSubtitle, shortWindowLabel } from "../state.js";
 import {
   Badge,
   PaceBar,
@@ -378,7 +378,7 @@ export function ProviderDrawer({
   const why = rankingCopy(provider, recommendation);
   const record = compactSnapshot(provider, asOfMs);
   const recordJson = JSON.stringify(record, null, 2);
-  const planBits = [provider.quota?.plan, sourceLabel(provider.quota?.source)].filter(
+  const planBits = [displayPlan(provider.quota?.plan), sourceLabel(provider.quota?.source)].filter(
     (b) => b && b !== "unknown"
   );
   const sub = planBits.join(" · ");
@@ -580,8 +580,8 @@ export function ProviderDrawer({
           </p>
         )}
 
-        <section className="dsec" aria-label="Current window">
-          <h3>Current window</h3>
+        <section className="dsec" aria-label="Weekly limit">
+          <h3>Weekly limit</h3>
           <div className="pcard-topline">
             <Badge provider={provider} />
           </div>
@@ -596,12 +596,12 @@ export function ProviderDrawer({
         </section>
 
         {model.sessionPct !== undefined && model.sessionPct > 0 && (
-          <section className="dsec" aria-label="Session">
-            <h3>Session</h3>
+          <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "Session"}>
+            <h3>{shortWindowLabel(provider.id) ?? "Session"}</h3>
             <div className="pcard-topline">
               <span className="used">{model.sessionPct}% used</span>
             </div>
-            <div className="track" role="img" aria-label={`${model.sessionPct} percent of session window used`}>
+            <div className="track" role="img" aria-label={`${model.sessionPct} percent of ${(shortWindowLabel(provider.id) ?? "session").toLowerCase()} used`}>
               <div
                 className="fill"
                 style={{
