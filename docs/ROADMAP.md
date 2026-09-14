@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — unreleased (pace display)
+
+* Pace split — every advisory carries `avgPace` (used % / days elapsed) alongside the forecast input `burnRate`, and all surfaces show both: dashboard cards lead with the window average with the 24h rate beneath, CLI `status` gains a `PACE (%/DAY)` column, MCP markdown gains the Pace column, units unified on `%/day`; exhausted windows force at-risk + `Exhausted` forecast instead of reading on-track when recent burn is flat (#71)
+
 ## Recently shipped — 0.0.28 — 2026-09-13 (grok accuracy)
 
 * Grok accuracy — the adapter reads the `/usage` dialog used percent instead of the startup `limit left` remaining figure, so Grok reports 100% used instead of a pinned 0%
@@ -30,6 +34,7 @@
 * Naming version skew — a CLI newer than a still-running daemon falls back to raw ids at the ingest boundary rather than crashing `status` in the column-width calculation (#54)
 * Provider display name overrides — user-set names per provider id resolved server-side as `user override → built-in registry → raw id`, editable via `providerNames` in config, `PATCH /api/providers/:id`, the `quotacap providers` CLI group, and click-to-rename in the dashboard drawer, with rendering-safety validation and raw-JSON persistence that preserves unrecognized config keys (#57)
 * npm package trimmed — compiled tests and a duplicate `dist/src/` no longer ship, bringing the tarball back under its 500 kB release budget (#59)
+* Provider error observability — bounded failure evidence from PTY and exec runners classified through a strict allowlist into canonical safe phrases, persisted on attempt records with clear-on-success, surfaced via `status --verbose` and MCP `forecast`, and logged as sanitized outcome lines per adapter
 
 ## Recently shipped — 0.0.22 — 2026-09-10
 
@@ -94,7 +99,6 @@
 
 ## Next
 
-* Provider error observability — safe bounded diagnostics, sanitized failure classifier, attempt persistence, verbose CLI status guidance, and MCP parity
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
