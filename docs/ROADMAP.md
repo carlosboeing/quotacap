@@ -1,10 +1,10 @@
 # QuotaCap Roadmap
 
-## Recently shipped — unreleased (pace display)
+## Recently shipped — 0.0.29 — 2026-09-14 (pace, reset accuracy & display)
 
-* Reset rail fan-out — pins within a collision window now render individually up to three per window (was two), with band alternation and tier staggering carrying tight trios; clusters start at four
+* Reset rail fan-out — pins within a collision window now render individually up to three per window (was two), with band alternation and tier staggering carrying tight trios; clusters start at four (#78)
 * Codex reset accuracy — the poll waits for the `/status` panel instead of completing on the startup statusline footer (which carries percentages but no reset times), parses the panel's progress-bar rows, and submits the command two-phase so the slash-command autocomplete can't swallow Enter; Codex reads a real `resets 23:04 on 19 Sep` again instead of a drifting now+7d estimate (#77)
-* Table Reset column — the ledger's `Resets in` column becomes `Reset` and shows the actual reset day/time ahead of the countdown (`Tue 10:25 · in 20h 30m`), with the estimate marker staying on the timestamp
+* Table Reset column — the ledger's `Resets in` column becomes `Reset` and shows the actual reset day/time ahead of the countdown (`Tue 10:25 · in 20h 30m`), with the estimate marker staying on the timestamp (#76)
 * Pace split — every advisory carries `avgPace` (used % / days elapsed) alongside the forecast input `burnRate`, and all surfaces show both: dashboard cards lead with the window average with the 24h rate beneath, CLI `status` gains a `PACE (%/DAY)` column, MCP markdown gains the Pace column, units unified on `%/day`; exhausted windows force at-risk + `Exhausted` forecast instead of reading on-track when recent burn is flat (#71)
 
 ## Recently shipped — 0.0.28 — 2026-09-13 (grok accuracy)
