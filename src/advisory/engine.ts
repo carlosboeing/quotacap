@@ -1,5 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
+import { MIN_PACE_SPAN_DAYS } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -8,14 +9,16 @@ const DAY_MS = 86400000;
  *
  * `usedPct` is a running total since the window opened, and `periodStart` is
  * a required field every adapter sets, so a pace is always computable from
- * one poll. Returns null only when `periodStart` is missing or unparseable.
+ * one poll. Returns null when `periodStart` is missing or unparseable, or
+ * when less than MIN_PACE_SPAN_DAYS has elapsed (annualizing a smaller
+ * denominator fabricates verdicts).
  */
 export function averagePace(q: Quota, now = new Date()): number | null {
   if (!q.periodStart) return null;
   const start = new Date(q.periodStart).getTime();
   if (Number.isNaN(start)) return null;
   const elapsedDays = (now.getTime() - start) / DAY_MS;
-  if (elapsedDays < 1 / 24) return null; // under an hour in: not yet meaningful
+  if (elapsedDays < MIN_PACE_SPAN_DAYS) return null;
   const pace = q.usedPct / elapsedDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
@@ -26,6 +29,10 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.usedPct;
   const idealRate = remaining / daysLeft;
+  const avgPace = averagePace(q, now);
+  // Nothing left to burn: force the capped verdict even when the recent
+  // window is flat (burn 0 at 100% used must not read "on track").
+  const exhausted = remaining <= 0;
 
   let paceSource: PaceSource;
   let burnMeasured: boolean;
@@ -47,12 +54,29 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
       remaining,
       idealRate,
       burnRate: null,
+      avgPace,
       burnMeasured: false,
       paceSource: "unknown",
-      daysToExhaust: null,
-      status: "unknown",
-      wastePct: null,
-      urgency: "on track",
+      daysToExhaust: exhausted ? 0 : null,
+      status: exhausted ? "at risk" : "unknown",
+      wastePct: exhausted ? 0 : null,
+      urgency: exhausted ? "slow down" : "on track",
+    };
+  }
+  if (exhausted) {
+    return {
+      provider: q.provider,
+      daysLeft,
+      remaining,
+      idealRate,
+      burnRate,
+      avgPace,
+      burnMeasured,
+      paceSource,
+      daysToExhaust: 0,
+      status: "at risk",
+      wastePct: 0,
+      urgency: "slow down",
     };
   }
   const wastePct = Math.max(0, remaining - burnRate*daysLeft);
@@ -64,7 +88,7 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
   else if(wastePct>20 && daysLeft<7) urgency="use soon";
   else if(burnRate > idealRate*1.4) urgency="slow down";
   else if(wastePct>10) urgency="save";
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
 }
 
 export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<string,number>(), now=new Date()){

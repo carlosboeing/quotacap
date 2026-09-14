@@ -38,19 +38,29 @@ describe("current-cycle pace", () => {
     expect(getBurnRates(db, NOW.getTime()).has("kimi")).toBe(false);
   });
 
-  it("keeps the one-hour minimum on the window average", () => {
+  it("keeps the six-hour minimum on the window average", () => {
     expect(averagePace({ provider: "kimi", usedPct: 1, periodStart: "2026-09-07T05:30:00+10:00" } as any, NOW)).toBeNull();
+    expect(averagePace({ provider: "kimi", usedPct: 12, periodStart: "2026-09-07T00:01:00+10:00" } as any, NOW)).toBeNull();
+    expect(averagePace({ provider: "kimi", usedPct: 12, periodStart: "2026-09-07T00:00:00+10:00" } as any, NOW)).toBeCloseTo(48, 5);
     expect(averagePace({ provider: "kimi", usedPct: 60, periodStart: "2026-09-04T06:00:00+10:00" } as any, NOW)).toBeCloseTo(20, 5);
+  });
+
+  it("withholds the recent rate until six hours of readings exist", () => {
+    const db = openDb(":memory:"); migrate(db);
+    row(db, 0, "2026-09-07T04:00:00+10:00"); row(db, 2, "2026-09-07T06:00:00+10:00");
+    expect(getBurnRates(db, NOW.getTime()).has("kimi")).toBe(false);
+    row(db, 0, "2026-09-06T23:00:00+10:00");
+    expect(getBurnRates(db, NOW.getTime()).get("kimi")).toBeCloseTo(2 / (7 / 24), 5);
   });
 
   it("keeps history when the adapter estimates the reset", () => {
     const db = openDb(":memory:"); migrate(db);
     const tui = (pct: number) => `Weekly limit (SuperGrok) ${pct}% used\n`;
-    upsertQuota(db, parseGrokTui(tui(20), new Date("2026-09-07T02:00:00+10:00")));
+    upsertQuota(db, parseGrokTui(tui(20), new Date("2026-09-07T00:00:00+10:00")));
     upsertQuota(db, parseGrokTui(tui(30), new Date("2026-09-07T06:00:00+10:00")));
     // periodStart moves with each poll, so only a cycle guard that reads
-    // resetsAt keeps the earlier reading: 10% over 4 hours is 60%/day.
-    expect(getBurnRates(db, NOW.getTime()).get("grok")).toBeCloseTo(60, 5);
+    // resetsAt keeps the earlier reading: 10% over 6 hours is 40%/day.
+    expect(getBurnRates(db, NOW.getTime()).get("grok")).toBeCloseTo(40, 5);
   });
 
   it("skips rows with invalid fetchedAt", () => {

@@ -1,3 +1,5 @@
+import { MIN_PACE_SPAN_DAYS } from "../advisory/types.js";
+
 function mapRow(row:any){
   if(!row) return row;
   const out:any = {
@@ -94,7 +96,7 @@ export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
     const cutoff = latest.t - 86400000;
     const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
     const days = (latest.t - windowStart.t) / 86400000;
-    if (sorted.length < 2 || days < 1 / 24) continue;
+    if (sorted.length < 2 || days < MIN_PACE_SPAN_DAYS) continue;
     const burn = (latest.usedPct - windowStart.usedPct) / days;
     if (burn >= 0 && Number.isFinite(burn)) out.set(provider, burn);
   }

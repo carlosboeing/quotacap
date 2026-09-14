@@ -6,11 +6,34 @@ import path from "node:path";
 import { projectQuotasResponse, projectRecommendationResponse } from "../../src/advisory/snapshot.js";
 import { stateWord } from "../../src/format/rows.js";
 import { handleTool, tools } from "../../src/mcp/server.js";
+import { openDb } from "../../src/store/db.js";
 import { OFFLINE_LABEL } from "../../src/cli/snapshot-source.js";
 import { FIXED_NOW, exampleStateSnapshot, exampleStateSnapshotJson } from "../fixtures/stable-state.js";
 import { seedFileDb } from "../cli/helpers.js";
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse) => void;
+
+function rebaseFixtureClock(file: string, ageMs: number): void {
+  const shiftMs = Date.now() - ageMs - FIXED_NOW.getTime();
+  const shift = (iso: string | null): string | null => {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    // Leave the fixture's deliberately invalid readings untouched.
+    return Number.isFinite(t) ? new Date(t + shiftMs).toISOString() : iso;
+  };
+  const db = openDb(file);
+  try {
+    const rows = db
+      .prepare("SELECT id, fetched_at, resets_at, period_start FROM quotas")
+      .all() as { id: number; fetched_at: string; resets_at: string; period_start: string | null }[];
+    const upd = db.prepare("UPDATE quotas SET fetched_at = ?, resets_at = ?, period_start = ? WHERE id = ?");
+    for (const r of rows) {
+      upd.run(shift(r.fetched_at), shift(r.resets_at), shift(r.period_start), r.id);
+    }
+  } finally {
+    db.close();
+  }
+}
 
 async function startStub(routes: Record<string, Handler>): Promise<{ port: number; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {
@@ -111,7 +134,7 @@ describe("get_quotas", () => {
       expect(res.isError).toBeUndefined();
       const [markdown, json] = res.content;
       expect(markdown.type).toBe("text");
-      expect(markdown.text).toContain("| Provider | Used | Elapsed | Resets | State | Forecast |");
+      expect(markdown.text).toContain("| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |");
       for (const p of exampleStateSnapshot.providers) {
         if (p.quota) expect(markdown.text).toContain(`| ${Math.round(p.quota.usedPct)}% |`);
         expect(markdown.text).toContain(`| ${stateWord(p)} |`);
@@ -283,7 +306,11 @@ describe("QUOTACAP_URL is used as configured", () => {
 describe("offline fallback", () => {
   it("serves the labeled offline snapshot instead of isError", async () => {
     process.env.QUOTACAP_URL = `http://127.0.0.1:${await closedPort()}`;
-    seedFileDb(path.join(process.env.QUOTACAP_HOME!, ".quotacap", "quotacap.db"));
+    // The fixture is pinned to FIXED_NOW but this path reads the real
+    // clock: rebase its timestamps so the readings are stale (past the
+    // 1h threshold) yet unexpired, deterministically, on any date.
+    const file = seedFileDb(path.join(process.env.QUOTACAP_HOME!, ".quotacap", "quotacap.db"));
+    rebaseFixtureClock(file, 2 * 60 * 60 * 1000);
     const res: any = await handleTool("get_quotas", {});
     expect(res.isError).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(OFFLINE_LABEL);

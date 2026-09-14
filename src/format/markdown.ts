@@ -15,11 +15,11 @@ export function renderMarkdownTable(snapshot: StateSnapshot, now: Date): string 
     const name = p.id === use && use !== "none" ? `★ ${p.displayName}` : p.displayName;
     const used = row.usedPct === null ? "—" : `${row.usedPct}%`;
     const elapsed = row.elapsedPct === null ? "—" : `${row.elapsedPct}%`;
-    return `| ${esc(name)} | ${used} | ${elapsed} | ${esc(row.countdown)} | ${esc(row.state)} | ${esc(row.forecast)} |`;
+    return `| ${esc(name)} | ${used} | ${elapsed} | ${esc(row.pace)} | ${esc(row.countdown)} | ${esc(row.state)} | ${esc(row.forecast)} |`;
   });
   return [
-    "| Provider | Used | Elapsed | Resets | State | Forecast |",
-    "|---|---|---|---|---|---|",
+    "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |",
+    "|---|---|---|---|---|---|---|",
     ...lines,
   ].join("\n");
 }

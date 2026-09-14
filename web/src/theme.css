@@ -1243,7 +1243,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 
 .pstats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid var(--line);
   margin-top: var(--s4);
 }
@@ -1432,6 +1432,19 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .cell-s {
   font-size: var(--t-2);
   color: var(--ink-soft);
+}
+.paceline {
+  display: flex;
+  gap: var(--s2);
+}
+.paceline > span:first-child {
+  flex: none;
+  width: 30px;
+}
+/* Pace cells with hover explanations get the help cursor. */
+.pstats div[title],
+.paceline[title] {
+  cursor: help;
 }
 
 /* Density Segmented Control */

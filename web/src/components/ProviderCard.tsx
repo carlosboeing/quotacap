@@ -3,8 +3,10 @@ import type { ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 import {
   Badge,
+  PACE_TIPS,
   PaceBar,
   isEstimated,
+  paceCells,
   resetClock,
   resetCountdown,
   timeLeft,
@@ -31,6 +33,7 @@ export function ProviderCard({
 }) {
   const quota = provider.quota;
   const advisory = provider.advisory;
+  const pace = paceCells(advisory);
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(provider.ageMs);
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
@@ -75,16 +78,18 @@ export function ProviderCard({
         <PaceBar provider={provider} asOf={asOf} />
 
         <div className="pstats">
-          <div>
-            <span className="l">Pace</span>
-            <span className="v">
-              {advisory && advisory.burnRate !== null ? `${advisory.burnRate.toFixed(1)}%/d` : "—"}
-            </span>
+          <div title={PACE_TIPS.avg}>
+            <span className="l">Avg pace</span>
+            <span className="v">{pace.avg}</span>
           </div>
-          <div>
-            <span className="l">Needed</span>
+          <div title={PACE_TIPS.recent}>
+            <span className="l">24h pace</span>
+            <span className="v">{pace.recent}</span>
+          </div>
+          <div title={PACE_TIPS.ideal}>
+            <span className="l">Ideal pace</span>
             <span className="v">
-              {advisory ? `${advisory.idealRate.toFixed(1)}%/d` : "—"}
+              {advisory ? `${advisory.idealRate.toFixed(1)}%/day` : "—"}
             </span>
           </div>
           <div>
