@@ -149,12 +149,25 @@ function App() {
     void load();
   }, [load]);
 
+  // While the daemon reports a non-idle poll state, keep re-reading until it
+  // settles. Without this the pill ("Polling", "Cooling down") sticks forever
+  // on the single post-refresh snapshot, which is always mid-cooldown.
+  useEffect(() => {
+    if (!snapshot || snapshot.runtime.polling === "idle") return;
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+  }, [snapshot, load]);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setNotice(null);
     try {
       const result = await triggerRefresh();
-      if (result.message) setNotice(result.message);
+      if (result.message) {
+        setNotice(result.message);
+      } else if ((result.raw as { cooldown?: unknown } | null)?.cooldown === true) {
+        setNotice("Refresh cooling down — showing last readings.");
+      }
       await load();
     } catch (e) {
       if (e instanceof StateNetworkError) {

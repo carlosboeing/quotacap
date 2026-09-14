@@ -153,25 +153,40 @@ export function resetCountdown(provider: ProviderView, asOfMs: number): string {
   return `in ${left}${estimated}`;
 }
 
+export interface ResetCellLines {
+  /** Clock line ("Thu 16:53"), or the whole wording when single-line. */
+  top: string;
+  /** Countdown line ("in 2d 17h"), or null for single-line states. */
+  bottom: string | null;
+}
+
 /**
- * Reset cell for the table view: clock time plus countdown, e.g.
- * "Tue 10:25 · in 20h 30m". Estimated resets mark the timestamp, per the
- * 0.0.25 convention. Falls back to the countdown-only wording for
- * reset-passed, missing, and unparseable rows.
+ * Reset cell for the table view as two stacked lines: the clock on top,
+ * the countdown below. Estimated resets mark the timestamp, per the 0.0.25
+ * convention. Reset-passed, missing, and unparseable rows stay single-line.
  */
-export function resetCell(provider: ProviderView, asOfMs: number): string {
-  if (provider.exclusionReason === "reset-passed") return "awaiting fresh window";
-  if (!provider.quota) return "no readings";
+export function resetCellLines(provider: ProviderView, asOfMs: number): ResetCellLines {
+  if (provider.exclusionReason === "reset-passed") return { top: "awaiting fresh window", bottom: null };
+  if (!provider.quota) return { top: "no readings", bottom: null };
   const clock = resetClock(provider.quota.resetsAt);
   const left = timeLeft(provider.quota.resetsAt, asOfMs);
   const estimated = isEstimated(provider) ? " (est.)" : "";
-  if (clock && left) return `${clock}${estimated} · in ${left}`;
+  if (clock && left) return { top: `${clock}${estimated}`, bottom: `in ${left}` };
   if (left === null) {
     const resetMs = Date.parse(provider.quota.resetsAt);
-    if (Number.isFinite(resetMs) && resetMs <= asOfMs) return "awaiting fresh window";
-    return "reset unknown";
+    if (Number.isFinite(resetMs) && resetMs <= asOfMs) return { top: "awaiting fresh window", bottom: null };
+    return { top: "reset unknown", bottom: null };
   }
-  return "reset unknown";
+  return { top: "reset unknown", bottom: null };
+}
+
+/**
+ * Single-line reset wording, e.g. "Tue 10:25 · in 20h 30m". Same content
+ * as resetCellLines, joined for compact contexts.
+ */
+export function resetCell(provider: ProviderView, asOfMs: number): string {
+  const { top, bottom } = resetCellLines(provider, asOfMs);
+  return bottom ? `${top} · ${bottom}` : top;
 }
 
 export interface BarGeometry {

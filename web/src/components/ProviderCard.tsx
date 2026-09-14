@@ -1,6 +1,6 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
-import { ageDuration } from "../state.js";
+import { ageDuration, displayPlan } from "../state.js";
 import {
   Badge,
   PACE_TIPS,
@@ -38,6 +38,7 @@ export function ProviderCard({
   const updated = ageDuration(provider.ageMs);
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
   const name = provider.displayName;
+  const plan = displayPlan(quota?.plan);
   return (
     <article
       data-testid={`provider-card-${provider.id}`}
@@ -68,7 +69,7 @@ export function ProviderCard({
               </span>
             )}
           </b>
-          {quota && quota.plan && <span className="pl">{quota.plan}</span>}
+          {plan && <span className="pl">{plan}</span>}
           {updated && <span className="src">Updated {updated} ago</span>}
         </div>
         <Badge provider={provider} />

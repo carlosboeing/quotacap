@@ -166,6 +166,33 @@ export function providerSubtitle(
   return [p.harness, p.vendor].filter(Boolean).join(" · ");
 }
 
+/** Plan for display. Vendors that expose no tier report "unknown", which never renders. */
+export function displayPlan(plan: string | null | undefined): string | null {
+  if (!plan || plan === "unknown") return null;
+  return plan;
+}
+
+/**
+ * Short-window display name, mirroring each vendor's own /usage or /status
+ * wording: codex, kimi, and agy call it a "5h" or "Five Hour" limit, claude
+ * a "Current session" (a 5-hour rolling window), muse a "Current" window.
+ * Null when the provider reports no short window (grok, manual).
+ */
+export function shortWindowLabel(id: string): string | null {
+  switch (id.split(":")[0]) {
+    case "codex":
+    case "kimi":
+    case "agy":
+      return "5-hour limit";
+    case "claude":
+      return "Current session";
+    case "muse":
+      return "Current window";
+    default:
+      return null;
+  }
+}
+
 /** "read Xm ago" from the last good snapshot's server timestamp. */
 export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
   const diff = nowMs - Date.parse(asOf);
