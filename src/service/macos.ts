@@ -350,7 +350,10 @@ function bootoutQuiet(
   try {
     run(["bootout", bootoutTarget(uid)]);
   } catch (e: any) {
-    if (/could not find service/i.test(String(e?.message ?? e))) {
+    // "No such process" is launchd's other not-running signal: the job record
+    // exists but its process is already gone. Same goal state as a missing
+    // record, so tolerate it the same way (systemd's stopQuiet already does).
+    if (/could not find service|no such process/i.test(String(e?.message ?? e))) {
       print("service job is not loaded; nothing to stop");
       return;
     }
