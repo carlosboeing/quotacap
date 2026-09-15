@@ -50,6 +50,7 @@
     "dev:daemon": "tsx --watch src/cli/index.ts daemon --foreground",
     "dev:web": "vite --config web/vite.config.ts",
     "cli": "tsx src/cli/index.ts",
+    "install:local": "node scripts/install-local.mjs",
     "start": "npm run build && node dist/cli/index.js daemon --foreground"
   },
   "dependencies": {

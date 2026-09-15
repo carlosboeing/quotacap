@@ -60,6 +60,16 @@ Open http://localhost:5173 — the Vite server proxies `/api/*` to the daemon. A
 
 Granular scripts: `npm run dev:daemon` (backend only), `npm run dev:web` (dashboard HMR only, needs a daemon on 8787), `npm start` (production-like: full build, then the compiled daemon with no watchers). If the daemon binds a non-default port, point the proxy at it: `QUOTACAP_DEV_API=http://127.0.0.1:<port> npm run dev:web`.
 
+### Installing unreleased builds locally
+
+To install your unreleased local build directly into `~/.local/bin/quotacap` (and reload the background service):
+
+```bash
+npm run install:local
+```
+
+This compiles the standalone binary for your host platform, installs it to `~/.local/bin` (along with the `pty/` sidecar), and automatically restarts the background service if running. Override the destination directory via `QUOTACAP_BIN_DIR`.
+
 ## Contribution guidelines
 
 ### Workflow and branches
