@@ -8,6 +8,7 @@
 - Local build commit tagging: unreleased builds installed via `install:local` automatically embed the short git commit SHA and optional `-dirty` suffix (e.g. `0.0.33-dde6274`), making local versions immediately identifiable in the CLI and dashboard footer; version comparison recognizes commit builds as up-to-date against base releases for seamless takeover (#89).
 - Initial poll dashboard timing: `quotacap web` waits up to 5s for the daemon's initial background poll to settle before opening the browser; the dashboard suppresses transient `stale` and `not-reporting` fault banners while a poll is in progress and re-reads state every 1000ms until readings arrive.
 - Muse service unavailable handling: recognizes when Meta's subscription usage reporting displays `Currently unavailable` (`service_unavailable` diagnostic code) rather than failing with an unparseable weekly usage error, correctly formats the provider name as Muse, and clarifies upstream service unavailability while QuotaCap retries on the next scheduled poll.
+- Header status pill: keeps the green "daemon live" health status during the 60s post-refresh rate-limit cooldown, reserving the amber indicator exclusively for active in-progress polls; eliminates redundant 5s client re-query loops during cooldown.
 
 ## 0.0.32
 

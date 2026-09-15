@@ -149,13 +149,10 @@ function App() {
     void load();
   }, [load]);
 
-  // While the daemon reports a non-idle poll state, keep re-reading until it
-  // settles. Without this the pill ("Polling", "Cooling down") sticks forever
-  // on the single post-refresh snapshot, which is always mid-cooldown.
+  // While the daemon reports an active poll, keep re-reading until it settles.
   useEffect(() => {
-    if (!snapshot || snapshot.runtime.polling === "idle") return;
-    const interval = snapshot.runtime.polling === "in-progress" ? 1000 : 5000;
-    const t = setInterval(() => void load(), interval);
+    if (!snapshot || snapshot.runtime.polling !== "in-progress") return;
+    const t = setInterval(() => void load(), 1000);
     return () => clearInterval(t);
   }, [snapshot, load]);
 

@@ -31,8 +31,8 @@ describe("header pill", () => {
     expect(pillFor({ available: true, ready: true, polling: "idle" })).toBe("live");
     expect(pillFor({ available: true, ready: false, polling: "idle" })).toBe("not-ready");
   });
-  it("treats cooldown as polling and a missing version as not ready", () => {
-    expect(pillFor({ available: true, ready: true, polling: "cooldown" })).toBe("polling");
+  it("treats cooldown as live and a missing version as not ready", () => {
+    expect(pillFor({ available: true, ready: true, polling: "cooldown" })).toBe("live");
     expect(pillFor({ available: true, ready: true, polling: "idle", version: "" })).toBe("not-ready");
   });
   it("reports unreachable over a stale snapshot, and before the first one", () => {
