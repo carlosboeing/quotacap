@@ -99,6 +99,12 @@ describe("parseMuseTui", () => {
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
   });
 
+  it("throws when subscription usage is currently unavailable", () => {
+    const raw =
+      "\x1b[2J\x1b[?25lSession usage\nSubscription · Muse Code High Usage\nCurrently unavailable\n";
+    expect(() => parseMuseTui(raw, HAPPY_NOW)).toThrow(/subscription currently unavailable/i);
+  });
+
   it("throws when the Weekly line is absent (fail-closed)", () => {
     expect(() => parseMuseTui(museRawTranscript({ dropWeekly: true }), HAPPY_NOW)).toThrow(/weekly/i);
   });

@@ -7,6 +7,7 @@ export type DiagnosticCode =
   | "trust_prompt"
   | "parse_error"
   | "rate_limit"
+  | "service_unavailable"
   | "timeout"
   | "network"
   | "unknown";
@@ -65,6 +66,8 @@ export function formatProviderName(provider: string): string {
       return "Antigravity";
     case "agy:3p":
       return "Antigravity (3rd-party)";
+    case "muse":
+      return "Muse";
     case "all":
       return "QuotaCap service";
     default:
@@ -290,6 +293,14 @@ function matchPrecedence(
     return { code: "parse_error", phrase: "no weekly bucket" };
   }
 
+  // Order 8b: service_unavailable — subscription or service currently unavailable
+  if (
+    /\b(?:subscription|service|usage)\s+currently\s+unavailable\b/i.test(text) ||
+    /\bsubscriptions aren't currently available\b/i.test(text)
+  ) {
+    return { code: "service_unavailable", phrase: "subscription currently unavailable" };
+  }
+
   // Order 9: timeout — Remaining explicit timeout or timed out errors
   if (/\btimed out\b/i.test(text) || /\btimeout\b/i.test(text)) {
     return { code: "timeout", phrase: "timed out" };
@@ -483,6 +494,7 @@ function mapCategory(code: DiagnosticCode): Exclude<FailureCategory, null | "ski
     case "command_not_found":
     case "trust_prompt":
     case "rate_limit":
+    case "service_unavailable":
     case "unknown":
     default:
       return "unknown";
@@ -523,6 +535,11 @@ function getSummaryAndAction(
       return {
         summary: `${providerName} rate limited`,
         action: `Wait before retrying. While the service is running, QuotaCap will try again on its next scheduled poll.`,
+      };
+    case "service_unavailable":
+      return {
+        summary: `${providerName} usage currently unavailable`,
+        action: `${providerName} reported that subscription usage is currently unavailable. While the service is running, QuotaCap will try again on its next scheduled poll.`,
       };
     case "timeout":
       return {

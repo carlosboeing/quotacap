@@ -154,7 +154,8 @@ function App() {
   // on the single post-refresh snapshot, which is always mid-cooldown.
   useEffect(() => {
     if (!snapshot || snapshot.runtime.polling === "idle") return;
-    const t = setInterval(() => void load(), 5000);
+    const interval = snapshot.runtime.polling === "in-progress" ? 1000 : 5000;
+    const t = setInterval(() => void load(), interval);
     return () => clearInterval(t);
   }, [snapshot, load]);
 
@@ -275,6 +276,7 @@ function App() {
             providers={snapshot.providers}
             onRepoll={() => void refresh()}
             repolling={refreshing}
+            polling={snapshot.runtime.polling}
           />
         )}
         {snapshot && (
