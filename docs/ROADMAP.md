@@ -1,10 +1,14 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.32 — 2026-09-15 (unified 5h limit)
+
+* Unified 5h limit window — the drawer displays the granular 5-hour reset window titled "5h Limit" under "Weekly limit" for all providers with short windows (codex, kimi, agy, claude, muse), including when 0% used, and table rows use the consistent "5h Limit" label (#84)
+
 ## Recently shipped — 0.0.31 — 2026-09-15 (refresh settle, plan labels & table)
 
 * Refresh settle — the header pill re-reads state until the daemon goes idle instead of sticking on Cooling down, and a refresh inside the server cooldown explains itself with a notice (#82)
 * Plan labels — Codex reads the plan from the `/status` Account line; providers with no tier signal no longer print `unknown` in cards, rows, or the drawer (#82)
-* Unified 5h limit window — the drawer displays the granular 5-hour reset window titled "5h Limit" under "Weekly limit" for all providers with short windows (codex, kimi, agy, claude, muse), including when 0% used, and table rows use the consistent "5h Limit" label
+* Vendor window words — the drawer and table use each provider's own `/usage` or `/status` terms: Weekly limit plus 5-hour limit, Current session, or Current window (#82)
 * Table polish — Reset stacks clock over countdown in a widened column, columns rebalance, rows gain hover, and usage headlines never break (#82)
 
 ## Recently shipped — 0.0.30 — 2026-09-14 (codex 5h reset & parse diagnostics)
