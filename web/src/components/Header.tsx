@@ -5,9 +5,9 @@ import { ThemeToggle } from "../Theme.js";
 export type PillState = "live" | "polling" | "unreachable" | "not-ready";
 
 /**
- * Header pill from runtime fields. Unreachable is red, polling/cooldown is
- * amber, ready plus idle is green. Not-ready and unknown-version surface as
- * their own explicit state, never as green.
+ * Header pill from runtime fields. Unreachable is red, active polling is
+ * amber, ready is green (including during refresh cooldown). Not-ready and
+ * unknown-version surface as their own explicit state, never as green.
  */
 export function pillFor(runtime: {
   available: boolean;
@@ -16,7 +16,7 @@ export function pillFor(runtime: {
   version?: string;
 }): PillState {
   if (!runtime.available) return "unreachable";
-  if (runtime.polling === "in-progress" || runtime.polling === "cooldown") return "polling";
+  if (runtime.polling === "in-progress") return "polling";
   if (!runtime.ready) return "not-ready";
   if (runtime.version === "") return "not-ready";
   return "live";
@@ -35,7 +35,7 @@ function pillText(pill: PillState, runtime: RuntimeView | null): string {
     case "live":
       return "daemon live";
     case "polling":
-      return runtime?.polling === "cooldown" ? "Cooling down" : "Polling";
+      return "Polling";
     case "unreachable":
       return "Daemon unreachable";
     case "not-ready":

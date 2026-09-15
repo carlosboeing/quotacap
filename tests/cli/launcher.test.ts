@@ -89,6 +89,50 @@ describe("launchWeb branches", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
+  it("waits for in-progress initial poll before opening dashboard", async () => {
+    isolatedHome();
+    const openBrowser = vi.fn();
+    let pollCount = 0;
+    const client = {
+      get: vi.fn().mockImplementation(async (urlPath: string) => {
+        if (urlPath === "/health") {
+          pollCount++;
+          if (pollCount === 1) {
+            return {
+              ok: true,
+              ready: true,
+              version: VERSION,
+              exec: process.execPath,
+              polling: "in-progress",
+              lastCompletedPollAt: null,
+            };
+          }
+          return {
+            ok: true,
+            ready: true,
+            version: VERSION,
+            exec: process.execPath,
+            polling: "idle",
+            lastCompletedPollAt: new Date().toISOString(),
+          };
+        }
+        return {};
+      }),
+    };
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    await launchWeb(
+      {},
+      {
+        createClient: (() => client) as unknown as RuntimeCommandDeps["createClient"],
+        openBrowser,
+        checkUpdates: noUpdateCheck,
+        takeoverOpts: { sleep },
+      },
+    );
+    expect(sleep).toHaveBeenCalled();
+    expect(openBrowser).toHaveBeenCalledWith("http://127.0.0.1:8787");
+  });
+
   it("prints the URL without opening a browser when open is false", async () => {
     isolatedHome();
     const openBrowser = vi.fn();
