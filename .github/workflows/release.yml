@@ -279,9 +279,18 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ needs.verify.outputs.version }}"
+          node -e '
+            const fs = require("node:fs");
+            const content = fs.readFileSync("docs/CHANGELOG.md", "utf8");
+            const v = process.argv[1];
+            const regex = new RegExp(`## ${v}\\r?\\n\\r?\\n([\\s\\S]*?)(?=\\r?\\n## |$)`);
+            const match = content.match(regex);
+            const notes = match ? match[1].trim() : "See docs/ROADMAP.md for what ships in this release.";
+            fs.writeFileSync("release-notes.md", notes + "\n");
+          ' "$version"
           gh release create "v$version" dist-bin/quotacap-* dist-bin/SHA256SUMS \
             --title "v$version" \
-            --notes "See docs/ROADMAP.md for what ships in this release." \
+            --notes-file release-notes.md \
             --verify-tag
 
   smoke:
