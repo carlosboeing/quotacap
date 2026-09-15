@@ -60,6 +60,14 @@ describe("parseKimiTui", () => {
     expect(q.usedPct).toBe(7);
   });
 
+  it("parses 5h limit via fallback when reset duration is omitted", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const txt = `Weekly limit  10% used   resets in 5d 1h\n5h limit      0% used\n`;
+    const q = parseKimiTui(txt, now);
+    expect(q.usedPct).toBe(10);
+    expect(q.sessionPct).toBe(0);
+  });
+
   it("throws when weekly limit is absent (fail-closed)", () => {
     const txt = `5h limit      33% used  resets in 57m\n`;
     expect(() => parseKimiTui(txt, new Date())).toThrow(/weekly limit/i);

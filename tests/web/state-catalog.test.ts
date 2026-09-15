@@ -126,7 +126,7 @@ describe("state catalog: mapping over fixtures", () => {
       })
     );
     expect(html).toContain("reset-cell");
-    expect(html.replace(/<!-- -->/g, "")).toContain("Current session · 22% used");
+    expect(html.replace(/<!-- -->/g, "")).toContain("5h Limit · 22% used");
     expect(html).not.toContain("unknown");
     expect(html).not.toContain("Session use");
   });

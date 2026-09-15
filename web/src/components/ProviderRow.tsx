@@ -52,7 +52,7 @@ export function ProviderRow({
           </span>
           {plan && <span className="pl">{plan}</span>}
           {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-            <span className="src">{shortWindow ?? "Session"} · {quota.sessionPct}% used</span>
+            <span className="src">{shortWindow ?? "5h Limit"} · {quota.sessionPct}% used</span>
           )}
         </span>
       </div>

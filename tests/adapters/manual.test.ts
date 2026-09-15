@@ -24,6 +24,7 @@ describe("manual", () => {
     ].join("\n");
     const q = parseManualUsage("kimi", text, now);
     expect(q.usedPct).toBe(16);
+    expect(q.sessionPct).toBe(0);
     const expected = now.getTime() + ((3 * 24 + 1) * 3600 + 24 * 60) * 1000;
     expect(new Date(q.resetsAt).getTime()).toBe(expected);
   });

@@ -3,10 +3,12 @@ import { parseResetText } from "./parse.js";
 import type { ParsedQuota } from "./types.js";
 
 export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota {
-  const sessionMatch = result.match(/Current session:\s+(\d+)% used[^·]*·\s*resets\s+([^\n(]+?)\s*\(/);
-  const weeklyMatch = result.match(/Current week \(all models\):\s+(\d+)% used[^·]*·\s*resets\s+([^\n(]+?)\s*\(/);
-  const usedPct = weeklyMatch ? parseInt(weeklyMatch[1],10) : 0;
-  const sessionPct = sessionMatch ? parseInt(sessionMatch[1],10) : undefined;
+  const sessionMatch = result.match(/Current session:\s+(\d+)%\s+used/i);
+  const weeklyMatch =
+    result.match(/Current week \(all models\):\s+(\d+)%\s+used/i) ??
+    result.match(/Current week[^\d%]*(\d+)%\s+used/i);
+  const usedPct = weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0;
+  const sessionPct = sessionMatch ? parseInt(sessionMatch[1], 10) : undefined;
   let resetsAt = parseResetText(result, now);
   const parsedReset = !!resetsAt;
   if (!resetsAt) resetsAt = new Date(now.getTime()+7*86400000).toISOString();

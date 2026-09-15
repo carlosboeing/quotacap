@@ -3,6 +3,8 @@ import type { Adapter, ParsedQuota } from "./types.js";
 
 interface AgyBucket {
   id?: string;
+  name?: string;
+  description?: string;
   window?: string;
   remaining_fraction?: number;
   reset_time?: string;
@@ -36,7 +38,9 @@ function parseGroup(
   const resetsAt = resetDate.toISOString();
   const periodStart = new Date(resetDate.getTime() - 7 * 86400000).toISOString();
 
-  const fiveHour = g.buckets.find((b) => b.window === "5h");
+  const fiveHour = g.buckets.find(
+    (b) => b.window === "5h" || b.id?.includes("5h") || /5[- ]?h|five[- ]?hour/i.test(b.name ?? "")
+  );
   const sessionPct = fiveHour
     ? usedPctFromRemaining(fiveHour.remaining_fraction) ?? undefined
     : undefined;
