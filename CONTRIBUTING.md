@@ -42,10 +42,23 @@ If you discover a security vulnerability, please do **not** open a public issue 
    bun test tests/bun/
    ```
 
-5. Run the CLI in development mode:
+5. Run the CLI from source:
    ```bash
-   npm run dev -- status
+   npm run cli -- status
    ```
+
+### Local development loop
+
+One command runs the backend daemon (auto-restarts on `src` changes) plus the dashboard with hot reload:
+
+```bash
+quotacap service stop   # once: the login service owns port 8787
+npm run dev             # daemon on :8787, dashboard with HMR on :5173
+```
+
+Open http://localhost:5173 — the Vite server proxies `/api/*` to the daemon. Add `-- --open` (`npm run dev -- --open`) to open it automatically once Vite is up; `QUOTACAP_NO_OPEN=1` vetoes the open. Ctrl-C stops both; `quotacap service start` restores the login service afterwards.
+
+Granular scripts: `npm run dev:daemon` (backend only), `npm run dev:web` (dashboard HMR only, needs a daemon on 8787), `npm start` (production-like: full build, then the compiled daemon with no watchers). If the daemon binds a non-default port, point the proxy at it: `QUOTACAP_DEV_API=http://127.0.0.1:<port> npm run dev:web`.
 
 ## Contribution guidelines
 

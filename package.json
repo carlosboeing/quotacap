@@ -46,7 +46,11 @@
     "test": "vitest run",
     "test:smoke": "playwright test -c tests/smoke/playwright.config.ts",
     "prepublishOnly": "npm run build",
-    "dev": "tsx src/cli/index.ts"
+    "dev": "node scripts/dev.mjs",
+    "dev:daemon": "tsx --watch src/cli/index.ts daemon --foreground",
+    "dev:web": "vite --config web/vite.config.ts",
+    "cli": "tsx src/cli/index.ts",
+    "start": "npm run build && node dist/cli/index.js daemon --foreground"
   },
   "dependencies": {
     "commander": "^15.0.0",
