@@ -437,6 +437,27 @@ describe("macos login service", () => {
     ]);
   });
 
+  it("stop tolerates a job record with no live process", async () => {
+    const home = mkHome();
+    const rec = recorder((args) =>
+      args[0] === "bootout"
+        ? new Error("launchctl bootout gui/501/quotacap failed: Boot-out failed: 3: No such process")
+        : null,
+    );
+    const d = depsFor(home, rec.run);
+    await stop(d);
+    expect(rec.calls).toEqual([["bootout", "gui/501/quotacap"]]);
+    expect((d as unknown as { printed: string[] }).printed.join("\n")).toMatch(/nothing to stop/);
+  });
+
+  it("stop still throws on bootout failures other than not-running", async () => {
+    const home = mkHome();
+    const rec = recorder((args) =>
+      args[0] === "bootout" ? new Error("launchctl bootout failed: Boot-out failed: 61: Connection refused") : null,
+    );
+    await expect(stop(depsFor(home, rec.run))).rejects.toThrow(/Connection refused/);
+  });
+
   // `launchctl bootout` returns before the job is gone. Starting immediately
   // raced the dying process for the port, and `quotacap update` reported
   // "service did not become ready on port 8787" on a perfectly good upgrade.
