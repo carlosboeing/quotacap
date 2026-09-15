@@ -6,6 +6,11 @@ export function getTargetName(platform?: string, arch?: string): string;
 
 export function getBinDir(env?: NodeJS.Dict<string> | NodeJS.ProcessEnv): string;
 
+export function resolveLocalVersion(
+  execFn?: typeof execFileSync,
+  cwd?: string,
+): string;
+
 export function installBinary(opts: {
   binDir: string;
   sourceBin: string;

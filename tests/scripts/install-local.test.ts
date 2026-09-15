@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   getTargetName,
   getBinDir,
+  resolveLocalVersion,
   installBinary,
   reloadServiceIfRunning,
 } from "../../scripts/install-local.mjs";
@@ -43,6 +44,36 @@ describe("install-local script", () => {
     it("defaults to ~/.local/bin when unset", () => {
       const expected = path.join(os.homedir(), ".local", "bin");
       expect(getBinDir({})).toBe(expected);
+    });
+  });
+
+  describe("resolveLocalVersion", () => {
+    it("resolves version with git short sha when clean", () => {
+      const execMock = (_cmd: string, args: string[]) => {
+        if (args.includes("HEAD")) return "6ffb4f9\n";
+        if (args.includes("--porcelain")) return "";
+        return "";
+      };
+      const version = resolveLocalVersion(execMock as any);
+      expect(version).toMatch(/^0\.0\.\d+-6ffb4f9$/);
+    });
+
+    it("appends -dirty when uncommitted changes exist", () => {
+      const execMock = (_cmd: string, args: string[]) => {
+        if (args.includes("HEAD")) return "6ffb4f9\n";
+        if (args.includes("--porcelain")) return " M somefile.ts\n";
+        return "";
+      };
+      const version = resolveLocalVersion(execMock as any);
+      expect(version).toMatch(/^0\.0\.\d+-6ffb4f9-dirty$/);
+    });
+
+    it("falls back to package.json version if git throws", () => {
+      const execMock = () => {
+        throw new Error("not a git repository");
+      };
+      const version = resolveLocalVersion(execMock as any);
+      expect(version).toMatch(/^0\.0\.\d+$/);
     });
   });
 

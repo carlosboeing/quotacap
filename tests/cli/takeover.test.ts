@@ -72,9 +72,15 @@ describe("checkSkew", () => {
     expect(checkSkew({ ok: true, version: "9.9.9", exec: "/other/q" }, CLI, EXEC)).toBe("cli-older");
   });
 
-  it("never reports cli-newer when the CLI version does not parse", () => {
-    expect(checkSkew({ ok: true, version: "0.0.22", exec: EXEC }, "test", EXEC)).toBe("cli-older");
-    expect(checkSkew({ ok: true, version: "test", exec: EXEC }, "test", EXEC)).toBe("match");
+  it("handles local commit build versions correctly", () => {
+    // Local CLI 0.0.22-6ffb4f9 is ahead of daemon running 0.0.22 release
+    expect(checkSkew({ ok: true, version: "0.0.22", exec: EXEC }, "0.0.22-6ffb4f9", EXEC)).toBe("cli-newer");
+    // Local CLI matches daemon running the same commit build
+    expect(checkSkew({ ok: true, version: "0.0.22-6ffb4f9", exec: EXEC }, "0.0.22-6ffb4f9", EXEC)).toBe("match");
+    // Release CLI 0.0.22 is behind daemon running commit build 0.0.22-6ffb4f9
+    expect(checkSkew({ ok: true, version: "0.0.22-6ffb4f9", exec: EXEC }, "0.0.22", EXEC)).toBe("cli-older");
+    // Daemon on newer minor release 0.0.23 is newer than local 0.0.22 build
+    expect(checkSkew({ ok: true, version: "0.0.23", exec: EXEC }, "0.0.22-6ffb4f9", EXEC)).toBe("cli-older");
   });
 });
 

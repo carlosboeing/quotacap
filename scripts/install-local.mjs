@@ -23,6 +23,17 @@ export function getBinDir(env = process.env) {
   return env.QUOTACAP_BIN_DIR || path.join(os.homedir(), ".local", "bin");
 }
 
+export function resolveLocalVersion(execFn = execFileSync, cwd = process.cwd()) {
+  try {
+    const pkgVersion = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")).version;
+    const sha = execFn("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", cwd }).trim();
+    const isDirty = execFn("git", ["status", "--porcelain"], { encoding: "utf8", cwd }).trim().length > 0;
+    return `${pkgVersion}-${sha}${isDirty ? "-dirty" : ""}`;
+  } catch {
+    return JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")).version;
+  }
+}
+
 function copyDirSync(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
@@ -88,32 +99,50 @@ export function reloadServiceIfRunning(binPath = "quotacap", execFn = execFileSy
 export async function main() {
   const target = getTargetName();
   const binDir = getBinDir();
+  const localVersion = resolveLocalVersion();
 
   console.log("\x1b[1mquotacap install:local\x1b[0m");
+  console.log(`Version: ${localVersion}`);
   console.log(`Target:  ${target}`);
   console.log(`Bin dir: ${binDir}\n`);
 
-  console.log("1. Building dashboard and embedding assets (`npm run build`)...");
-  execFileSync("npm", ["run", "build"], { stdio: "inherit" });
+  const buildEnv = {
+    ...process.env,
+    QUOTACAP_DEV_BUILD: "1",
+    QUOTACAP_VERSION_OVERRIDE: localVersion,
+  };
 
-  console.log(`\n2. Compiling standalone binary with Bun (\`bun-${target}\`)...`);
-  execFileSync("node", ["scripts/build-binary.mjs", `bun-${target}`], { stdio: "inherit" });
+  const originalVersionTs = fs.existsSync("src/version.ts") ? fs.readFileSync("src/version.ts", "utf8") : null;
+  try {
+    console.log("1. Building dashboard and embedding assets (`npm run build`)...");
+    execFileSync("npm", ["run", "build"], { stdio: "inherit", env: buildEnv });
 
-  console.log("\n3. Installing binary and sidecar...");
-  const sourceBin = path.join("dist-bin", `quotacap-${target}`);
-  const sourcePty = path.join("dist-bin", "pty");
-  const { installedBin } = installBinary({ binDir, sourceBin, sourcePty });
-  console.log(`✓ Installed binary to ${installedBin}`);
+    console.log(`\n2. Compiling standalone binary with Bun (\`bun-${target}\`)...`);
+    execFileSync("node", ["scripts/build-binary.mjs", `bun-${target}`], { stdio: "inherit", env: buildEnv });
 
-  console.log("\n4. Checking background service...");
-  const reloaded = reloadServiceIfRunning(installedBin);
-  if (reloaded) {
-    console.log("✓ Background service restarted on new binary.");
-  } else {
-    console.log("• Background service is not loaded (run 'quotacap service start' to start it).");
+    console.log("\n3. Installing binary and sidecar...");
+    const sourceBin = path.join("dist-bin", `quotacap-${target}`);
+    const sourcePty = path.join("dist-bin", "pty");
+    const { installedBin } = installBinary({ binDir, sourceBin, sourcePty });
+    console.log(`✓ Installed binary to ${installedBin} (${localVersion})`);
+
+    console.log("\n4. Checking background service...");
+    const reloaded = reloadServiceIfRunning(installedBin);
+    if (reloaded) {
+      console.log("✓ Background service restarted on new binary.");
+    } else {
+      console.log("• Background service is not loaded (run 'quotacap service start' to start it).");
+    }
+
+    console.log(`\n\x1b[32m✔ Successfully installed local quotacap build (${localVersion}) to ${binDir}.\x1b[0m`);
+  } finally {
+    if (originalVersionTs) {
+      fs.writeFileSync("src/version.ts", originalVersionTs);
+      try {
+        execFileSync("npm", ["run", "build"], { stdio: "ignore" });
+      } catch {}
+    }
   }
-
-  console.log(`\n\x1b[32m✔ Successfully installed local quotacap build to ${binDir}.\x1b[0m`);
 }
 
 // Execute CLI runner when called directly

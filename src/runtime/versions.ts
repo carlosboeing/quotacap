@@ -3,8 +3,9 @@
 // string order.
 export function parseVersion(v: string): number[] | null {
   const s = v.startsWith("v") ? v.slice(1) : v;
-  if (!/^\d+(\.\d+)*$/.test(s)) return null;
-  return s.split(".").map(Number);
+  const match = s.match(/^(\d+(?:\.\d+)*)(?:-[0-9a-fA-F]{7,40}(?:-dirty)?)?$/);
+  if (!match || !match[1]) return null;
+  return match[1].split(".").map(Number);
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -17,7 +18,16 @@ export function compareVersions(a: string, b: string): number {
       const y = pb[i] ?? 0;
       if (x !== y) return x < y ? -1 : 1;
     }
-    return 0;
+    if (a === b) return 0;
+    const aNorm = a.startsWith("v") ? a.slice(1) : a;
+    const bNorm = b.startsWith("v") ? b.slice(1) : b;
+    if (aNorm === bNorm) return 0;
+    const aHasSuffix = aNorm.includes("-");
+    const bHasSuffix = bNorm.includes("-");
+    if (!aHasSuffix && !bHasSuffix) return 0;
+    if (aHasSuffix && !bHasSuffix) return 1;
+    if (!aHasSuffix && bHasSuffix) return -1;
+    return aNorm < bNorm ? -1 : 1;
   }
   if (a === b) return 0;
   return a < b ? -1 : 1;
