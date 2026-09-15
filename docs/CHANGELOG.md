@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.33
+
+- Local dev loop (`npm run dev`): starts the backend daemon with auto-restart on `src` changes alongside the Vite HMR server in one command with joint shutdown; proxies `/api` and `/health` requests to the daemon, refuses to run when port 8787 is held by the service, and provides `npm run dev -- --open` for instant browser launch (#86).
+- Service stop resilience: `quotacap service stop` on macOS tolerates `Boot-out failed: 3: No such process` when the job record exists in launchd but the daemon process has already exited, treating it as nothing-to-stop instead of throwing an unhandled exception (#87).
+- Local build installation (`npm run install:local`): compiles the standalone binary for the current machine architecture (`bun-darwin-arm64`, `bun-linux-x64`, etc.), installs it into `~/.local/bin/quotacap` (along with the `pty/` sidecar), and automatically reloads the background service if running (#88).
+- Local build commit tagging: unreleased builds installed via `install:local` automatically embed the short git commit SHA and optional `-dirty` suffix (e.g. `0.0.33-dde6274`), making local versions immediately identifiable in the CLI and dashboard footer; version comparison recognizes commit builds as up-to-date against base releases for seamless takeover (#89).
+
 ## 0.0.32
 
 - Unified 5h limit window: the drawer displays the granular 5-hour reset window titled "5h Limit" under "Weekly limit" consistently across all providers that report a short window (Codex, Kimi, Agy, Claude Code's "Current session", Muse Code's "Current window"), rendering even when 0% is used rather than hiding flat windows. Table rows use the unified "5h Limit" label.

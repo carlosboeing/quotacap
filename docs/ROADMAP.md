@@ -1,5 +1,12 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.33 — 2026-09-15 (dev loop, service stop, local install & versioning)
+
+* Local dev loop — one-command `npm run dev` running auto-restarting daemon and Vite HMR dashboard with port guard and proxy (#86)
+* Service stop resilience — macOS `service stop` tolerates dead process launchd error 3 instead of throwing (#87)
+* Local install — one-command `npm run install:local` to compile standalone binary into `~/.local/bin` and reload background service (#88)
+* Local build versioning — development builds append short git commit SHA (e.g. `0.0.33-<sha>`) with full takeover skew compatibility (#89)
+
 ## Recently shipped — 0.0.32 — 2026-09-15 (unified 5h limit)
 
 * Unified 5h limit window — the drawer displays the granular 5-hour reset window titled "5h Limit" under "Weekly limit" for all providers with short windows (codex, kimi, agy, claude, muse), including when 0% used, and table rows use the consistent "5h Limit" label (#84)
