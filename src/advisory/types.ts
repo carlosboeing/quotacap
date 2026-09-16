@@ -10,8 +10,12 @@ import type { CatalogStatus, CatalogView, ListedModel } from "../catalog/types.j
  */
 export const MIN_PACE_SPAN_DAYS = 6 / 24;
 
+export const BLEND_K = 0.5;
+export const RISK_MARGIN = 0.15;
+export const GATE_TOL = 0.10;
+
 export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track";
-export type BurnStatus = "at risk" | "on track" | "unknown";
+export type BurnStatus = "at risk" | "watch" | "on track" | "unknown";
 export type PaceSource = "recent" | "window-average" | "unknown";
 export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
 
@@ -31,6 +35,9 @@ export interface Advisory {
   remaining: number;
   idealRate: number;
   burnRate: number | null;
+  recentRate?: number | null;
+  baselineRate?: number | null;
+  aheadOfElapsed?: boolean;
   /**
    * Window-average pace (used % ÷ days elapsed), always computed when the
    * window start is known — independent of `burnRate`, which is the forecast

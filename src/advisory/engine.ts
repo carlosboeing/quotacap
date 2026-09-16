@@ -1,6 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
-import { MIN_PACE_SPAN_DAYS } from "./types.js";
+import { MIN_PACE_SPAN_DAYS, BLEND_K } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -22,6 +22,17 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   const pace = q.usedPct / elapsedDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
+}
+
+export function blendForecast(recent: number | null, baseline: number | null): number | null {
+  if (recent === null) return baseline;
+  if (baseline === null) return recent;
+  return Math.max(0, baseline + BLEND_K * (recent - baseline));
+}
+
+export function baselineFor(historyAvg: number | null, q: Quota, now: Date): number | null {
+  if (historyAvg !== null) return historyAvg;
+  return averagePace(q, now);
 }
 
 export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), paceSourceOrMeasured:PaceSource|boolean="unknown"): Advisory {
