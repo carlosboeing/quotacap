@@ -26,6 +26,7 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
       ageMs: null,
       lastAttempt: null,
       ...p,
+      lastCloses: p.lastCloses ?? [],
     })),
     recommendation: {
       use: "none",

@@ -55,6 +55,19 @@ export interface Recommendation {
   advisories: Advisory[];
 }
 
+export interface WindowClose {
+  provider: string;
+  plan: string | null;
+  usedPct: number;
+  leftoverPct: number;
+  sampledAt: string;
+  periodStart: string | null;
+  resetsAt: string | null;
+  resetsAtEstimated: boolean;
+  detectedAt: string;
+  reason: "usage-drop" | "resets-at-rolled" | "both";
+}
+
 export interface ProviderSnapshot {
   id: string;
   displayName: string;
@@ -73,6 +86,7 @@ export interface ProviderSnapshot {
   evidence: string[];
   exclusionReason: ExclusionReason;
   advisory: Advisory | null;
+  lastCloses: WindowClose[];
 }
 
 export interface UpdateStatus {

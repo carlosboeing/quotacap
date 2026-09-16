@@ -81,6 +81,7 @@ function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot 
     evidence: [],
     exclusionReason: null,
     advisory: null,
+    lastCloses: [],
     displayName: over.id,
     builtinName: over.id,
     vendor: null,

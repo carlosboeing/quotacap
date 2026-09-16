@@ -12,6 +12,13 @@ describe("state mapping", () => {
     expect(firstRun({ providers: [{ quota: null }, { quota: null }] } as any)).toBe(true);
     expect(firstRun(JSON.parse(staleStateSnapshotJson))).toBe(false); // stale rows are still rows
   });
+  it("defaults lastCloses to an empty array for older daemons", () => {
+    const vm = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    for (const p of vm.providers) expect(p.lastCloses).toEqual([]);
+    const withClose = JSON.parse(exampleStateSnapshotJson);
+    withClose.providers[0].lastCloses = [{ provider: "x", leftoverPct: 12 }];
+    expect(toViewModel(withClose).providers[0].lastCloses).toHaveLength(1);
+  });
   it("labels reading age from the server timestamp", () => {
     const now = Date.now();
     expect(ageLabel(new Date(now - 30_000).toISOString(), now)).toBe("read 30s ago");
