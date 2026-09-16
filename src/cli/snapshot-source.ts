@@ -209,6 +209,7 @@ export function withProviderNames(snapshot: StateSnapshot): StateSnapshot {
       vendor: p.vendor ?? null,
       harness: p.harness ?? null,
       description: p.description ?? null,
+      lastCloses: Array.isArray(p.lastCloses) ? p.lastCloses : [],
     })),
   };
 }

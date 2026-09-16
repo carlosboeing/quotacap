@@ -659,3 +659,59 @@ describe("compact statusline (D5)", () => {
     expect(renderCompact(s, FIXED_NOW)).toBe("(use: none)");
   });
 });
+
+describe("last-week leftover line", () => {
+  const CLOSE = {
+    provider: "kimi",
+    plan: "p",
+    usedPct: 88,
+    leftoverPct: 12,
+    sampledAt: "2026-09-07T09:04:00+10:00",
+    periodStart: "2026-08-31T12:25:00+10:00",
+    resetsAt: "2026-09-10T12:25:00+10:00",
+    resetsAtEstimated: false,
+    detectedAt: "2026-09-10T12:40:00+10:00",
+    reason: "usage-drop" as const,
+  };
+  const closed = (over: any = {}) =>
+    ps({
+      id: "kimi",
+      quota: quota({ provider: "kimi" }),
+      reporting: true,
+      advisory: advisory(),
+      lastCloses: [{ ...CLOSE, ...over }],
+    });
+  const open = () => ps({ id: "claude", quota: quota({ provider: "claude" }), reporting: true, advisory: advisory() });
+
+  it("hangs a dim line under RESETS, once for the provider with a close", () => {
+    const out = renderWide(snap([closed(), open()], "kimi"), { now: FIXED_NOW, color: true });
+    const lines = strip(out).split("\n");
+    const leftover = lines.filter((l) => l.includes("leftover"));
+    expect(leftover).toHaveLength(1);
+    expect(leftover[0].trim()).toBe("last week 12% leftover");
+    expect(leftover[0].indexOf("last week")).toBe(lines[0].indexOf("RESETS"));
+    expect(out).toContain("\x1b[2mlast week 12% leftover\x1b[0m");
+    expect(strip(out)).not.toContain("Last weekly close");
+  });
+
+  it("marks an estimated close and omits the line without one", () => {
+    const out = strip(renderWide(snap([closed({ resetsAtEstimated: true }), open()], "kimi"), { now: FIXED_NOW }));
+    expect(out).toContain("last week 12% leftover (est.)");
+    expect(out.match(/last week/g)).toHaveLength(1);
+  });
+
+  it("adds a third narrow line hanging under the reset value", () => {
+    const lines = renderNarrow(snap([closed()], "kimi"), { now: FIXED_NOW }).split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("kimi");
+    expect(lines[2]).toMatch(/^\s+last week 12% leftover$/);
+    expect(lines[2].indexOf("last week")).toBe(lines[1].indexOf("resets ") + "resets ".length);
+  });
+
+  it("leaves the compact statusline unchanged", () => {
+    const withClose = renderCompact(snap([closed()], "kimi"), FIXED_NOW);
+    const noClose = ps({ id: "kimi", quota: quota({ provider: "kimi" }), reporting: true, advisory: advisory() });
+    const without = renderCompact(snap([noClose], "kimi"), FIXED_NOW);
+    expect(withClose).toBe(without);
+  });
+});
