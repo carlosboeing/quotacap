@@ -1,4 +1,5 @@
-import type { ListedModel } from "./types.js";
+import { trackedExecFile } from "../runtime/spawn.js";
+import type { CatalogFetcher, ListedModel } from "./types.js";
 
 // Pinned split rule (design §6.1): one `agy models` list covers both quota
 // buckets; the id prefix decides which. Unmatched ids are omitted from both.
@@ -34,3 +35,21 @@ export function parseAgyModels(stdout: string): Record<"agy" | "agy:3p", ListedM
   if (matched === 0) throw new Error("agy: no `agy models` row matched the bucket classifier");
   return out;
 }
+
+const EXEC_TIMEOUT_MS = 8000;
+
+export const agyCatalogFetcher: CatalogFetcher = {
+  id: "agy",
+  async fetch() {
+    // Per-fetch catalog-owned signal: never the usage poll's shared controller.
+    const { stdout } = await trackedExecFile("agy", "agy", ["models"], {
+      timeout: EXEC_TIMEOUT_MS,
+      signal: new AbortController().signal,
+    });
+    try {
+      return parseAgyModels(stdout);
+    } catch (e) {
+      throw new Error(`agy: failed to parse \`agy models\` output: ${(e as Error)?.message ?? e}`);
+    }
+  },
+};

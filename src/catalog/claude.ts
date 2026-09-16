@@ -1,4 +1,6 @@
-import type { ListedModel } from "./types.js";
+import { trackedExecFile } from "../runtime/spawn.js";
+import { claudeAdapter } from "../adapters/claude.js";
+import type { CatalogFetcher, ListedModel } from "./types.js";
 
 // `Current model: `Name`` short names onto picker aliases (design §6.4).
 const CLAUDE_SHORT_NAMES: Record<string, string> = {
@@ -46,3 +48,23 @@ export function parseClaudeModelSlash(jsonText: string): ListedModel[] {
     return entry;
   });
 }
+
+const EXEC_TIMEOUT_MS = 8000;
+
+export const claudeCatalogFetcher: CatalogFetcher = {
+  id: "claude",
+  async fetch() {
+    // Reuse the pinned claude path the daemon resolves (claudeAdapter.execPath).
+    const bin = claudeAdapter.execPath ?? "claude";
+    // Per-fetch catalog-owned signal: never the usage poll's shared controller.
+    const { stdout } = await trackedExecFile("claude", bin, ["-p", "/model", "--output-format", "json"], {
+      timeout: EXEC_TIMEOUT_MS,
+      signal: new AbortController().signal,
+    });
+    try {
+      return { claude: parseClaudeModelSlash(stdout) };
+    } catch (e) {
+      throw new Error(`claude: failed to parse \`claude -p /model\` output: ${(e as Error)?.message ?? e}`);
+    }
+  },
+};

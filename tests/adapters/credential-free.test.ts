@@ -4,6 +4,8 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import * as pty from "../../src/adapters/pty.js";
+import * as spawn from "../../src/runtime/spawn.js";
+import { catalogFetchers } from "../../src/catalog/index.js";
 import { adapters, pollAll } from "../../src/adapters/index.js";
 import { codexAdapter, parseCodexTui } from "../../src/adapters/codex.js";
 import { kimiAdapter, parseKimiTui } from "../../src/adapters/kimi.js";
@@ -27,6 +29,7 @@ const SENSITIVE_PATTERNS = [
   /\.qc-bak/i,
   /\.qc-lock/i,
   /\.qc-tmp/i,
+  /model-catalog/i,
 ];
 
 describe("Credential-free adapters regression", () => {
@@ -286,6 +289,142 @@ describe("Credential-free adapters regression", () => {
         if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
         else process.env.QUOTACAP_HOME = origQcHome;
         claudeAdapter.execPath = origExecPath;
+        await fsp.rm(mockHome, { recursive: true, force: true });
+      }
+    });
+
+    it("catalog fetchers spawn CLIs only and never read credential or vendor-cache paths", async () => {
+      const mockHome = await fsp.mkdtemp(path.join(os.tmpdir(), "qc-cathome-"));
+
+      const accessedPaths: string[] = [];
+      const readSpy = vi.spyOn(fsp, "readFile").mockImplementation(async (file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return (fsp.readFile as any).wrappedMethod ? (fsp.readFile as any).wrappedMethod(file, ...args) : "";
+      });
+      const readSyncSpy = vi.spyOn(fs, "readFileSync").mockImplementation((file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return (fs.readFileSync as any).wrappedMethod ? (fs.readFileSync as any).wrappedMethod(file, ...args) : "";
+      });
+
+      // Every catalog exec must carry a catalog-owned abort signal; the mock
+      // fails loud if a fetcher ever falls back to the usage-poll default.
+      const execSpy = vi.spyOn(spawn, "trackedExecFile").mockImplementation(async (id, _file, args, opts) => {
+        expect(opts?.signal).toBeDefined();
+        switch (id) {
+          case "agy":
+            expect(args).toEqual(["models"]);
+            return {
+              stdout:
+                "gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n" +
+                "claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)\n",
+              stderr: "",
+            };
+          case "claude":
+            expect(args).toEqual(["-p", "/model", "--output-format", "json"]);
+            return {
+              stdout: JSON.stringify({
+                num_turns: 0,
+                total_cost_usd: 0,
+                result:
+                  "Current model: `Opus 5`\n" +
+                  "Usage: /model <name>. Available: sonnet, opus, haiku, fable, best, sonnet[1m], opus[1m], fable[1m], opusplan, default, or a full model ID.",
+              }),
+              stderr: "",
+            };
+          case "codex":
+            expect(args).toEqual(["debug", "models"]);
+            return {
+              stdout: JSON.stringify({
+                models: [
+                  {
+                    slug: "gpt-6-astra",
+                    display_name: "GPT-6-Astra",
+                    visibility: "list",
+                    supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+                  },
+                  { slug: "gpt-reserve", display_name: "GPT-Reserve", visibility: "hide" },
+                ],
+              }),
+              stderr: "",
+            };
+          case "grok":
+            expect(args).toEqual(["models"]);
+            return {
+              stdout: "You are logged in with grok.com.\n\nAvailable models:\n* grok-4.6 (default)\n- grok-4.5\n",
+              stderr: "",
+            };
+          case "kimi":
+            expect(args).toEqual(["provider", "list", "--json"]);
+            return {
+              stdout: JSON.stringify({
+                models: { "kimi-code/k3": { model: "k3", displayName: "K3", supportEfforts: ["low", "high"] } },
+              }),
+              stderr: "",
+            };
+          default:
+            throw new Error(`unexpected catalog exec: ${id}`);
+        }
+      });
+
+      const runPtySpy = vi.spyOn(pty, "runPty").mockImplementation(async (opts) => {
+        if (opts.file === "muse") {
+          expect(opts.input).toBe("/model");
+          expect(opts.cwd).toBe(path.join(mockHome, ".quotacap", "muse-probe"));
+          expect(opts.signal).toBeDefined();
+          return (
+            "Muse Code 2.1 · High Usage · muse-spark-1.3·max\n\n> /model\n\nChoose model\n" +
+            "  ❯ muse-spark-1.3\n    muse-spark-1.3-contributor\n    muse-spark-1.2\n    muse-spark-1.2-contributor\n"
+          );
+        }
+        throw new Error(`Unexpected pty file: ${opts.file}`);
+      });
+
+      const origHome = process.env.HOME;
+      const origQcHome = process.env.QUOTACAP_HOME;
+      const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(mockHome);
+      process.env.HOME = mockHome;
+      delete process.env.QUOTACAP_HOME;
+
+      try {
+        const agy = await catalogFetchers.agy.fetch();
+        expect(agy.agy.map((m) => m.id)).toEqual(["gemini-3.8-flash-high"]);
+        expect(agy["agy:3p"].map((m) => m.id)).toEqual(["claude-opus-4-6-thinking"]);
+
+        const claude = await catalogFetchers.claude.fetch();
+        expect(claude.claude.map((m) => m.id)).toContain("opus");
+        expect(claude.claude.find((m) => m.id === "opus")?.default).toBe(true);
+
+        const codex = await catalogFetchers.codex.fetch();
+        expect(codex.codex.map((m) => m.id)).toEqual(["gpt-6-astra"]);
+
+        const grok = await catalogFetchers.grok.fetch();
+        expect(grok.grok.map((m) => m.id)).toEqual(["grok-4.6", "grok-4.5"]);
+
+        const kimi = await catalogFetchers.kimi.fetch();
+        expect(kimi.kimi.map((m) => m.id)).toEqual(["k3"]);
+
+        const muse = await catalogFetchers.muse.fetch();
+        expect(muse.muse.map((m) => m.id)).toEqual([
+          "muse-spark-1.3",
+          "muse-spark-1.3-contributor",
+          "muse-spark-1.2",
+          "muse-spark-1.2-contributor",
+        ]);
+
+        for (const p of accessedPaths) {
+          for (const pattern of SENSITIVE_PATTERNS) {
+            expect(pattern.test(p), `catalog fetch() unexpectedly accessed sensitive path: ${p}`).toBe(false);
+          }
+        }
+      } finally {
+        readSpy.mockRestore();
+        readSyncSpy.mockRestore();
+        execSpy.mockRestore();
+        runPtySpy.mockRestore();
+        homedirSpy.mockRestore();
+        process.env.HOME = origHome;
+        if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
+        else process.env.QUOTACAP_HOME = origQcHome;
         await fsp.rm(mockHome, { recursive: true, force: true });
       }
     });

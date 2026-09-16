@@ -1,4 +1,5 @@
-import type { ListedModel } from "./types.js";
+import { trackedExecFile } from "../runtime/spawn.js";
+import type { CatalogFetcher, ListedModel } from "./types.js";
 
 // `codex debug models` (design §6.5): the dump is ~500KB of prompt templates;
 // project to id / displayName / efforts and keep `visibility === "list"` only.
@@ -33,3 +34,22 @@ export function parseCodexDebugModels(jsonText: string): ListedModel[] {
   }
   return out;
 }
+
+// Larger cap than the other exec fetchers: the debug dump is a big JSON blob.
+const EXEC_TIMEOUT_MS = 12000;
+
+export const codexCatalogFetcher: CatalogFetcher = {
+  id: "codex",
+  async fetch() {
+    // Per-fetch catalog-owned signal: never the usage poll's shared controller.
+    const { stdout } = await trackedExecFile("codex", "codex", ["debug", "models"], {
+      timeout: EXEC_TIMEOUT_MS,
+      signal: new AbortController().signal,
+    });
+    try {
+      return { codex: parseCodexDebugModels(stdout) };
+    } catch (e) {
+      throw new Error(`codex: failed to parse \`codex debug models\` output: ${(e as Error)?.message ?? e}`);
+    }
+  },
+};

@@ -1,4 +1,5 @@
-import type { ListedModel } from "./types.js";
+import { trackedExecFile } from "../runtime/spawn.js";
+import type { CatalogFetcher, ListedModel } from "./types.js";
 
 // `kimi provider list --json` (design §6.3): top-level `models` map keyed by
 // "<provider>/<key>"; every entry is on the live picker. id is the entry's
@@ -30,3 +31,21 @@ export function parseKimiProviderList(jsonText: string): ListedModel[] {
   if (out.length === 0) throw new Error("kimi: provider list JSON contained no models");
   return out;
 }
+
+const EXEC_TIMEOUT_MS = 8000;
+
+export const kimiCatalogFetcher: CatalogFetcher = {
+  id: "kimi",
+  async fetch() {
+    // Per-fetch catalog-owned signal: never the usage poll's shared controller.
+    const { stdout } = await trackedExecFile("kimi", "kimi", ["provider", "list", "--json"], {
+      timeout: EXEC_TIMEOUT_MS,
+      signal: new AbortController().signal,
+    });
+    try {
+      return { kimi: parseKimiProviderList(stdout) };
+    } catch (e) {
+      throw new Error(`kimi: failed to parse \`kimi provider list --json\` output: ${(e as Error)?.message ?? e}`);
+    }
+  },
+};
