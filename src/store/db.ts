@@ -31,7 +31,23 @@ export function migrate(db:any){
   db.exec(`CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
            CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
            CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
-           CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);`);
+           CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);
+           CREATE TABLE IF NOT EXISTS window_closes(
+             id INTEGER PRIMARY KEY,
+             provider TEXT NOT NULL,
+             plan TEXT,
+             used_pct REAL NOT NULL,
+             leftover_pct REAL NOT NULL,
+             sampled_at TEXT NOT NULL,
+             sampled_quota_id INTEGER NOT NULL,
+             period_start TEXT,
+             resets_at TEXT,
+             resets_at_estimated INTEGER,
+             detected_at TEXT NOT NULL,
+             reason TEXT NOT NULL,
+             UNIQUE(provider, sampled_quota_id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_window_closes_provider_detected ON window_closes(provider, detected_at DESC);`);
   try {
     const cols = db.prepare(`PRAGMA table_info(quotas)`).all() as { name: string }[];
     const names = new Set(cols.map((c:any)=>c.name));
