@@ -26,11 +26,25 @@ describe("window closes", () => {
     expect(closes[0].leftoverPct).toBe(12);
     expect(closes[0].sampledAt).toBe("2026-09-10T02:20:00Z");
     expect(closes[0].detectedAt).toBe("2026-09-10T02:40:00Z");
-    expect(closes[0].reason).toMatch(/usage-drop|both/);
+    expect(closes[0].reason).toBe("both");
     expect(closes[0].plan).toBe("Pro");
     expect(closes[0].periodStart).toBe("2026-09-03T02:25:00Z");
     expect(closes[0].resetsAt).toBe("2026-09-10T02:25:00Z");
     expect(closes[0].resetsAtEstimated).toBe(false);
+    const firstId = (db.prepare(`SELECT id FROM quotas ORDER BY id`).all() as any[])[0].id;
+    expect(db.prepare(`SELECT sampled_quota_id, reason FROM window_closes`).all()).toEqual([
+      { sampled_quota_id: firstId, reason: "both" },
+    ]);
+  });
+
+  it("writes reason usage-drop when usage falls inside the same reset boundary", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, row({ usedPct: 60, fetchedAt: "2026-09-10T02:20:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 40, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    const closes = getWindowCloses(db, "agy");
+    expect(closes).toHaveLength(1);
+    expect(closes[0].usedPct).toBe(60);
+    expect(closes[0].reason).toBe("usage-drop");
   });
 
   it("writes a close when resetsAt rolls even if usedPct rose", () => {
