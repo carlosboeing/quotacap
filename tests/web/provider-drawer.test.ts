@@ -15,6 +15,7 @@ import {
   ProviderDrawer,
   submitProviderRename,
 } from "../../web/src/components/ProviderDrawer.js";
+import { closeResetStamp, closeSampleStamp } from "../../web/src/components/ClosedWeeks.js";
 import { renameProvider } from "../../web/src/api.js";
 
 describe("provider drawer", () => {
@@ -365,7 +366,7 @@ describe("closed weeks drawer", () => {
     expect(html.indexOf("5h Limit")).toBeLessThan(html.indexOf("Closed weeks"));
     expect(html).toContain("10 Sep");
     expect(html).toContain("12% leftover");
-    expect(html).toContain("88% used, 12% leftover, reset 10 Sep 12:25");
+    expect(html).toContain(`88% used, 12% leftover, reset ${closeResetStamp("2026-09-10T12:25:00+10:00")}`);
     const weeks = html.slice(html.indexOf("Closed weeks"), html.indexOf("Adapter and provenance"));
     expect(weeks).not.toMatch(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}:\d{2}/);
   });
@@ -393,7 +394,7 @@ describe("closed weeks drawer", () => {
     const { s, claude } = claudeWith([closeRow()]);
     const html = render(claude, s);
     expect(html).toContain("read 3d early");
-    expect(html).toContain("Mon 7 Sep 9:04");
+    expect(html).toContain(closeSampleStamp("2026-09-07T09:04:00+10:00")!);
     expect(html).toContain("3 days before that reset");
     expect(html).toContain("10 Sep leftover is from the");
   });
