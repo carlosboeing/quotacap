@@ -12,6 +12,7 @@ import {
   timeLeft,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
+import { lastClose } from "./ClosedWeeks.js";
 
 function resetsDate(provider: ProviderView): string | null {
   if (!provider.quota) return null;
@@ -39,6 +40,7 @@ export function ProviderCard({
   const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
   const name = provider.displayName;
   const plan = displayPlan(quota?.plan);
+  const last = lastClose(provider);
   return (
     <article
       data-testid={`provider-card-${provider.id}`}
@@ -103,7 +105,10 @@ export function ProviderCard({
       </div>
 
       <div className="pcard-foot">
-        <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
+        <div className="foot-meta">
+          <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
+          {last && <span className="last-week">Last week {last.leftoverPct}% leftover</span>}
+        </div>
         <span className="rowbtn" aria-hidden="true">Inspect</span>
       </div>
     </article>

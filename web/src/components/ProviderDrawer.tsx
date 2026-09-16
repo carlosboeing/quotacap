@@ -20,6 +20,7 @@ import {
   type PaceBadge,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
+import { ClosedWeeks } from "./ClosedWeeks.js";
 import { renameProvider } from "../api.js";
 
 export interface DrawerModel {
@@ -613,6 +614,8 @@ export function ProviderDrawer({
             </div>
           </section>
         )}
+
+        <ClosedWeeks closes={provider.lastCloses} />
 
         <section className="dsec" aria-label="Adapter and provenance">
           <h3>Adapter and provenance</h3>

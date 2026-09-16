@@ -134,6 +134,58 @@ describe("projected-unused hatch", () => {
   });
 });
 
+describe("closed weeks on card and row", () => {
+  const flat = (s: string) => s.replace(/<!-- -->/g, "");
+  const CLOSE = {
+    provider: "kimi",
+    plan: "p",
+    usedPct: 88,
+    leftoverPct: 12,
+    sampledAt: "2026-09-07T09:04:00+10:00",
+    periodStart: "2026-08-31T12:25:00+10:00",
+    resetsAt: "2026-09-10T12:25:00+10:00",
+    resetsAtEstimated: false,
+    detectedAt: "2026-09-10T12:40:00+10:00",
+    reason: "usage-drop" as const,
+  };
+
+  it("shows last week's leftover inside the card foot, omitted with no close", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const withClose = { ...kimi, lastCloses: [CLOSE] };
+    const html = flat(renderToString(
+      React.createElement(ProviderCard, { provider: withClose, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    expect(html).toContain("Last week 12% leftover");
+    const body = html.slice(html.indexOf("pcard-body"), html.indexOf("pcard-foot"));
+    expect(body).not.toContain("leftover");
+    expect(html.slice(html.indexOf("pcard-foot"))).toContain("Last week 12% leftover");
+
+    const noClose = flat(renderToString(
+      React.createElement(ProviderCard, { provider: { ...kimi, lastCloses: [] }, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    expect(noClose).not.toContain("leftover");
+  });
+
+  it("shows last week's leftover in the ledger reset cell, never in used vs elapsed", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const withClose = { ...kimi, lastCloses: [CLOSE] };
+    const row = flat(renderToString(
+      React.createElement(ProviderRow, { provider: withClose, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    const usedCol = row.slice(row.indexOf('data-label="Used vs elapsed"'), row.indexOf('data-label="Reset"'));
+    expect(usedCol).not.toContain("leftover");
+    const resetCell = row.slice(row.indexOf('data-label="Reset"'), row.indexOf('data-label="Pace"'));
+    expect(resetCell).toContain("last week 12% leftover");
+
+    const noClose = flat(renderToString(
+      React.createElement(ProviderRow, { provider: { ...kimi, lastCloses: [] }, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    expect(noClose).not.toContain("leftover");
+  });
+});
+
 describe("recommended sort", () => {
   it("puts use first, then lane members, then the rest, excluded last", () => {
     const s = JSON.parse(exampleStateSnapshotJson);
