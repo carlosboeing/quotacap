@@ -1,8 +1,10 @@
 # QuotaCap Roadmap
 
-## In flight
+## Recently shipped — 0.0.35 — 2026-09-17 (model catalog, weekly ledger & pace-normalized forecast)
 
-* Weekly closed-window ledger — `window_closes` records the last old-window reading whenever a weekly reset is detected (`leftover = 100 − used`), the poll coordinator wakes five minutes before a known non-estimated weekly reset, and leftover appears on the dashboard card foot, ledger Reset cell, drawer Closed weeks strip, CLI `status` under RESETS, and MCP JSON (unreleased)
+* Live model catalog — tracks the currently listed models per quota bucket for all six providers (`agy`, `claude`, `codex`, `grok`, `kimi`, `muse`) via pure parsers, cached in SQLite with a configurable TTL; waiting surfaces (`GET /api/models`, `POST /api/models/refresh`, MCP `get_models`, CLI `models`) wait for fresh listings, while advisory surfaces join the cache without spawning processes and show `models:` with freshness indicators (#94)
+* Weekly closed-window ledger — every detected weekly reset writes a `window_closes` receipt from the last old-window poll, so leftover (`100 − used`) survives the roll; shown on the dashboard card foot, the ledger Reset cell, the drawer Closed weeks strip, CLI `status` under RESETS, and MCP JSON, and the poll coordinator wakes five minutes before a known non-estimated weekly reset
+* Pace-normalized forecast — `burnRate` becomes a blend of the recent 24h rate toward a history-anchored baseline, red requires a 15% deadband margin plus a cumulative gate on a verified clock, near-misses and uncertain positions read the new amber Watch tier, Ahead of pace returns for on-track boards clearly ahead of elapsed, and estimated resets cap at Watch with `burn now` demoted to `use soon` and verified-first ranking in `recommend()` (#96)
 
 ## Recently shipped — 0.0.34 — 2026-09-16 (initial poll settling, provider outage resilience & notice polish)
 
