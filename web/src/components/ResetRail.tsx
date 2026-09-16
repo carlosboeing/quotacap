@@ -217,6 +217,8 @@ function pinPace(provider: ProviderView | undefined): { cls: string; color: stri
       return { cls: "pace-ontrack", color: "var(--good)" };
     case "Ahead of pace":
       return { cls: "pace-ahead", color: "var(--ahead)" };
+    case "Watch":
+      return { cls: "pace-watch", color: "var(--watch)" };
     case "Cap risk":
       return { cls: "pace-cap", color: "var(--danger)" };
     default:

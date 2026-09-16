@@ -4,7 +4,7 @@
 // pace rules stay in src/advisory and are never recomputed.
 import type { ProviderSnapshot } from "../advisory/types.js";
 
-export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Measuring" | "Not reporting";
+export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
 export type CompactSuffix = "" | "!" | "~" | "?";
@@ -83,13 +83,17 @@ export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
 }
 
 // Shared STATE vocabulary (locked badge mapping): any exclusion reads
-// Not reporting; at-risk status beats urgency; urgency maps to pace words.
+// Not reporting; at-risk status beats urgency, then watch, then unknown;
+// on-track rows ahead of cumulative elapsed time revive Ahead of pace;
+// urgency maps to the remaining pace words.
 export function stateWord(ps: ProviderSnapshot): StateWord {
   if (ps.exclusionReason !== null) return "Not reporting";
   const adv = ps.advisory;
   if (!adv) return "Not reporting";
   if (adv.status === "at risk") return "Cap risk";
+  if (adv.status === "watch") return "Watch";
   if (adv.status === "unknown") return "Measuring";
+  if (adv.aheadOfElapsed === true) return "Ahead of pace";
   switch (adv.urgency) {
     case "burn now":
     case "use soon":
@@ -138,6 +142,11 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
     text = "Exhausted";
   } else if (adv.paceSource === "unknown" || adv.burnRate === null) {
     text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${adv.daysLeft.toFixed(1)}d until reset`;
+  } else if (adv.status === "watch") {
+    text =
+      adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust)
+        ? `Exhausts in ${adv.daysToExhaust.toFixed(1)}d — watch`
+        : "Near the cap — watch";
   } else if (adv.wastePct !== null && adv.wastePct > 0) {
     text = `${Math.round(adv.wastePct)}% waste in ${adv.daysLeft.toFixed(1)}d`;
   } else {
@@ -152,13 +161,14 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   return text;
 }
 
-// Compact legend: none = On track; ! = Cap risk; ~ = Behind/Ahead pace or
-// estimated reset; ? = unknown pace or any excluded row.
+// Compact legend: none = On track; ! = Cap risk; ~ = Watch or Behind/Ahead
+// pace or estimated reset; ? = unknown pace or any excluded row.
 export function compactSuffix(ps: ProviderSnapshot): CompactSuffix {
   if (ps.exclusionReason !== null) return "?";
   const adv = ps.advisory;
   if (!adv || adv.paceSource === "unknown") return "?";
   if (adv.status === "at risk") return "!";
+  if (adv.status === "watch") return "~";
   if (adv.urgency !== "on track" || ps.quota?.resetsAtEstimated) return "~";
   return "";
 }
@@ -245,7 +255,14 @@ export function paceText(ps: ProviderSnapshot): string {
   if (!adv) return "—";
   // avgPace is absent on advisories from a daemon older than the split.
   const avg = adv.avgPace ?? null;
-  const recent = adv.paceSource === "recent" ? adv.burnRate : null;
+  // The 24h figure is the measured recentRate, never the blended forecast
+  // input; an older daemon omits the field and burnRate was the raw rate then.
+  const recent =
+    adv.recentRate !== undefined
+      ? adv.recentRate
+      : adv.paceSource === "recent"
+        ? adv.burnRate
+        : null;
   if (avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)) {
     return `${avg.toFixed(1)} avg · ${recent.toFixed(1)} 24h`;
   }

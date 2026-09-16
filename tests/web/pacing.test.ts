@@ -8,7 +8,7 @@ import {
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { Badge, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -44,6 +44,32 @@ describe("pace badges", () => {
       "Ahead of pace"
     );
   });
+  it("maps the watch tier and revives Ahead of pace from cumulative position", () => {
+    for (const urgency of ["burn now", "slow down", "save", "on track"]) {
+      expect(paceBadge({ exclusionReason: null, advisory: { status: "watch", urgency } } as any)).toBe("Watch");
+    }
+    expect(
+      paceBadge({ exclusionReason: null, advisory: { status: "at risk", urgency: "on track" } } as any),
+    ).toBe("Cap risk");
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        advisory: { status: "on track", urgency: "save", aheadOfElapsed: true },
+      } as any),
+    ).toBe("Ahead of pace");
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        advisory: { status: "on track", urgency: "save", aheadOfElapsed: false },
+      } as any),
+    ).toBe("Behind pace");
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        advisory: { status: "on track", urgency: "on track", aheadOfElapsed: true },
+      } as any),
+    ).toBe("Ahead of pace");
+  });
 });
 
 describe("pace figures", () => {
@@ -68,8 +94,31 @@ describe("pace figures", () => {
     });
     expect(paceCells(null)).toEqual({ avg: "—", recent: "—" });
   });
+  it("reads the measured recent rate for the 24h cell, never the blended forecast", () => {
+    expect(
+      paceFigures({ avgPace: 10.6, burnRate: 7.2, recentRate: 0, paceSource: "recent" }),
+    ).toEqual({ avg: 10.6, recent: 0 });
+    expect(
+      paceCells({ avgPace: 10.6, burnRate: 7.2, recentRate: 0, paceSource: "recent" }),
+    ).toEqual({ avg: "10.6%/day", recent: "0.0%/day" });
+    expect(
+      paceCells({ avgPace: 3.1, burnRate: 12, recentRate: null, paceSource: "window-average" }),
+    ).toEqual({ avg: "3.1%/day", recent: "—" });
+    // A daemon older than the blend omits recentRate; burnRate was the raw 24h then.
+    expect(paceCells({ avgPace: 10.6, burnRate: 0, paceSource: "recent" })).toEqual({
+      avg: "10.6%/day",
+      recent: "0.0%/day",
+    });
+  });
   it("stacks labeled pace lines plus ideal for table rows", () => {
     expect(paceLines({ avgPace: 10.6, burnRate: 0, paceSource: "recent", idealRate: 24.1 })).toEqual([
+      { label: "Avg", value: "10.6%/day", tip: expect.stringContaining("Window average") },
+      { label: "24h", value: "0.0%/day", tip: expect.stringContaining("last 24 hours") },
+      { label: "Ideal", value: "24.1%/day", tip: expect.stringContaining("exactly on 100%") },
+    ]);
+    expect(
+      paceLines({ avgPace: 10.6, burnRate: 7.2, recentRate: 0, paceSource: "recent", idealRate: 24.1 }),
+    ).toEqual([
       { label: "Avg", value: "10.6%/day", tip: expect.stringContaining("Window average") },
       { label: "24h", value: "0.0%/day", tip: expect.stringContaining("last 24 hours") },
       { label: "Ideal", value: "24.1%/day", tip: expect.stringContaining("exactly on 100%") },
@@ -83,7 +132,7 @@ describe("pace figures", () => {
   it("exposes hover explanations on card and row pace labels", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
-    kimi.advisory = { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent" };
+    kimi.advisory = { ...kimi.advisory!, burnRate: 0, recentRate: 0, avgPace: 10.6, paceSource: "recent" };
     const card = renderToString(
       React.createElement(ProviderCard, { provider: kimi, recommended: true, asOf: s.asOf, onSelect: () => {} }),
     );
@@ -114,6 +163,46 @@ describe("pace figures", () => {
       },
     };
     expect(forecastLine(capped as any)).toBe("Exhausted · quota fully used");
+  });
+  it("renders watch with the finite exhaustion clock and without one otherwise", () => {
+    const watch = (over: any = {}) => ({
+      exclusionReason: null,
+      quota: { usedPct: 88 },
+      advisory: {
+        remaining: 12,
+        paceSource: "recent",
+        burnRate: 6,
+        recentRate: 6,
+        baselineRate: 3,
+        aheadOfElapsed: false,
+        status: "watch",
+        urgency: "save",
+        daysToExhaust: 2.1,
+        wastePct: 0,
+        daysLeft: 7,
+        ...over,
+      },
+    });
+    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2.1d at current pace");
+    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at current pace");
+    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
+  });
+  it("explains red and amber badges, confessing the estimated reset", () => {
+    const rendered = (advisory: any, quota: any = { usedPct: 90 }) =>
+      renderToString(
+        React.createElement(Badge, { provider: { exclusionReason: null, quota, advisory } as any }),
+      );
+    const red = "Burning faster than the window allows and ahead of elapsed time";
+    const amber = "Pace points at the cap, but position or the reset clock is uncertain";
+    expect(rendered({ status: "at risk", urgency: "burn now" })).toContain(`title="${red}"`);
+    expect(rendered({ status: "at risk", urgency: "burn now" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+      `title="${red} (estimated reset)"`,
+    );
+    expect(rendered({ status: "watch", urgency: "save" })).toContain(`title="${amber}"`);
+    expect(rendered({ status: "watch", urgency: "save" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+      `title="${amber} (estimated reset)"`,
+    );
+    expect(rendered({ status: "on track", urgency: "on track" })).not.toContain("title=");
   });
 });
 

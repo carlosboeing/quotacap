@@ -172,3 +172,33 @@ export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   }
   return out;
 }
+
+export function getHistoryBaseline(db:any, limit = 4): Map<string, number> {
+  let rows: { provider: string; used_pct: number; resets_at_estimated: number | null }[] = [];
+  try {
+    rows = db.prepare(`SELECT provider, used_pct, resets_at_estimated FROM window_closes ORDER BY detected_at DESC, id DESC`).all() as any[];
+  } catch (e: any) {
+    // A pre-observability database read offline is never migrated, so the
+    // table can be absent. No table means no recorded closes.
+    if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
+  }
+
+  const byProvider = new Map<string, { usedPct: number; verified: boolean }[]>();
+  for (const r of rows) {
+    const closes = byProvider.get(r.provider) ?? [];
+    closes.push({ usedPct: r.used_pct, verified: !r.resets_at_estimated });
+    byProvider.set(r.provider, closes);
+  }
+
+  const out = new Map<string, number>();
+  for (const [provider, newestFirst] of byProvider) {
+    const pool = newestFirst.slice(0, limit);
+    if (!pool.length) continue;
+    const verified = pool.filter((c) => c.verified);
+    const chosen = verified.length ? verified : pool;
+    const mean = chosen.reduce((sum, c) => sum + c.usedPct, 0) / chosen.length;
+    const rate = mean / 7;
+    if (Number.isFinite(rate)) out.set(provider, rate);
+  }
+  return out;
+}

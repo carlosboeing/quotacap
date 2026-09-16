@@ -60,6 +60,7 @@ const STATE_COLORS: Record<StateWord, string> = {
   "On track": "\x1b[32m",
   "Behind pace": "\x1b[33m",
   "Ahead of pace": "\x1b[93m",
+  "Watch": "\x1b[38;5;214m",
   "Cap risk": "\x1b[31m",
   "Measuring": "\x1b[90m",
   "Not reporting": "\x1b[90m",

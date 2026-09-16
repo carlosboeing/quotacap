@@ -61,6 +61,8 @@
   --danger-soft: oklch(0.945 0.042 25);
   --ahead: oklch(0.50 0.15 52);
   --ahead-soft: oklch(0.955 0.05 52);
+  --watch: oklch(0.50 0.15 40);
+  --watch-soft: oklch(0.955 0.05 40);
   --scrim: oklch(0.25 0.02 292 / 0.42);
 
   --rec: oklch(0.52 0.22 285);
@@ -71,11 +73,13 @@
   --fill-ontrack: oklch(0.72 0.16 163);
   --fill-behind: oklch(0.83 0.16 92);
   --fill-ahead: oklch(0.72 0.17 52);
+  --fill-watch: oklch(0.72 0.17 40);
   --fill-cap: oklch(0.60 0.20 27);
   --fill-out: oklch(0.78 0.01 292);
   --edge-ontrack: oklch(0.45 0.14 163);
   --edge-behind: oklch(0.47 0.13 92);
   --edge-ahead: oklch(0.47 0.16 52);
+  --edge-watch: oklch(0.47 0.16 40);
   --edge-cap: oklch(0.44 0.19 27);
   --edge-out: oklch(0.52 0.01 292);
 
@@ -117,6 +121,8 @@ html[data-theme="dark"] {
   --danger-soft: oklch(0.28 0.055 25);
   --ahead: oklch(0.79 0.15 52);
   --ahead-soft: oklch(0.29 0.06 52);
+  --watch: oklch(0.79 0.15 40);
+  --watch-soft: oklch(0.29 0.06 40);
   --scrim: oklch(0.08 0.02 295 / 0.62);
 
   --rec: oklch(0.78 0.17 285);
@@ -127,11 +133,13 @@ html[data-theme="dark"] {
   --fill-ontrack: oklch(0.74 0.16 163);
   --fill-behind: oklch(0.84 0.16 92);
   --fill-ahead: oklch(0.74 0.17 52);
+  --fill-watch: oklch(0.74 0.17 40);
   --fill-cap: oklch(0.64 0.20 27);
   --fill-out: oklch(0.52 0.01 292);
   --edge-ontrack: oklch(0.52 0.14 163);
   --edge-behind: oklch(0.58 0.14 92);
   --edge-ahead: oklch(0.52 0.16 52);
+  --edge-watch: oklch(0.52 0.16 40);
   --edge-cap: oklch(0.46 0.19 27);
   --edge-out: oklch(0.66 0.01 292);
 
@@ -675,6 +683,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .recB .tint-cap {
   background: var(--danger-soft);
 }
+.recB .tint-watch {
+  background: var(--watch-soft);
+}
 
 .lane-l {
   display: inline-flex;
@@ -694,6 +705,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .l-behind { color: var(--warn); }
 .l-ahead { color: var(--ahead); }
 .l-cap { color: var(--danger); }
+.l-watch { color: var(--watch); }
 .l-out { color: var(--ink-soft); }
 
 .rsub {
@@ -1237,6 +1249,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-weight: 600;
 }
 .out-behind { color: var(--warn); }
+.out-watch { color: var(--watch); }
 .out-cap { color: var(--danger); }
 .out-ontrack { color: var(--good); }
 .out-none { color: var(--ink-soft); }
@@ -1406,6 +1419,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .pace-behind  { color: var(--warn);   border-color: var(--warn);   background: var(--warn-soft); }
 .pace-ontrack { color: var(--good);   border-color: var(--good);   background: var(--good-soft); }
 .pace-ahead   { color: var(--ahead);  border-color: var(--ahead);  background: var(--ahead-soft); }
+.pace-watch   { color: var(--watch);  border-color: var(--watch);  background: var(--watch-soft); }
 .pace-cap     { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 .pace-out     { color: var(--ink-soft); border-color: var(--line-strong); background: transparent; }
 .pace-out::before { background: var(--line-strong); }

@@ -82,6 +82,27 @@ describe("reset rail", () => {
     expect(html).toMatch(/pin-tooltip/);
     expect(html).not.toMatch(/data-testid="pin"[^>]*\stitle=/);
   });
+  it("paints Watch pins with the amber watch token, not the neutral out style", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const claude = s.providers.find((p: any) => p.id === "claude");
+    const asOf = new Date(Date.parse(s.asOf) - 24 * 60 * 60 * 1000).toISOString();
+    const providers = [
+      {
+        ...claude,
+        advisory: { ...claude.advisory, status: "watch" },
+        quota: {
+          ...claude.quota,
+          resetsAt: new Date(Date.parse(asOf) + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      },
+    ];
+    const html = renderToString(
+      React.createElement(ResetRail, { providers, asOf, onSelectProvider: () => {} })
+    );
+    expect(html).toMatch(/pin-label pace-watch/);
+    expect(html).toContain("--dot-color:var(--watch)");
+    expect(html).not.toMatch(/pin-label pace-out/);
+  });
   // The pill used to render name.split(" ")[0], so "Antigravity" and
   // "Antigravity 3P" both showed as "Antigravity", and the estimate marker
   // was appended to the name rather than the timestamp it qualifies.

@@ -5,6 +5,7 @@ const STATES: Array<{ label: string; cls: string; meaning: string }> = [
   { label: "Behind pace", cls: "pace-behind", meaning: "Burning slow; risk of unused quota waste" },
   { label: "Ahead of pace", cls: "pace-ahead", meaning: "Burning faster than time; monitor usage" },
   { label: "Cap risk", cls: "pace-cap", meaning: "Will hit cap before reset window closes" },
+  { label: "Watch", cls: "pace-watch", meaning: "Pace points at the cap, but position or the reset clock is uncertain" },
   { label: "Measuring", cls: "pace-out", meaning: "Not enough data yet; pace appears after 6h" },
   { label: "Not reporting", cls: "pace-out", meaning: "No usable reading; excluded from ranking" },
 ];

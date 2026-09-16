@@ -137,7 +137,7 @@
 
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
-* Advisory: consume `resetsAtEstimated` in recommendation engine (last open thread from #12)
+* Forecast constants fixture-locked only — re-run `scripts/forecast-backtest.mjs` against the live DB once `window_closes` holds receipts
 
 ## Future
 

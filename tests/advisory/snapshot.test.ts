@@ -15,6 +15,12 @@ const RT = { available: true, ready: true, polling: "idle" as const, lastComplet
 
 function quota(db: any, q: any) { upsertQuota(db, { plan: "p", source: "cli", ...q }); }
 
+function close(db: any, provider: string, usedPct: number) {
+  db.prepare(
+    `INSERT INTO window_closes(provider, plan, used_pct, leftover_pct, sampled_at, sampled_quota_id, period_start, resets_at, resets_at_estimated, detected_at, reason) VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(provider, "p", usedPct, 100 - usedPct, NOW.toISOString(), 1, "2026-08-31T06:00:00+10:00", NOW.toISOString(), null, NOW.toISOString(), "usage-drop");
+}
+
 describe("snapshot", () => {
   it("represents an enabled provider before its first reading", () => {
     const db = openDb(":memory:"); migrate(db);
@@ -211,5 +217,55 @@ describe("snapshot", () => {
     expect(s.providers[0].catalog.listed).toEqual([]);
     expect(s.recommendation.catalogStatus).toBe("unfetched");
     expect(s.recommendation.models).toEqual([]);
+  });
+
+  it("wires the recent rate and the history baseline into the blended advisory", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // Two polls six hours apart: 10% -> 16% is a 24%/day recent rate.
+    quota(db, { provider: "kimi", usedPct: 10, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-05T06:00:00+10:00", fetchedAt: "2026-09-07T00:00:00+10:00" });
+    quota(db, { provider: "kimi", usedPct: 16, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-05T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    // One recorded close at 70% used over its week is a 10%/day baseline.
+    close(db, "kimi", 70);
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
+    const adv = s.providers[0].advisory!;
+    expect(adv.recentRate).toBeCloseTo(24, 5);
+    expect(adv.baselineRate).toBeCloseTo(10, 5);
+    expect(adv.burnRate).toBeCloseTo(17, 5); // 10 + 0.5 * (24 - 10)
+    expect(adv.paceSource).toBe("recent");
+    expect(adv.burnMeasured).toBe(true);
+    expect(adv.status).toBe("watch");
+  });
+
+  it("ranks a verified impending deadline over an estimated phantom window", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // Verified: 18h left, 2 polls 6h apart -> recent 8%/day, window average 9.6 -> blend 8.8, 33% waste.
+    quota(db, { provider: "claude", usedPct: 58, resetsAt: "2026-09-08T00:00:00+10:00", periodStart: "2026-09-01T00:00:00+10:00", fetchedAt: "2026-09-07T00:00:00+10:00" });
+    quota(db, { provider: "claude", usedPct: 60, resetsAt: "2026-09-08T00:00:00+10:00", periodStart: "2026-09-01T00:00:00+10:00", fetchedAt: NOW.toISOString() });
+    // Estimated: a fictional 7d window whose phantom waste beats the real one.
+    quota(db, { provider: "grok", usedPct: 9.5, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T06:00:00+10:00", fetchedAt: "2026-09-07T00:00:00+10:00", resetsAtEstimated: true });
+    quota(db, { provider: "grok", usedPct: 10, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T06:00:00+10:00", fetchedAt: NOW.toISOString(), resetsAtEstimated: true });
+    const s = buildSnapshot(db, { enabledProviders: ["claude", "grok"], now: NOW, runtime: RT });
+    const claudeAdv = s.providers.find((p) => p.id === "claude")!.advisory!;
+    const grokAdv = s.providers.find((p) => p.id === "grok")!.advisory!;
+    expect(grokAdv.wastePct!).toBeGreaterThan(claudeAdv.wastePct!);
+    expect(claudeAdv.aheadOfElapsed).toBe(false);
+    expect(grokAdv.aheadOfElapsed).toBe(false);
+    expect(s.recommendation.use).toBe("claude");
+    expect(s.recommendation.recommendationBasis).toBe("known-waste");
+  });
+
+  it("emits null new advisory fields when pace is unknown", () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "kimi", usedPct: 2, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T05:30:00+10:00", fetchedAt: NOW.toISOString() });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
+    const adv = s.providers[0].advisory!;
+    expect(adv.burnRate).toBeNull();
+    expect(adv.recentRate).toBeNull();
+    expect(adv.baselineRate).toBeNull();
+    expect(adv.aheadOfElapsed).toBeNull();
+    const r = projectRecommendationResponse(s, "any");
+    expect(r.advisories[0]).toHaveProperty("recentRate", null);
+    expect(r.advisories[0]).toHaveProperty("baselineRate", null);
+    expect(r.advisories[0]).toHaveProperty("aheadOfElapsed", null);
   });
 });

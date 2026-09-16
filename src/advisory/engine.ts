@@ -1,6 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
-import { MIN_PACE_SPAN_DAYS } from "./types.js";
+import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -24,7 +24,37 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   return Math.max(0, pace);
 }
 
-export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(), paceSourceOrMeasured:PaceSource|boolean="unknown"): Advisory {
+export function blendForecast(recent: number | null, baseline: number | null): number | null {
+  if (recent === null) return baseline;
+  if (baseline === null) return recent;
+  return Math.max(0, baseline + BLEND_K * (recent - baseline));
+}
+
+export function baselineFor(historyAvg: number | null, q: Quota, now: Date): number | null {
+  if (historyAvg !== null) return historyAvg;
+  return averagePace(q, now);
+}
+
+/**
+ * Position in the window from raw timestamps, clamped to 0..100. Derived
+ * elapsed time, never the clamped `daysLeft`: an estimated reset makes this
+ * fictional, which is exactly why the gate and the ahead test also check
+ * `resetsAtEstimated`. Returns null when either timestamp is missing or
+ * unparseable, the window has no positive span, or no time has elapsed.
+ */
+function elapsedPctOf(q: Quota, now: Date): number | null {
+  if (!q.periodStart) return null;
+  const start = new Date(q.periodStart).getTime();
+  const resets = new Date(q.resetsAt).getTime();
+  if (Number.isNaN(start) || Number.isNaN(resets)) return null;
+  const span = resets - start;
+  if (!(span > 0)) return null;
+  const elapsed = now.getTime() - start;
+  if (!(elapsed > 0)) return null;
+  return Math.min(100, Math.max(0, (elapsed / span) * 100));
+}
+
+export function computeAdvisory(q: Quota, recent: number | null, baseline: number | null, now = new Date()): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.usedPct;
@@ -33,19 +63,12 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
   // Nothing left to burn: force the capped verdict even when the recent
   // window is flat (burn 0 at 100% used must not read "on track").
   const exhausted = remaining <= 0;
+  const burnRate = blendForecast(recent, baseline);
 
-  let paceSource: PaceSource;
-  let burnMeasured: boolean;
-  if (burnRate === null) {
-    paceSource = "unknown";
-    burnMeasured = false;
-  } else if (typeof paceSourceOrMeasured === "string") {
-    paceSource = paceSourceOrMeasured;
-    burnMeasured = paceSource === "recent";
-  } else {
-    burnMeasured = paceSourceOrMeasured;
-    paceSource = burnMeasured ? "recent" : "window-average";
-  }
+  // paceSource describes recent availability; the blend's composition is
+  // carried by recentRate and baselineRate.
+  const paceSource: PaceSource = recent !== null ? "recent" : burnRate !== null ? "window-average" : "unknown";
+  const burnMeasured = recent !== null;
 
   if (burnRate === null) {
     return {
@@ -54,6 +77,9 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
       remaining,
       idealRate,
       burnRate: null,
+      recentRate: null,
+      baselineRate: null,
+      aheadOfElapsed: null,
       avgPace,
       burnMeasured: false,
       paceSource: "unknown",
@@ -70,6 +96,9 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
       remaining,
       idealRate,
       burnRate,
+      recentRate: null,
+      baselineRate: null,
+      aheadOfElapsed: null,
       avgPace,
       burnMeasured,
       paceSource,
@@ -79,19 +108,34 @@ export function computeAdvisory(q:Quota, burnRate:number | null, now=new Date(),
       urgency: "slow down",
     };
   }
+
+  // Red needs a deadband margin and a cumulatively-ahead position on a
+  // verified clock; a missing or estimated clock caps at Watch.
+  const elapsed = elapsedPctOf(q, now);
+  const estimated = q.resetsAtEstimated === true;
+  const gate = elapsed !== null && !estimated && q.usedPct >= elapsed * (1 - GATE_TOL);
+  const aheadOfElapsed = elapsed !== null && !estimated && q.usedPct > elapsed * (1 + GATE_TOL);
+
   const wastePct = Math.max(0, remaining - burnRate*daysLeft);
-  // burn > ideal is exactly "quota exhausts before reset": remaining/burn < daysLeft
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
-  const status: BurnStatus = daysToExhaust < daysLeft ? "at risk" : "on track";
+  const over = daysToExhaust < daysLeft * (1 - RISK_MARGIN);
+  const marginal = !over && daysToExhaust < daysLeft * (1 + RISK_MARGIN);
+  let status: BurnStatus;
+  if (over && gate) status = "at risk";
+  else if (over || marginal) status = "watch";
+  else status = "on track";
+
   let urgency:Urgency = "on track";
   if(wastePct>30 && daysLeft<3) urgency="burn now";
   else if(wastePct>20 && daysLeft<7) urgency="use soon";
   else if(burnRate > idealRate*1.4) urgency="slow down";
   else if(wastePct>10) urgency="save";
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
+  if (estimated && urgency === "burn now") urgency = "use soon";
+
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
 }
 
-export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<string,number>(), now=new Date()){
+export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<string,{ recent: number | null; baseline: number | null }>(), now=new Date()){
   if(!quotas.length) {
     return {
       use: "none",
@@ -104,18 +148,16 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
     };
   }
 
-  // Build advisories for every quota with honest pace sources.
+  // Callers own the blend inputs; an entry without pace stays honest about it.
   const advisories = quotas.map(q => {
-    const recent = burnByProvider.get(q.provider);
-    if (recent !== undefined) {
-      return computeAdvisory(q, recent, now, "recent");
-    }
-    const avg = averagePace(q, now);
-    if (avg !== null) {
-      return computeAdvisory(q, avg, now, "window-average");
-    }
-    return computeAdvisory(q, null, now, "unknown");
+    const pace = paceByProvider.get(q.provider);
+    if (pace) return computeAdvisory(q, pace.recent, pace.baseline, now);
+    return computeAdvisory(q, null, null, now);
   });
+
+  // Ranking must not assert a fictional deadline: estimated-clock candidates
+  // are a fallback pool, read from the flags on the quotas already received.
+  const estimatedProviders = new Set(quotas.filter(q => q.resetsAtEstimated === true).map(q => q.provider));
 
   // 1. Prefer measured providers with positive avoidable waste (actionable "Use more" candidates).
   const positiveWaste = advisories.filter(
@@ -124,9 +166,10 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
   );
 
   if (positiveWaste.length > 0) {
-    const burnNow = positiveWaste.filter(a => a.urgency === "burn now");
-    const pool = burnNow.length ? burnNow : positiveWaste;
-    const use = pool.sort((a, b) => b.wastePct - a.wastePct)[0];
+    const verified = positiveWaste.filter(a => !estimatedProviders.has(a.provider));
+    const pool = verified.length ? verified : positiveWaste.filter(a => estimatedProviders.has(a.provider));
+    const burnNow = pool.filter(a => a.urgency === "burn now");
+    const use = (burnNow.length ? burnNow : pool).sort((a, b) => b.wastePct - a.wastePct)[0];
     return {
       use: use.provider,
       reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
@@ -158,27 +201,10 @@ export function recommend(quotas:Quota[], _task:string, burnByProvider=new Map<s
     };
   }
 
-  // 3. Check if all measured providers are healthy and on pace (status "on track").
-  const onTrack = advisories.filter(
-    a => a.paceSource !== "unknown" && a.status === "on track" && a.remaining > 0
-  );
-
-  if (onTrack.length > 0) {
-    return {
-      use: "none",
-      reason: "No subscription needs priority",
-      wastePct: 0,
-      idealRate: 0,
-      recommendationBasis: "none" as RecommendationBasis,
-      alternatives: quotas,
-      advisories,
-    };
-  }
-
-  // 4. No meaningful candidate (e.g. all quotas at risk or exhausted).
+  // 3. No meaningful candidate (e.g. all quotas at risk, watch, or exhausted).
   return {
     use: "none",
-    reason: "all quotas at risk or exhausted",
+    reason: "all quotas at risk, watch, or exhausted",
     wastePct: 0,
     idealRate: 0,
     recommendationBasis: "none" as RecommendationBasis,

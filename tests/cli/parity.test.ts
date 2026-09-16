@@ -254,6 +254,78 @@ for (const [name, snap, snapJson] of FIXTURES) {
   });
 }
 
+describe("parity: watch tier", () => {
+  const watchSnapshot = (estimated = false): StateSnapshot => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const kimi = s.providers.find((p: any) => p.id === "kimi");
+    kimi.advisory = {
+      ...kimi.advisory,
+      status: "watch",
+      urgency: "save",
+      daysToExhaust: 2.1,
+      wastePct: 0,
+      recentRate: 6.2,
+      baselineRate: 3.1,
+      aheadOfElapsed: false,
+    };
+    if (estimated) kimi.quota.resetsAtEstimated = true;
+    else delete kimi.quota.resetsAtEstimated;
+    return s;
+  };
+
+  let mode: "plain" | "estimated" = "plain";
+  let closeServer: () => Promise<void>;
+  beforeEach(async () => {
+    mode = "plain";
+    const server = http.createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(watchSnapshot(mode === "estimated")));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    closeServer = () =>
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+  });
+  afterEach(async () => {
+    await closeServer();
+  });
+
+  it("renders Watch, the em-dash sentence, and the compact tilde on every surface", async () => {
+    const snap = watchSnapshot();
+    const kimi = snap.providers.find((p) => p.id === "kimi")!;
+    expect(stateWord(kimi)).toBe("Watch");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch");
+    expect(compactSuffix(kimi)).toBe("~");
+    const wide = strip(renderWide(snap, { now: FIXED_NOW }));
+    expect(wide).toContain("Watch");
+    expect(wide).toContain("Exhausts in 2.1d — watch");
+    expect(strip(renderNarrow(snap, { now: FIXED_NOW }))).toContain("Watch");
+    expect(renderMarkdownTable(snap, FIXED_NOW)).toContain("| Watch |");
+    expect(renderCompact(snap, FIXED_NOW)).toContain("[kimi:22%~]");
+    expect(renderWide(snap, { now: FIXED_NOW, color: true })).toContain("\x1b[38;5;214mWatch");
+
+    const f: any = await handleTool("forecast", { provider: "kimi" });
+    const body = JSON.parse(f.content[0].text);
+    expect(body.state).toBe("Watch");
+    expect(body.forecast).toBe("Exhausts in 2.1d — watch");
+    expect(body.advisory.recentRate).toBe(6.2);
+    expect(body.advisory.baselineRate).toBe(3.1);
+    expect(body.advisory.aheadOfElapsed).toBe(false);
+    const quotas: any = await handleTool("get_quotas", {});
+    expect(quotas.content[0].text).toContain("| Watch |");
+    expect(JSON.parse(quotas.content[1].text)).toEqual(projectQuotasResponse(snap));
+  });
+
+  it("composes the estimated suffix on the watch sentence", async () => {
+    mode = "estimated";
+    const snap = watchSnapshot(true);
+    const kimi = snap.providers.find((p) => p.id === "kimi")!;
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch (estimated)");
+    const f: any = await handleTool("forecast", { provider: "kimi" });
+    expect(JSON.parse(f.content[0].text).forecast).toBe("Exhausts in 2.1d — watch (estimated)");
+  });
+});
+
 describe("parity: provider-error observability", () => {
   const failedSnapshot = (): StateSnapshot => {
     const s = JSON.parse(exampleStateSnapshotJson);

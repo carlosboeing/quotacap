@@ -265,6 +265,33 @@ describe("STATE words follow the shared badge mapping", () => {
       stateWord(ps({ id: "x", quota: quota(), advisory: advisory({ status: "unknown", urgency: "on track" }) })),
     ).toBe("Measuring");
   });
+  it("watch status reads Watch and never Cap risk", () => {
+    for (const urgency of ["burn now", "slow down", "save", "on track"] as const) {
+      expect(
+        stateWord(ps({ id: "x", quota: quota(), advisory: advisory({ status: "watch", urgency }) })),
+      ).toBe("Watch");
+    }
+  });
+  it("on-track rows ahead of elapsed revive Ahead of pace", () => {
+    expect(
+      stateWord(
+        ps({
+          id: "x",
+          quota: quota(),
+          advisory: advisory({ status: "on track", urgency: "save", aheadOfElapsed: true }),
+        }),
+      ),
+    ).toBe("Ahead of pace");
+    expect(
+      stateWord(
+        ps({
+          id: "x",
+          quota: quota(),
+          advisory: advisory({ status: "on track", urgency: "save", aheadOfElapsed: false }),
+        }),
+      ),
+    ).toBe("Behind pace");
+  });
 });
 
 describe("forecast sentences (D7)", () => {
@@ -306,6 +333,19 @@ describe("forecast sentences (D7)", () => {
       }),
     });
     expect(forecastText(p, FIXED_NOW)).toBe("Exhausted");
+  });
+  it("watch rows name the exhaust clock and compose with the estimated suffix", () => {
+    const watch = (over: Partial<Advisory> = {}, estimated = false) =>
+      ps({
+        id: "x",
+        quota: quota({ resetsAtEstimated: estimated }),
+        reporting: true,
+        advisory: advisory({ status: "watch", urgency: "save", wastePct: 0, daysToExhaust: 2.1, ...over }),
+      });
+    expect(forecastText(watch(), FIXED_NOW)).toBe("Exhausts in 2.1d — watch");
+    expect(forecastText(watch({ daysToExhaust: Infinity }), FIXED_NOW)).toBe("Near the cap — watch");
+    expect(forecastText(watch({ daysToExhaust: null }), FIXED_NOW)).toBe("Near the cap — watch");
+    expect(forecastText(watch({}, true), FIXED_NOW)).toBe("Exhausts in 2.1d — watch (estimated)");
   });
   it("estimated resets use the engine estimate vocabulary", () => {
     const codex = exampleStateSnapshot.providers.find((p) => p.id === "codex")!;
@@ -368,6 +408,31 @@ describe("pace pair text", () => {
     const p = ps({ id: "x", quota: quota(), advisory: advisory() });
     expect(paceText(p)).toBe("3.0 avg");
   });
+  it("reads recentRate for the 24h figure, never the blend", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({
+        burnRate: 7.2,
+        recentRate: 0,
+        avgPace: 10.6,
+        burnMeasured: true,
+        paceSource: "recent",
+      }),
+    });
+    expect(paceText(p)).toBe("10.6 avg · 0.0 24h");
+    const blended = ps({
+      id: "x",
+      quota: quota(),
+      advisory: advisory({
+        burnRate: 12,
+        recentRate: null,
+        avgPace: 3.1,
+        paceSource: "window-average",
+      }),
+    });
+    expect(paceText(blended)).toBe("3.1 avg");
+  });
   it("shows the 24h rate alone when the window just started", () => {
     const p = ps({
       id: "x",
@@ -398,6 +463,8 @@ describe("compact suffix legend (D5)", () => {
   const cases: Array<[string, Partial<ProviderSnapshot>, string]> = [
     ["on track has no suffix", { quota: quota(), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, ""],
     ["cap risk", { quota: quota(), advisory: advisory({ status: "at risk", wastePct: 0 }) }, "!"],
+    ["watch", { quota: quota(), advisory: advisory({ status: "watch", urgency: "on track", wastePct: 0 }) }, "~"],
+    ["watch with waste urgency", { quota: quota(), advisory: advisory({ status: "watch", urgency: "save", wastePct: 0 }) }, "~"],
     ["behind pace", { quota: quota(), advisory: advisory({ urgency: "save" }) }, "~"],
     ["ahead of pace", { quota: quota(), advisory: advisory({ urgency: "slow down", status: "on track" }) }, "~"],
     ["estimated reset", { quota: quota({ resetsAtEstimated: true }), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, "~"],
@@ -579,10 +646,22 @@ describe("wide table", () => {
       expect(line.slice(70, 72)).toBe("  ");
       expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
       expect(line.slice(81, 83)).toBe("  ");
-      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Measuring|Not reporting) *$/);
+      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting) *$/);
       expect(line.slice(98, 100)).toBe("  ");
       expect(line.slice(100).length).toBeGreaterThan(0);
     }
+  });
+  it("paints Watch with the 256-color amber-orange entry", () => {
+    const p = ps({
+      id: "x",
+      quota: quota(),
+      reporting: true,
+      advisory: advisory({ status: "watch", urgency: "save" }),
+    });
+    const out = renderWide(snap([p], "none"), { now: FIXED_NOW, color: true });
+    expect(out).toContain("\x1b[38;5;214mWatch");
+    expect(strip(out)).toContain("Watch");
+    expect(strip(out)).toContain("Exhausts in 30.0d — watch");
   });
   it("honors the requested sort key", () => {
     const lines = strip(renderWide(exampleStateSnapshot, { now: FIXED_NOW, sort: "used-asc" })).split("\n");

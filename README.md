@@ -10,7 +10,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 ## Features
 
 - **Visibility**: remaining usage and reset time for one current window per connected plan
-- **Pacing**: recent usage when history is available, or an estimated pace while QuotaCap collects it
+- **Pacing**: a blend of the last 24h and past closed windows, or a window-average pace while QuotaCap collects history
 - **Advice**: an estimate of which plan to use next so you can use more of each allowance without exhausting one early
 - **Dashboard, CLI, and MCP**: the same data and advice on every surface
 

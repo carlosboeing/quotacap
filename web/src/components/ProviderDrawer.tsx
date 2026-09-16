@@ -170,6 +170,8 @@ export function pacingStatusToken(provider: ProviderView): string {
       return "ontrack";
     case "Ahead of pace":
       return "ahead";
+    case "Watch":
+      return "watch";
     case "Cap risk":
       return "cap";
     case "Measuring":
@@ -230,6 +232,8 @@ export function rankingCopy(
     decision = recommendation.reason;
   } else if (advisory?.status === "at risk") {
     decision = "Forecast to hit the cap before reset; flagged to ease off.";
+  } else if (advisory?.status === "watch") {
+    decision = "Near the cap — position or reset clock uncertain.";
   } else if (advisory?.urgency === "slow down") {
     decision = "Burning faster than the window; ease off.";
   } else if (advisory?.urgency === "on track") {
