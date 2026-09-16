@@ -1281,6 +1281,45 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: var(--t-2);
   color: var(--ink-soft);
 }
+.pcard-foot .foot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* Closed-week strip: the live PaceBar reduced to fill + leftover hatch. */
+.weeks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s3);
+}
+.weeks .week .track {
+  height: 10px;
+}
+.weeks .week .fill {
+  background: var(--fill-out);
+  box-shadow: none;
+}
+.weeks .week .lab {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 6px;
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.weeks .week .lab b {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--t-2);
+}
+.weeks .stale-note {
+  font-weight: 500;
+}
+.weeks ~ .cell-s {
+  margin-top: var(--s2);
+}
 
 /* Pace Bars */
 .trackwrap {

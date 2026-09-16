@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## In flight
+
+* Weekly closed-window ledger — `window_closes` records the last old-window reading whenever a weekly reset is detected (`leftover = 100 − used`), the poll coordinator wakes five minutes before a known non-estimated weekly reset, and leftover appears on the dashboard card foot, ledger Reset cell, drawer Closed weeks strip, CLI `status` under RESETS, and MCP JSON (unreleased)
+
 ## Recently shipped — 0.0.34 — 2026-09-16 (initial poll settling, provider outage resilience & notice polish)
 
 * Initial poll dashboard timing — `quotacap web` waits up to 5s for the daemon's initial background poll to settle before opening the browser, avoiding transient stale or not-reporting banners (#91)

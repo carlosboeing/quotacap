@@ -25,8 +25,8 @@ Claude Code, Codex, Kimi Code, Grok, and Antigravity can expose multiple concurr
 | Adapters | Poll one agent CLI for its current usage snapshot (% used, reset time, plan). `claude` and `agy` use `execFile`. `codex`, `kimi`, `grok`, `muse` use a PTY. Each adapter fails closed. PTY adapters are TUI-fragile. Poll latency is 2–10 s. `agy` emits two rows: `agy` and `agy:3p`. | `src/adapters/claude.ts`, `agy.ts`, `codex.ts`, `kimi.ts`, `grok.ts`, `muse.ts`, `manual.ts`, `types.ts` |
 | PTY runner | Generic PTY session. It spawns via `node-pty`. It waits for readiness or a settle delay. It sends input with `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. | `src/adapters/pty.ts` |
 | Failure classifier | Pure allowlist classifier. Maps raw adapter failure evidence to safe diagnostic codes, summaries, and action guidance while stripping secrets, ANSI/OSC codes, paths, and control characters. | `src/diagnostics/failure.ts` |
-| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, the 24-hour rolling usage pace, and `adapter_attempts` with nullable diagnostic fields. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts`, `src/store/attempts.ts` |
-| Daemon | The poll loop. `pollOnce` every 15 minutes plus jitter. `Promise.allSettled` isolation. Single-instance `O_EXCL` pidfile with stale-steal. Pinned `claude` binary at start. At start, `autoEnableNewProviders` (`src/config.ts`) appends each registered adapter absent from `knownProviders` to both lists when its binary resolves on PATH; absent binaries stay unknown for the next start, known-but-disabled providers are never re-added, and configs predating the key backfill the pre-0.0.24 five. Runs until SIGINT or SIGTERM. | `src/daemon.ts` |
+| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, the 24-hour rolling usage pace, `adapter_attempts` with nullable diagnostic fields, and `window_closes` receipts written on weekly cycle-breaks. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts`, `src/store/attempts.ts` |
+| Daemon | The poll loop. `pollOnce` on a plain `pollMinutes` timer (default 15, no jitter), pulled forward to five minutes before a known non-estimated weekly `resetsAt`. `Promise.allSettled` isolation. Single-instance `O_EXCL` pidfile with stale-steal. Pinned `claude` binary at start. At start, `autoEnableNewProviders` (`src/config.ts`) appends each registered adapter absent from `knownProviders` to both lists when its binary resolves on PATH; absent binaries stay unknown for the next start, known-but-disabled providers are never re-added, and configs predating the key backfill the pre-0.0.24 five. Runs until SIGINT or SIGTERM. | `src/daemon.ts` |
 | Advisory engine | Target daily usage, window-average and recent (24h) pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
 | Provider naming | Server-side registry of `displayName`, `vendor`, `harness` and `description` per provider id, applied once in `buildSnapshot`. Unknown ids fall back to the raw id with null metadata. Additive, output-only wire fields on `/api/state` and MCP `get_quotas`. Filled at the two ingest boundaries (`resolveSnapshot` for CLI and MCP, `toViewModel` for the dashboard) so a CLI newer than a still-running daemon falls back to raw ids instead of crashing. | `src/advisory/provider-names.ts`, `src/advisory/snapshot.ts`, `src/cli/snapshot-source.ts`, `web/src/state.ts` |
 | HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `GET /api/token`, `POST /api/refresh`, `/`, `/assets/*`. Bound to `127.0.0.1:8787`. `Host` and `Origin` allowlists. `X-QuotaCap-Token` on mutating routes. Rooted asset serving. | `src/http/server.ts` |
@@ -55,7 +55,7 @@ flowchart LR
   MS -->|pty muse to /usage| AD
 
   AD -->|normalized quota rows| ST["SQLite ~/.quotacap/quotacap.db"]
-  DT["Daemon (15m + jitter, single-instance)"] -->|pollOnce| AD
+  DT["Daemon (pollMinutes + pre-reset wake, single-instance)"] -->|pollOnce| AD
   ST -->|latest + snapshots + burn| AE["Advisory engine"]
 
   AE --> API["HTTP API 127.0.0.1:8787"]
@@ -69,7 +69,7 @@ The daemon, adapters, store, advisory engine, and HTTP API form one local proces
 
 ## Data model
 
-Two tables in `~/.quotacap/quotacap.db`:
+Four tables in `~/.quotacap/quotacap.db`:
 
 ```sql
 quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL,
@@ -84,25 +84,41 @@ adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL,
                  success INTEGER NOT NULL, failure_category TEXT,
                  diagnostic_code TEXT, summary TEXT, action TEXT,
                  error_detail TEXT)
+
+window_closes(id INTEGER PRIMARY KEY, provider TEXT NOT NULL, plan TEXT,
+              used_pct REAL NOT NULL, leftover_pct REAL NOT NULL,
+              sampled_at TEXT NOT NULL, sampled_quota_id INTEGER NOT NULL,
+              period_start TEXT, resets_at TEXT, resets_at_estimated INTEGER,
+              detected_at TEXT NOT NULL, reason TEXT NOT NULL,
+              UNIQUE(provider, sampled_quota_id))
 ```
 
 - `quotas` is append-only polling history: one row per provider per poll. The recent usage pace is the percentage-point change over a rolling window of up to 24 hours. See `getBurnRates` in `src/store/quotas.ts`. The rolling window keeps calendar-day boundaries and poll timing from skewing it. Every advisory also carries the window-average pace (`avgPace`: used % ÷ days elapsed) alongside the forecast input (`burnRate`: recent when measured, else the average), and an exhausted window (nothing remaining) forces the at-risk verdict even when recent burn is flat. Neither pace annualizes on under 6h of data (`MIN_PACE_SPAN_DAYS`): thin windows read Measuring with `—` figures instead of fabricating verdicts. The `raw` column was dropped in `src/store/db.ts` `migrate`. A migration rebuilds an old `raw` table and preserves rows.
 - `snapshots` is the per-day roll-up that feeds the 7-day strip.
 - `adapter_attempts` records the latest poll attempt per provider with four nullable diagnostic fields (`diagnostic_code`, `summary`, `action`, `error_detail`). An idempotent `PRAGMA table_info` loop adds missing columns on legacy databases. Legacy attempt rows without diagnostic fields safely normalize to `null` on read, with `error` aliased to `error_detail`. Successful and skipped attempts clear diagnostic fields.
+- `window_closes` is the weekly closed-window ledger: one row per detected weekly reset, tied to the previous `quotas.id` (`sampled_quota_id`). `leftover_pct` is stored, not recomputed on read, and `reason` is `usage-drop`, `resets-at-rolled`, or `both`. Store all; readers ask for the latest 4.
 - The `Quota` shape is `{ provider, plan, usedPct, sessionPct?, resetsAt, periodStart, source, fetchedAt, creditsUsd?, resetsAtEstimated? }`. No `raw` field crosses the store or API boundary (`src/store/quotas.ts` `mapRow`, `src/adapters/types.ts`). `ParsedQuota` keeps an in-memory `raw` slice for debugging only — PTY adapters (`codex`, `kimi`, `grok`, `muse`) cap at 4096 chars, `claude`/`agy` keep the full CLI result. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`, `tests/store/db.test.ts`).
 
 ## Poll cycle
 
-1. The daemon wakes on the poll interval plus jitter, and on `POST /api/refresh` (60s debounce).
+1. The daemon wakes on a plain `setTimeout` of `pollMinutes` (default 15, no jitter), pulled forward to five minutes before the nearest known weekly `resetsAt` that is not estimated (skipped with under 25 seconds left, or when a poll already landed in the lead window), and on `POST /api/refresh` (60s debounce).
 2. `pollAll(enabledProviders)` runs each adapter isolated by `Promise.allSettled` with a per-adapter timeout. Timeouts are `claude` 8 s, `codex` 12 s, `kimi` 8 s, `grok` 14 s, `agy` 20 s, `muse` 14 s (`src/adapters/index.ts` `ADAPTER_TIMEOUTS`). On failure, runners capture bounded failure evidence — PTY runners capture one merged transcript (since terminal allocation has no separate stderr stream), and exec runners capture callback stderr and exit code metadata. All failures pass through the shared allowlist classifier (`src/diagnostics/failure.ts`) into canonical safe phrases and actionable guidance under the sanitized-output rule (secrets, tokens, paths, and arbitrary text omitted as `Unrecognized diagnostic text omitted`). A failure degrades the provider row fail-closed; it never becomes a misleading "0% used". Per-adapter outcome logs record timestamps, status, diagnostic codes, and safe details.
 3. Adapter mechanisms — credential-free, no token ownership:
    - `claude`, `agy`: use `execFile` with an argv list. No shell. `claude` is pinned at daemon start via `which claude` (`src/daemon.ts:resolveClaudeExecPath`). `claude` runs `claude -p /usage --output-format json`. `agy` runs `agy -p /usage --output-format json`. `claude` parses week and session percents. `agy` parses `groups[].buckets[]` JSON and emits two rows: `agy` and `agy:3p`. Both use `source: "cli"`.
    - `codex`, `kimi`, `grok`, `muse`: use `runPty` (`src/adapters/pty.ts`). The runner spawns the CLI in a PTY via `node-pty`. It waits a settle delay (`codex` 2 s, `grok` 5 s) or a readiness regex (`kimi`). It writes `/status` or `/usage` plus `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. Parsers are TUI-fragile. A vendor text change breaks the regex. The row then degrades fail-closed until the pattern is fixed. Poll latency is 2–10 s. It dominates `POST /api/refresh` and the first poll. It does not affect the steady-state 15 m timer. These adapters use `source: "tui"`. They abort fail-closed on trust prompts without auto-trusting.
    - `muse` additionally needs two opt-in `runPty` capabilities, both off by default and unused by the other adapters. `respondToQueries` answers the terminal capability queries the Muse TUI blocks on — cursor position (`ESC[6n`), device attributes (`ESC[c`) and OSC 4/10/11 colour reports. Only the cursor query is fatal if unanswered, but answering all of them cuts the poll from about 5 s to under 3 s. `submitInput`/`submitAfterMs` split the write in two: `/usage`, then `\r` 1.5 s later, because Muse's slash-command autocomplete swallows an Enter arriving in the same burst. It runs `muse --trust-workspace` in an empty QuotaCap-owned directory (`~/.quotacap/muse-probe/`) with `MUSE_NO_AUTO_UPDATE=1`, which stops the launcher foreground-downloading a 248 MB binary during a poll. It aborts on the trust prompt, on `Working (Ns` (a mistimed Enter submitting a real model turn), and on the unavailable-subscription message, so those degrade immediately instead of burning the full 14 s timeout. After ANSI stripping the `/usage` panel is a single line, so its parser anchors on runs of spaces rather than line ends.
    - No adapter reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, `~/.gemini/oauth_creds.json`, `~/.config/muse/auth.json`, `~/.local/share/muse/sessions/`, or `~/.config/muse/tui-history.jsonl`. No adapter uses `refresh_token` or `grant_type=refresh_token`. No hardcoded `client_id` remains. This is asserted by `tests/adapters/credential-free.test.ts`. No `.qc-bak` or `.qc-lock` writes exist since #14.
-4. Snapshots normalize to `Quota` and upsert into `quotas` and `snapshots`.
+4. Snapshots normalize to `Quota` and upsert into `quotas` and `snapshots`. `upsertQuota` first writes a `window_closes` receipt when the incoming row breaks the weekly cycle (usage fell, or the previous `resetsAt` rolled).
 5. The advisory engine computes target daily usage (remaining % ÷ days left), window-average and recent (24h) pace, early-limit risk, projected unused allowance at reset, and one next-provider estimate.
 6. CLI `advise`, MCP, and the dashboard all read the same `/api/recommendation`.
+
+### Weekly closes
+
+`isWeeklyCycleBreak` in `src/store/quotas.ts` is the one definition of "the weekly window ended": usage fell, or the previous reading's `resetsAt` had passed by the new fetch and moved to a new boundary. The same predicate slices the burn window (`currentCycle`) and decides the close. When it fires, `upsertQuota` writes one `window_closes` row from the previous successful row inside the same transaction: `leftover_pct = max(0, 100 - used_pct)`, `sampled_at` from that row, `detected_at` from the incoming one. A duplicate persist of the same source row cannot duplicate the receipt (`UNIQUE(provider, sampled_quota_id)` plus `INSERT OR IGNORE`). Receipts start at the first break after upgrade — nothing is backfilled from `quotas` — and a session-only drop is not a close.
+
+`buildSnapshot` attaches `lastCloses` (newest first, up to 4) to every provider; `projectQuotasResponse` and MCP `forecast` carry the same field. The dashboard shows leftover in the card foot and the ledger Reset cell, with the full strip in the drawer's Closed weeks section after the two live windows; CLI `status` adds one dim line under RESETS. `recommend()` and forecast `wastePct` never read the table — leftover is history, waste is the current-window projection.
+
+Limits the product states rather than hides: an adapter poll can take up to its timeout (agy 20s), so a poll starting inside the last 25 seconds before the roll is skipped and leftover falls back to an earlier reading; estimated clocks never pull forward and can still emit a close when the estimate string rolls without a usage drop; a sleeping laptop records nothing until the next successful poll; and there is no post-reset wake, so a close surfaces up to `pollMinutes` late. Stale samples are still stored, and the drawer names how early the reading was instead of presenting a week-old number as a measured close.
 
 ## Main commands
 

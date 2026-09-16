@@ -114,6 +114,15 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     ...rows.map(({ row }) => row.pace.length),
   );
   const paint = (s: string, code: string): string => (color ? `${code}${s}${RESET}` : s);
+  const resetsIndent = " ".repeat(
+    width + GAP.length + 6 + GAP.length + 8 + GAP.length + paceWidth + GAP.length + 20 + GAP.length,
+  );
+  const leftoverLine = (p: (typeof sorted)[number]): string | null => {
+    const close = p.lastCloses?.[0];
+    if (!close) return null;
+    const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+    return `${resetsIndent}${paint(tail, DIM)}`;
+  };
   const header = [
     "PROVIDER".padEnd(width),
     "USED".padStart(6),
@@ -134,7 +143,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
     const state = row.state.padEnd(15);
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
-    return [
+    const main = [
       color ? colorProviderField(name, recommended, row.state) : name,
       used,
       elapsed,
@@ -144,6 +153,8 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
       paint(state, STATE_COLORS[row.state]),
       forecast,
     ].join(GAP);
+    const leftover = leftoverLine(p);
+    return leftover ? `${main}\n${leftover}` : main;
   });
   return [paint(header, DIM), ...lines].join("\n");
 }
@@ -171,6 +182,12 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
       `${color ? colorProviderField(name, recommended, row.state) : name} ${used} used ${g.sep} ${elapsed} elapsed ${g.sep} ${paceBits}`,
       `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}`,
     );
+    const close = p.lastCloses?.[0];
+    if (close) {
+      const indent = " ".repeat(row.railCells.length + " resets ".length);
+      const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+      lines.push(`${indent}${color ? `${DIM}${tail}${RESET}` : tail}`);
+    }
   }
   return lines.join("\n");
 }

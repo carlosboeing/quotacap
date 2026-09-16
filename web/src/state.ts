@@ -44,6 +44,19 @@ export interface RecommendationView {
   advisories: AdvisoryView[];
 }
 
+export interface WindowCloseView {
+  provider: string;
+  plan: string | null;
+  usedPct: number;
+  leftoverPct: number;
+  sampledAt: string;
+  periodStart: string | null;
+  resetsAt: string | null;
+  resetsAtEstimated: boolean;
+  detectedAt: string;
+  reason: "usage-drop" | "resets-at-rolled" | "both";
+}
+
 export interface QuotaView {
   provider: string;
   plan: string;
@@ -91,6 +104,7 @@ export interface ProviderView {
   evidence: string[];
   exclusionReason: ExclusionReason;
   advisory: AdvisoryView | null;
+  lastCloses: WindowCloseView[];
 }
 
 export interface UpdateView {
@@ -135,6 +149,7 @@ export function toViewModel(s: StateSnapshot): ViewModel {
         harness: p.harness ?? null,
         description: p.description ?? null,
         evidence: Array.isArray(p.evidence) ? [...p.evidence] : [],
+        lastCloses: Array.isArray(p.lastCloses) ? [...p.lastCloses] : [],
       }))
     : [];
   const advisories = Array.isArray(s.recommendation?.advisories)

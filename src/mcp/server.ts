@@ -99,6 +99,7 @@ export async function handleTool(name:string, args:any){
       state: stateWord(ps),
       forecast: forecastText(ps, new Date()),
       lastAttempt: ps.lastAttempt,
+      lastCloses: ps.lastCloses,
     };
     return { content: [{ type:"text", text: JSON.stringify(body, null, 2) }] };
   }

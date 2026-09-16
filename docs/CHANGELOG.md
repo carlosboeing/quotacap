@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.35
+
+- Weekly closed-window ledger: every detected weekly reset writes a `window_closes` receipt from the last old-window poll, so leftover (`100 − used`) survives the roll instead of vanishing. The dashboard shows it in the card foot, the ledger Reset cell, and a Closed weeks strip in the drawer (oldest left, up to four weeks); CLI `status` prints one dim line under RESETS; MCP `get_quotas` and `forecast` JSON carry `lastCloses`. The poll coordinator wakes five minutes before a known, non-estimated weekly `resetsAt` instead of waiting for the ordinary cadence, skipping the pull-forward within 25 seconds of the roll or after a poll already landed in the lead window.
+- Architecture: the store/poll contract documents the `window_closes` table and the plain `pollMinutes` timer (the stale "15 minutes plus jitter" claim is gone), plus the ledger's honest limits — stale pre-reset readings, estimated clocks, sleeping laptops, and detection lag up to one poll interval.
+
 ## 0.0.34
 
 - Initial poll dashboard timing: `quotacap web` waits up to 5s for the daemon's initial background poll to settle before opening the browser; the dashboard suppresses transient `stale` and `not-reporting` fault banners while a poll is in progress and re-reads state every 1000ms until readings arrive (#91).

@@ -1,5 +1,5 @@
 import type { Quota } from "../adapters/types.js";
-import { getAllLatest, getBurnRates } from "../store/quotas.js";
+import { getAllLatest, getBurnRates, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { recommend, averagePace, computeAdvisory } from "./engine.js";
 import { providerIdentity } from "./provider-names.js";
@@ -206,6 +206,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence,
       exclusionReason,
       advisory,
+      lastCloses: getWindowCloses(db, id, 4),
     });
   }
 
@@ -266,6 +267,7 @@ export function projectQuotasResponse(s: StateSnapshot): any[] {
       ageMs: p.ageMs,
       evidence: p.evidence,
       exclusionReason: p.exclusionReason,
+      lastCloses: p.lastCloses,
     }));
 }
 

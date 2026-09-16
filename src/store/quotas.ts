@@ -25,6 +25,29 @@ function mapRow(row:any){
   return out;
 }
 
+type CycleBreakReason = "usage-drop" | "resets-at-rolled" | "both";
+
+function cycleBreakReason(
+  prev: { usedPct: number; t: number; resetsAt: string | null },
+  cur: { usedPct: number; t: number; resetsAt: string | null },
+): CycleBreakReason | null {
+  const dropped = cur.usedPct < prev.usedPct;
+  const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  const boundaryRolled =
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+  if (dropped && boundaryRolled) return "both";
+  if (dropped) return "usage-drop";
+  if (boundaryRolled) return "resets-at-rolled";
+  return null;
+}
+
+export function isWeeklyCycleBreak(
+  prev: { usedPct: number; t: number; resetsAt: string | null },
+  cur: { usedPct: number; t: number; resetsAt: string | null },
+): boolean {
+  return cycleBreakReason(prev, cur) !== null;
+}
+
 export function upsertQuota(db:any, q:any){
   if (Array.isArray(q)) {
     for (const item of q) upsertQuota(db, item);
@@ -33,9 +56,61 @@ export function upsertQuota(db:any, q:any){
   const credits = q.creditsUsd ?? q.credits_usd ?? null;
   const estimated = q.resetsAtEstimated ? 1 : null;
   const sessionPct = q.sessionPct ?? q.session_pct ?? null;
-  db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, sessionPct);
-  const day = new Date().toISOString().slice(0,10);
-  db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
+  db.exec("BEGIN");
+  try {
+    const prev = getLatestByProvider(db, q.provider);
+    if (prev) {
+      const reason = cycleBreakReason(
+        { usedPct: prev.usedPct, t: Date.parse(prev.fetchedAt), resetsAt: prev.resetsAt ?? null },
+        { usedPct: q.usedPct, t: Date.parse(q.fetchedAt), resetsAt: q.resetsAt ?? null },
+      );
+      if (reason) {
+        db.prepare(`INSERT OR IGNORE INTO window_closes(provider, plan, used_pct, leftover_pct, sampled_at, sampled_quota_id, period_start, resets_at, resets_at_estimated, detected_at, reason) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(prev.provider, prev.plan ?? null, prev.usedPct, Math.max(0, 100 - prev.usedPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
+      }
+    }
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, sessionPct);
+    const day = new Date().toISOString().slice(0,10);
+    db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
+    db.exec("COMMIT");
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch {}
+    throw e;
+  }
+}
+
+export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
+  provider: string;
+  plan: string | null;
+  usedPct: number;
+  leftoverPct: number;
+  sampledAt: string;
+  periodStart: string | null;
+  resetsAt: string | null;
+  resetsAtEstimated: boolean;
+  detectedAt: string;
+  reason: "usage-drop" | "resets-at-rolled" | "both";
+}> {
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];
+  } catch (e: any) {
+    // A pre-observability database read offline is never migrated, so the
+    // table can be absent. No table means no recorded closes.
+    if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
+  }
+  return rows.map((r) => ({
+    provider: r.provider,
+    plan: r.plan ?? null,
+    usedPct: r.used_pct,
+    leftoverPct: r.leftover_pct,
+    sampledAt: r.sampled_at,
+    periodStart: r.period_start ?? null,
+    resetsAt: r.resets_at ?? null,
+    resetsAtEstimated: !!r.resets_at_estimated,
+    detectedAt: r.detected_at,
+    reason: r.reason,
+  }));
 }
 export function getLatestByProvider(db:any, provider:string){
   const row = db.prepare(`SELECT * FROM quotas WHERE provider=? ORDER BY fetched_at DESC LIMIT 1`).get(provider);
@@ -60,12 +135,7 @@ interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
 function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
   let start = 0;
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const cur = sorted[i];
-    const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
-    const boundaryRolled =
-      !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
-    if (boundaryRolled || cur.usedPct < prev.usedPct) start = i;
+    if (isWeeklyCycleBreak(sorted[i - 1], sorted[i])) start = i;
   }
   return start === 0 ? sorted : sorted.slice(start);
 }
