@@ -108,6 +108,18 @@ describe("parseCodexTui", () => {
     expect(parseCodexTui(codexFixture(), new Date()).plan).toBe("unknown");
   });
 
+  it("throws when access token could not be refreshed or refresh token was already used", () => {
+    const raw =
+      "Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.";
+    expect(() => parseCodexTui(raw)).toThrow(/refresh token was already used|log out and sign in again/i);
+  });
+
+  it("throws when limits refresh was requested shortly", () => {
+    const raw =
+      "OpenAI Codex (v0.154.0)\nLimits: refresh requested; run /status again shortly.\n";
+    expect(() => parseCodexTui(raw)).toThrow(/limits refresh requested/i);
+  });
+
   it("throws when weekly limit absent (fail-closed)", () => {
     const txt = `5h limit: 9% left (resets 14:12)\n`;
     expect(() => parseCodexTui(txt, new Date())).toThrow(/weekly limit/i);

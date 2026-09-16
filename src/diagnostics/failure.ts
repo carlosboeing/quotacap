@@ -207,6 +207,14 @@ function matchPrecedence(
     return { code: "auth", phrase: "expired credentials" };
   }
   if (
+    /\brefresh token was already used\b/i.test(text) ||
+    /\blog out and sign in again\b/i.test(text) ||
+    /\baccess token could not be refreshed\b/i.test(text) ||
+    /\bsign in again\b/i.test(text)
+  ) {
+    return { code: "auth", phrase: "login required" };
+  }
+  if (
     /\bauthentication failed\b/i.test(text) ||
     /\bauthentication required\b/i.test(text) ||
     /\bmissing authentication\b/i.test(text)
@@ -299,6 +307,9 @@ function matchPrecedence(
     /\bsubscriptions aren't currently available\b/i.test(text)
   ) {
     return { code: "service_unavailable", phrase: "subscription currently unavailable" };
+  }
+  if (/\blimits refresh requested\b/i.test(text) || /\brefresh requested\b/i.test(text)) {
+    return { code: "service_unavailable", phrase: "limits refresh requested" };
   }
 
   // Order 9: timeout — Remaining explicit timeout or timed out errors
@@ -539,7 +550,7 @@ function getSummaryAndAction(
     case "service_unavailable":
       return {
         summary: `${providerName} usage currently unavailable`,
-        action: `${providerName} reported that subscription usage is currently unavailable. While the service is running, QuotaCap will try again on its next scheduled poll.`,
+        action: `${providerName} reported that subscription usage is currently unavailable. Send a prompt in ${providerName} to refresh its session limits, or wait for the next scheduled poll.`,
       };
     case "timeout":
       return {

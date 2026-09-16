@@ -170,6 +170,9 @@ describe("diagnostic boundary and failure classification", () => {
         { text: "expired credentials", expected: "auth" },
         { text: "missing api key", expected: "auth" },
         { text: "authentication failed", expected: "auth" },
+        { text: "Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.", expected: "auth" },
+        { text: "refresh token was already used", expected: "auth" },
+        { text: "Please log out and sign in again", expected: "auth" },
       ];
       for (const { text, expected } of cases) {
         const failure = classifyFailure("codex", new Error(text));
@@ -243,6 +246,10 @@ describe("diagnostic boundary and failure classification", () => {
       const f2 = classifyFailure("muse", new Error("subscription currently unavailable in TUI output"));
       expect(f2.diagnosticCode).toBe("service_unavailable");
       expect(f2.errorDetail).toBe("subscription currently unavailable");
+
+      const f3 = classifyFailure("codex", new Error("codex: limits refresh requested, run /status again shortly"));
+      expect(f3.diagnosticCode).toBe("service_unavailable");
+      expect(f3.summary).toBe("Codex usage currently unavailable");
     });
 
     it("Order 9: timeout (remaining explicit timeout / timed out)", () => {

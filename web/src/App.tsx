@@ -164,7 +164,7 @@ function App() {
       if (result.message) {
         setNotice(result.message);
       } else if ((result.raw as { cooldown?: unknown } | null)?.cooldown === true) {
-        setNotice("Refresh cooling down — showing last readings.");
+        setNotice("Already up to date — showing latest readings.");
       }
       await load();
     } catch (e) {
