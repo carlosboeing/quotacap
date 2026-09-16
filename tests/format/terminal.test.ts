@@ -68,6 +68,8 @@ function advisory(over: Partial<Advisory> = {}): Advisory {
   };
 }
 
+import { emptyCatalog } from "../../src/catalog/types.js";
+
 function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot {
   return {
     enabled: true,
@@ -87,6 +89,7 @@ function ps(over: Partial<ProviderSnapshot> & { id: string }): ProviderSnapshot 
     vendor: null,
     harness: null,
     description: null,
+    catalog: emptyCatalog(),
     ...over,
   };
 }
@@ -114,6 +117,9 @@ function snap(providers: ProviderSnapshot[], use = "none"): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      models: [],
+      catalogStatus: "unfetched",
+      catalogFetchedAt: null,
       alternatives: [],
       advisories: [],
     },

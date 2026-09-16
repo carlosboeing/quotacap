@@ -27,6 +27,22 @@ import {
 } from "./takeover.js";
 import type { ClientCommandDeps, CreateClientOptions } from "./clients.js";
 
+function formatModelsLine(rec: any, now: Date, ttlHours = 6): string | null {
+  if (!rec.models || rec.models.length === 0) return null;
+  const ids = rec.models.map((m: any) => m.id).join(", ");
+  let suffix = "";
+  if (rec.catalogStatus === "stale") {
+    suffix = " (stale)";
+  } else if (rec.catalogFetchedAt) {
+    const ageMs = now.getTime() - new Date(rec.catalogFetchedAt).getTime();
+    const hours = Math.floor(ageMs / 3_600_000);
+    if (hours >= ttlHours) {
+      suffix = ` (listed ${hours}h ago)`;
+    }
+  }
+  return `models: ${ids}${suffix}`;
+}
+
 export function registerAdviseCommand(program: Command, deps: ClientCommandDeps): void {
   const createClient = deps.createClient ?? ((o: CreateClientOptions) => createServiceClient(o));
   const openDb = deps.openDb;
@@ -134,11 +150,14 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
         exit(1);
         return;
       }
+
       if (resolved.source === "offline") console.error(OFFLINE_LABEL);
       const rec = projectRecommendationResponse(resolved.snapshot, task);
       if (o.json) console.log(JSON.stringify(rec, null, 2));
       else {
         console.log(`${rec.use}: ${rec.reason}`);
+        const modelsLine = formatModelsLine(rec, t);
+        if (modelsLine) console.log(modelsLine);
         printVersionLine(o, VERSION, health?.version);
         printUpdateFooter(o, footer);
       }

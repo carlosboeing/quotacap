@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ProviderSnapshot, StateSnapshot } from "../../src/advisory/types.js";
 import { renderIssues } from "../../src/format/issues.js";
+import { emptyCatalog } from "../../src/catalog/types.js";
 import { FIXED_NOW, RT } from "../fixtures/stable-state.js";
 
 function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
@@ -25,6 +26,7 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
       resetPassed: false,
       ageMs: null,
       lastAttempt: null,
+      catalog: emptyCatalog(),
       ...p,
       lastCloses: p.lastCloses ?? [],
     })),
@@ -34,6 +36,9 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      models: [],
+      catalogStatus: "unfetched",
+      catalogFetchedAt: null,
       alternatives: [],
       advisories: [],
     },

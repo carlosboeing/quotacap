@@ -88,6 +88,7 @@ describe("mcp stdio protocol", () => {
     expect(JSON.parse(lines[1]).result.tools.map((t: any) => t.name)).toEqual([
       "get_quotas",
       "get_recommendation",
+      "get_models",
       "forecast",
     ]);
 

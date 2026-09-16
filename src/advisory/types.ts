@@ -1,5 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { AttemptRecord } from "../store/attempts.js";
+import type { CatalogStatus, CatalogView, ListedModel } from "../catalog/types.js";
 
 /**
  * Minimum data span before a pace annualizes, in days. Under 6h a single
@@ -51,7 +52,10 @@ export interface Recommendation {
   wastePct: number | null;
   idealRate: number;
   recommendationBasis: RecommendationBasis;
-  alternatives: any[];
+  models: ListedModel[];
+  catalogStatus: CatalogStatus;
+  catalogFetchedAt: string | null;
+  alternatives: Array<Quota & { catalog: CatalogView }>;
   advisories: Advisory[];
 }
 
@@ -87,6 +91,7 @@ export interface ProviderSnapshot {
   exclusionReason: ExclusionReason;
   advisory: Advisory | null;
   lastCloses: WindowClose[];
+  catalog: CatalogView;
 }
 
 export interface UpdateStatus {

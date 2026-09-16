@@ -9,6 +9,8 @@ import { ServiceError, ServiceUnavailable } from "../../src/runtime/client.js";
 import { migrate, openDb } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 import { recordAttempt } from "../../src/store/attempts.js";
+import { upsertCatalog } from "../../src/store/catalogs.js";
+import * as catalogModule from "../../src/catalog/index.js";
 import { registerClientCommands, type ClientCommandDeps } from "../../src/cli/clients.js";
 import { OFFLINE_LABEL } from "../../src/cli/snapshot-source.js";
 import { VERSION } from "../../src/version.js";
@@ -187,6 +189,9 @@ describe("advise process", () => {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      models: [],
+      catalogStatus: "unfetched",
+      catalogFetchedAt: null,
       alternatives: [],
       advisories: [],
     });
@@ -421,6 +426,118 @@ describe("advise wiring", () => {
       expect(errors[1]).toBe(`quotacap ${VERSION} · daemon 99.0.0`);
     } finally {
       if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
+    }
+  });
+
+  it("advise --task any|heavy|light yields identical use ranking", async () => {
+    const s = structuredClone(exampleStateSnapshot);
+    const anyRes = projectRecommendationResponse(s, "any");
+    const heavyRes = projectRecommendationResponse(s, "heavy");
+    const lightRes = projectRecommendationResponse(s, "light");
+    expect(heavyRes.use).toBe(anyRes.use);
+    expect(lightRes.use).toBe(anyRes.use);
+    expect(heavyRes.reason).toBe(anyRes.reason);
+    expect(lightRes.reason).toBe(anyRes.reason);
+  });
+
+  it("advise human output prints models: line with freshness suffixes", async () => {
+    const s = structuredClone(exampleStateSnapshot);
+    s.recommendation.use = "claude";
+    s.recommendation.models = [
+      { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" },
+      { id: "claude-opus-4-6", displayName: "Claude Opus 4.6" },
+    ];
+    s.recommendation.catalogStatus = "ok";
+    s.recommendation.catalogFetchedAt = FIXED_NOW.toISOString();
+
+    const client = {
+      get: async (p: string) => (p === "/health" ? { ok: true, version: VERSION } : s),
+      post: async () => {},
+    };
+
+    await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => FIXED_NOW }));
+    expect(logs[0]).toContain("claude:");
+    expect(logs).toContain("models: claude-sonnet-4-6, claude-opus-4-6");
+
+    // Stale catalog
+    logs.length = 0;
+    s.recommendation.catalogStatus = "stale";
+    await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => FIXED_NOW }));
+    expect(logs).toContain("models: claude-sonnet-4-6, claude-opus-4-6 (stale)");
+
+    // Older than TTL (7h old)
+    logs.length = 0;
+    s.recommendation.catalogStatus = "ok";
+    const sevenHoursLater = new Date(FIXED_NOW.getTime() + 7 * 3600_000);
+    await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => sevenHoursLater }));
+    expect(logs).toContain("models: claude-sonnet-4-6, claude-opus-4-6 (listed 7h ago)");
+  });
+
+  it("advise does not spawn catalog fetchers", async () => {
+    const ensureSpy = vi.spyOn(catalogModule, "ensureCatalogs");
+    const client = {
+      get: async (p: string) => (p === "/health" ? { ok: true, version: VERSION } : exampleStateSnapshot),
+      post: async () => {},
+    };
+    await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => FIXED_NOW }));
+    expect(ensureSpy).not.toHaveBeenCalled();
+  });
+
+  it("offline advise on pre-catalog SQLite succeeds without migrating", async () => {
+    const homeDir = tmpDir();
+    writeConfig(homeDir, 8787);
+    const dbDir = path.join(homeDir, ".quotacap");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const dbPath = path.join(dbDir, "quotacap.db");
+    const db = openDb(dbPath);
+    // Pre-catalog tables only (no model_catalogs)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
+      CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
+      CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
+      CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);
+    `);
+    upsertQuota(db, {
+      provider: "claude",
+      plan: "pro",
+      usedPct: 20,
+      resetsAt: new Date(FIXED_NOW.getTime() + DAY).toISOString(),
+      periodStart: FIXED_NOW.toISOString(),
+      source: "cli",
+      fetchedAt: FIXED_NOW.toISOString(),
+    });
+    db.close();
+
+    const oldHome = process.env.QUOTACAP_HOME;
+    process.env.QUOTACAP_HOME = homeDir;
+
+    try {
+      await runWired(
+        ["advise", "--json"],
+        onlineDeps({
+          createClient: () => ({
+            get: async () => {
+              throw new ServiceUnavailable("offline test");
+            },
+            post: async () => {},
+          }),
+          openDb: () => openDb(dbPath),
+          now: () => FIXED_NOW,
+        }),
+      );
+
+      const res = JSON.parse(logs[0]);
+      expect(res.use).toBe("claude");
+      expect(res.models).toEqual([]);
+      expect(res.catalogStatus).toBe("unfetched");
+
+      // Verify model_catalogs was NOT created (no migration occurred)
+      const checkDb = openDb(dbPath);
+      const tables = checkDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='model_catalogs'").all();
+      expect(tables).toHaveLength(0);
+      checkDb.close();
+    } finally {
+      process.env.QUOTACAP_HOME = oldHome;
     }
   });
 });
