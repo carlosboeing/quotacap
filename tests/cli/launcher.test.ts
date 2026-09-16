@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, afterAll, beforeEach, vi } from "vitest";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -14,7 +14,19 @@ import { runCli } from "./helpers.js";
 const exec = promisify(execFile);
 const handles: ServiceHandle[] = [];
 const prevHome = process.env.QUOTACAP_HOME;
+const prevNoOpen = process.env.QUOTACAP_NO_OPEN;
 let home = "";
+
+// Assertions here use injected openBrowser doubles; the ambient no-open env
+// would suppress the calls under test, so the suite owns this variable.
+beforeEach(() => {
+  delete process.env.QUOTACAP_NO_OPEN;
+});
+
+afterAll(() => {
+  if (prevNoOpen === undefined) delete process.env.QUOTACAP_NO_OPEN;
+  else process.env.QUOTACAP_NO_OPEN = prevNoOpen;
+});
 
 afterEach(async () => {
   for (const h of handles.splice(0)) {

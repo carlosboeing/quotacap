@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, afterAll, beforeEach, vi } from "vitest";
 import { Command } from "commander";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -18,9 +18,21 @@ import { VERSION } from "../../src/version.js";
 
 const exec = promisify(execFile);
 const oldQcHome = process.env.QUOTACAP_HOME;
+const oldNoOpen = process.env.QUOTACAP_NO_OPEN;
 const dirs: string[] = [];
 const claims: Claim[] = [];
 const servers: http.Server[] = [];
+
+// Assertions here use injected openBrowser doubles; the ambient no-open env
+// would suppress the calls under test, so the suite owns this variable.
+beforeEach(() => {
+  delete process.env.QUOTACAP_NO_OPEN;
+});
+
+afterAll(() => {
+  if (oldNoOpen === undefined) delete process.env.QUOTACAP_NO_OPEN;
+  else process.env.QUOTACAP_NO_OPEN = oldNoOpen;
+});
 
 afterEach(async () => {
   for (const c of claims.splice(0)) {
