@@ -1,0 +1,11 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 1840,
+  "duration_api_ms": 0,
+  "num_turns": 0,
+  "total_cost_usd": 0,
+  "result": "Current model: `Opus 5` (effort: high)\nUsage: /model <name>. Available: sonnet, opus, haiku, fable, best, sonnet[1m], opus[1m], fable[1m], opusplan, default, or a full model ID.",
+  "session_id": "00000000-0000-0000-0000-000000000000"
+}

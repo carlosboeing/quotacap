@@ -1,6 +1,8 @@
 import type { Quota } from "../adapters/types.js";
 import { getAllLatest, getBurnRates, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
+import { getCatalogs } from "../store/catalogs.js";
+import { emptyCatalog } from "../catalog/types.js";
 import { recommend, averagePace, computeAdvisory } from "./engine.js";
 import { providerIdentity } from "./provider-names.js";
 import type {
@@ -72,6 +74,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
   );
 
   const burnRates = getBurnRates(db, asOfMs);
+  const catalogMap = getCatalogs(db);
 
   const providerSnapshots: ProviderSnapshot[] = [];
   const eligibleQuotas: Quota[] = [];
@@ -192,6 +195,8 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       }
     }
 
+    const catalog = catalogMap.get(id) ?? emptyCatalog();
+
     providerSnapshots.push({
       id,
       ...providerIdentity(id, opts.providerNames),
@@ -207,6 +212,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       exclusionReason,
       advisory,
       lastCloses: getWindowCloses(db, id, 4),
+      catalog,
     });
   }
 
@@ -219,6 +225,9 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      models: [],
+      catalogStatus: "unfetched",
+      catalogFetchedAt: null,
       alternatives: [],
       advisories: allValidAdvisories,
     };
@@ -236,11 +245,21 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       }
     }
 
+    const pickCatalog = catalogMap.get(rec.use) ?? emptyCatalog();
+    const alternativesWithCatalog = (rec.alternatives ?? []).map((alt: any) => ({
+      ...alt,
+      catalog: catalogMap.get(alt.provider) ?? emptyCatalog(),
+    }));
+
     recommendation = {
       ...rec,
       reason,
       wastePct: rec.wastePct !== null && Number.isFinite(rec.wastePct) ? rec.wastePct : null,
       idealRate: Number.isFinite(rec.idealRate) ? rec.idealRate : 0,
+      models: pickCatalog.listed,
+      catalogStatus: rec.use === "none" ? "unfetched" : pickCatalog.status,
+      catalogFetchedAt: pickCatalog.fetchedAt,
+      alternatives: alternativesWithCatalog,
       advisories: allValidAdvisories,
     };
   }
@@ -268,6 +287,7 @@ export function projectQuotasResponse(s: StateSnapshot): any[] {
       evidence: p.evidence,
       exclusionReason: p.exclusionReason,
       lastCloses: p.lastCloses,
+      catalog: p.catalog,
     }));
 }
 

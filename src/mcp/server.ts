@@ -7,8 +7,9 @@ import type { StateSnapshot } from "../advisory/types.js";
 import { validateForecastProvider, validateTask } from "../advisory/validate.js";
 import { getDbPath, readConfig } from "../config.js";
 import { forecastText, stateWord } from "../format/rows.js";
-import { renderMarkdownTable, renderRecommendationSummary } from "../format/markdown.js";
-import { createServiceClientForBase, type ServiceClient } from "../runtime/client.js";
+import { renderMarkdownTable, renderRecommendationSummary, renderModelsMarkdownTable } from "../format/markdown.js";
+import { createServiceClientForBase, ServiceUnavailable, type ServiceClient } from "../runtime/client.js";
+import { CATALOG_CLIENT_TIMEOUT_MS } from "../catalog/index.js";
 import { VERSION } from "../version.js";
 import {
   ClientError,
@@ -20,6 +21,7 @@ import {
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
   { name:"get_recommendation", description:"Which provider to use next (same advice for every task)", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
+  { name:"get_models", description:"Currently listed models per quota bucket (inventory, not a task ranking)", inputSchema:{type:"object",properties:{provider:{type:"string"}}} },
   { name:"forecast", description:"Burn (24h + window avg) vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
 
@@ -81,6 +83,27 @@ export async function handleTool(name:string, args:any){
       ],
     };
   }
+  if(name==="get_models") {
+    const provider = args?.provider;
+    const base = process.env.QUOTACAP_URL ?? "http://localhost:8787";
+    const client = createServiceClientForBase(base, { timeoutMs: CATALOG_CLIENT_TIMEOUT_MS });
+    const url = provider ? `/api/models?provider=${encodeURIComponent(provider)}` : "/api/models";
+    try {
+      const body = await client.get(url);
+      const list = Array.isArray(body) ? body : (body?.models ?? []);
+      return {
+        content: [
+          { type:"text", text: renderModelsMarkdownTable(list) },
+          { type:"text", text: JSON.stringify(body, null, 2) },
+        ],
+      };
+    } catch (err: any) {
+      if (err instanceof ServiceUnavailable) {
+        throw new Error("model catalog unavailable (daemon unreachable)");
+      }
+      throw err;
+    }
+  }
   if(name==="forecast") {
     rejectMissingProvider(args);
     const { snapshot, source } = await resolveState();
@@ -134,9 +157,11 @@ export async function runMcpServer(){
         const toolName = params?.name;
         const toolArgs = params?.arguments ?? {};
         try {
-          const result = await handleTool(toolName, toolArgs);
+          const result: any = await handleTool(toolName, toolArgs);
           const content = Array.isArray(result?.content) ? result.content : [{ type:"text", text: JSON.stringify(result, null, 2) }];
-          if (!isNotification) respond(id, { content });
+          const res: any = { content };
+          if (result?.isError) res.isError = true;
+          if (!isNotification) respond(id, res);
         } catch (e:any) {
           const content = [{ type:"text", text: e?.message ?? String(e) }];
           if (!isNotification) respond(id, { content, isError:true });

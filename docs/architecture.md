@@ -1,8 +1,8 @@
 ---
 title: QuotaCap architecture
 type: architecture
-authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)", "Gemini 3.7 Flash (agy)", "Gemini 2.5 Pro (agy)"]
-last_reviewed: 2026-09-12
+authors: [Carlos Boeing, deepseek-v4-flash-vision-exp (opencode), "Grok 4.6 (grok)", "Gemini 3.7 Flash (agy)", "Gemini 2.5 Pro (agy)", "Gemini 3.8 Flash (agy)"]
+last_reviewed: 2026-09-16
 scope: [quotacap, architecture, system]
 ---
 
@@ -23,18 +23,19 @@ Claude Code, Codex, Kimi Code, Grok, and Antigravity can expose multiple concurr
 | Component | Responsibility | Key files |
 |---|---|---|
 | Adapters | Poll one agent CLI for its current usage snapshot (% used, reset time, plan). `claude` and `agy` use `execFile`. `codex`, `kimi`, `grok`, `muse` use a PTY. Each adapter fails closed. PTY adapters are TUI-fragile. Poll latency is 2–10 s. `agy` emits two rows: `agy` and `agy:3p`. | `src/adapters/claude.ts`, `agy.ts`, `codex.ts`, `kimi.ts`, `grok.ts`, `muse.ts`, `manual.ts`, `types.ts` |
+| Model catalog | Parsers and cache for live models listed per provider. Pure parsers for 6 providers (`agy`, `claude`, `codex`, `grok`, `kimi`, `muse`). Last-success SQLite cache (`model_catalogs`). Waiting surfaces (`GET /api/models`, MCP `get_models`, CLI `models`) refresh with 30s timeout; non-waiting surfaces (`advise`, `get_quotas`, state) join the cache without spawning. | `src/catalog/index.ts`, `src/catalog/types.ts`, `src/store/catalogs.ts`, `src/cli/models.ts` |
 | PTY runner | Generic PTY session. It spawns via `node-pty`. It waits for readiness or a settle delay. It sends input with `\r`. It collects until a completion regex or timeout. It caps at 256 KiB and kills clean. | `src/adapters/pty.ts` |
 | Failure classifier | Pure allowlist classifier. Maps raw adapter failure evidence to safe diagnostic codes, summaries, and action guidance while stripping secrets, ANSI/OSC codes, paths, and control characters. | `src/diagnostics/failure.ts` |
-| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, the 24-hour rolling usage pace, `adapter_attempts` with nullable diagnostic fields, and `window_closes` receipts written on weekly cycle-breaks. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts`, `src/store/attempts.ts` |
+| Store | Schema and inserts. Append-only `quotas` rows per poll, daily `snapshots`, latest-per-provider lookups, the 24-hour rolling usage pace, `adapter_attempts` with nullable diagnostic fields, `window_closes` receipts written on weekly cycle-breaks, and `model_catalogs` for cached model inventories. No `raw` column. `credits_usd` and `resets_at_estimated` on `quotas`. Dir `0700`, file `0600`. | `src/store/db.ts`, `src/store/quotas.ts`, `src/store/attempts.ts`, `src/store/catalogs.ts` |
 | Daemon | The poll loop. `pollOnce` on a plain `pollMinutes` timer (default 15, no jitter), pulled forward to five minutes before a known non-estimated weekly `resetsAt`. `Promise.allSettled` isolation. Single-instance `O_EXCL` pidfile with stale-steal. Pinned `claude` binary at start. At start, `autoEnableNewProviders` (`src/config.ts`) appends each registered adapter absent from `knownProviders` to both lists when its binary resolves on PATH; absent binaries stay unknown for the next start, known-but-disabled providers are never re-added, and configs predating the key backfill the pre-0.0.24 five. Runs until SIGINT or SIGTERM. | `src/daemon.ts` |
 | Advisory engine | Target daily usage, window-average and recent (24h) pace, early-limit risk, projected unused allowance at reset, and the next-provider estimate. | `src/advisory/engine.ts`, `src/advisory/types.ts` |
 | Provider naming | Server-side registry of `displayName`, `vendor`, `harness` and `description` per provider id, applied once in `buildSnapshot`. Unknown ids fall back to the raw id with null metadata. Additive, output-only wire fields on `/api/state` and MCP `get_quotas`. Filled at the two ingest boundaries (`resolveSnapshot` for CLI and MCP, `toViewModel` for the dashboard) so a CLI newer than a still-running daemon falls back to raw ids instead of crashing. | `src/advisory/provider-names.ts`, `src/advisory/snapshot.ts`, `src/cli/snapshot-source.ts`, `web/src/state.ts` |
-| HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `GET /api/token`, `POST /api/refresh`, `/`, `/assets/*`. Bound to `127.0.0.1:8787`. `Host` and `Origin` allowlists. `X-QuotaCap-Token` on mutating routes. Rooted asset serving. | `src/http/server.ts` |
-| CLI | Commander-based surface. Commands: `status`, `advise`, `web`, `daemon`, `init`, `mcp`, `version`. | `src/cli/index.ts` |
-| MCP server | stdio JSON-RPC server. Methods: `initialize`, `tools/list`, `tools/call` (`get_quotas`, `get_recommendation`, `forecast`), `ping`. Calls the same HTTP handler and translates a down daemon into a readable error. | `src/mcp/server.ts` |
+| HTTP server | Fastify app. Routes: `/health`, `/api/quotas`, `/api/recommendation`, `/api/models`, `POST /api/models/refresh`, `GET /api/token`, `POST /api/refresh`, `/`, `/assets/*`. Bound to `127.0.0.1:8787`. `Host` and `Origin` allowlists. `X-QuotaCap-Token` on mutating routes. Rooted asset serving. | `src/http/server.ts` |
+| CLI | Commander-based surface. Commands: `status`, `advise`, `models`, `web`, `daemon`, `init`, `mcp`, `version`. | `src/cli/index.ts` |
+| MCP server | stdio JSON-RPC server. Methods: `initialize`, `tools/list`, `tools/call` (`get_quotas`, `get_recommendation`, `forecast`, `get_models`), `ping`. Calls the same HTTP handler and translates a down daemon into a readable error. | `src/mcp/server.ts` |
 | Web dashboard | Vite and React. Summary banner, 7-day strip, quota table, collapsible rows. Built at publish time and embedded into the package. | `web/` |
 | Format layer | Shared table renderer for CLI and MCP. Reset dates as month name plus local time, burn glyphs, alignment. | `src/format/table.ts`, `src/format/parse.ts` |
-| Config | Zod-validated `~/.quotacap/config.json`. Defaults: `port: 8787`, `pollMinutes: 15`, `enabledProviders` and `knownProviders` both `["claude","codex","kimi","grok","agy","muse"]`. `knownProviders` records which adapters the daemon has already considered, so newly shipped ones auto-enable (see Daemon). No secrets; credentials stay with each CLI. | `src/config.ts` |
+| Config | Zod-validated `~/.quotacap/config.json`. Defaults: `port: 8787`, `pollMinutes: 15`, `catalogTtlHours: 6`, `enabledProviders` and `knownProviders` both `["claude","codex","kimi","grok","agy","muse"]`. `knownProviders` records which adapters the daemon has already considered, so newly shipped ones auto-enable (see Daemon). No secrets; credentials stay with each CLI. | `src/config.ts` |
 
 ## System diagram
 
@@ -69,7 +70,7 @@ The daemon, adapters, store, advisory engine, and HTTP API form one local proces
 
 ## Data model
 
-Four tables in `~/.quotacap/quotacap.db`:
+Five tables in `~/.quotacap/quotacap.db`:
 
 ```sql
 quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL,
@@ -91,12 +92,18 @@ window_closes(id INTEGER PRIMARY KEY, provider TEXT NOT NULL, plan TEXT,
               period_start TEXT, resets_at TEXT, resets_at_estimated INTEGER,
               detected_at TEXT NOT NULL, reason TEXT NOT NULL,
               UNIQUE(provider, sampled_quota_id))
+
+model_catalogs(provider TEXT PRIMARY KEY, status TEXT NOT NULL,
+               models_json TEXT NOT NULL, fetched_at TEXT,
+               diagnostic_code TEXT, summary TEXT, action TEXT,
+               error_detail TEXT)
 ```
 
 - `quotas` is append-only polling history: one row per provider per poll. The recent usage pace is the percentage-point change over a rolling window of up to 24 hours. See `getBurnRates` in `src/store/quotas.ts`. The rolling window keeps calendar-day boundaries and poll timing from skewing it. Every advisory also carries the window-average pace (`avgPace`: used % ÷ days elapsed) alongside the forecast input (`burnRate`: recent when measured, else the average), and an exhausted window (nothing remaining) forces the at-risk verdict even when recent burn is flat. Neither pace annualizes on under 6h of data (`MIN_PACE_SPAN_DAYS`): thin windows read Measuring with `—` figures instead of fabricating verdicts. The `raw` column was dropped in `src/store/db.ts` `migrate`. A migration rebuilds an old `raw` table and preserves rows.
 - `snapshots` is the per-day roll-up that feeds the 7-day strip.
 - `adapter_attempts` records the latest poll attempt per provider with four nullable diagnostic fields (`diagnostic_code`, `summary`, `action`, `error_detail`). An idempotent `PRAGMA table_info` loop adds missing columns on legacy databases. Legacy attempt rows without diagnostic fields safely normalize to `null` on read, with `error` aliased to `error_detail`. Successful and skipped attempts clear diagnostic fields.
 - `window_closes` is the weekly closed-window ledger: one row per detected weekly reset, tied to the previous `quotas.id` (`sampled_quota_id`). `leftover_pct` is stored, not recomputed on read, and `reason` is `usage-drop`, `resets-at-rolled`, or `both`. Store all; readers ask for the latest 4.
+- `model_catalogs` caches the last successful inventory of available models per provider (status `ok`, `stale`, `error`, or `unfetched`), with JSON-serialized `models_json` (`[{ id, displayName, default?, efforts? }]`). Missing tables on legacy databases fail gracefully to `unfetched` without throwing or running unapproved migrations.
 - The `Quota` shape is `{ provider, plan, usedPct, sessionPct?, resetsAt, periodStart, source, fetchedAt, creditsUsd?, resetsAtEstimated? }`. No `raw` field crosses the store or API boundary (`src/store/quotas.ts` `mapRow`, `src/adapters/types.ts`). `ParsedQuota` keeps an in-memory `raw` slice for debugging only — PTY adapters (`codex`, `kimi`, `grok`, `muse`) cap at 4096 chars, `claude`/`agy` keep the full CLI result. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`, `tests/store/db.test.ts`).
 
 ## Poll cycle
@@ -120,12 +127,22 @@ window_closes(id INTEGER PRIMARY KEY, provider TEXT NOT NULL, plan TEXT,
 
 Limits the product states rather than hides: an adapter poll can take up to its timeout (agy 20s), so a poll starting inside the last 25 seconds before the roll is skipped and leftover falls back to an earlier reading; estimated clocks never pull forward and can still emit a close when the estimate string rolls without a usage drop; a sleeping laptop records nothing until the next successful poll; and there is no post-reset wake, so a close surfaces up to `pollMinutes` late. Stale samples are still stored, and the drawer names how early the reading was instead of presenting a week-old number as a measured close.
 
+### Model catalog (waiting vs non-waiting surfaces)
+
+QuotaCap maintains an inventory of currently listed models per provider bucket without altering the economic recommendation (`recommend()` arguments and logic are unchanged; model inventory is informational).
+
+- **Cache and TTL:** Model listings are persisted in `model_catalogs` with a configurable TTL (`catalogTtlHours`, default 6 hours). In-process promise coalescing ensures concurrent requests share a single fetch per provider, with a 60s failure cooldown preventing repeated retry loops.
+- **Waiting surfaces:** `GET /api/models?provider=`, `POST /api/models/refresh`, MCP `get_models`, and CLI `quotacap models` are waiting surfaces configured with a 30s timeout (`CATALOG_CLIENT_TIMEOUT_MS`). When cache entries are missing, expired, or failed (past cooldown), waiting calls trigger fresh CLI spawns. Muse uses `runPty` with an overall 28s catalog abort signal (`MUSE_OVERALL_MS`).
+- **Non-waiting surfaces:** Advisory surfaces (`quotacap advise`, MCP `get_recommendation`, `/api/recommendation`, `/api/state`) read the catalog cache directly without waiting or spawning CLI processes. Recommendations attach `models`, `catalogStatus`, and `catalogFetchedAt` for the chosen provider, and CLI `advise` prints a human-readable `models: ...` line with freshness indicators (`(stale)` or `(listed Nh ago)`) when models are present.
+- **Decoupled execution:** Catalog fetches run under dedicated, catalog-owned abort signals and are strictly isolated from the usage polling loop's signals (`ADAPTER_TIMEOUTS`). Background catalog warming starts after daemon listen without delaying daemon readiness or `/health`.
+
 ## Main commands
 
 | Command | What it does | Example |
 |---|---|---|
 | `status [--json] [--verbose]` | Latest per-provider table: used, elapsed, avg/24h pace (%/day), resets, state, forecast. `--verbose` appends actionable guidance and diagnostics for failing adapters. Strictly read-only; never polls. | `quotacap status --verbose` |
 | `advise [--task <any\|heavy\|light>]` | "Use X next." HTTP API first, in-process fallback. | `quotacap advise --task heavy` |
+| `models [--json] [--provider <id>] [--refresh]` | Currently listed models per quota bucket with leftover allowance. Waiting refresh (30s timeout). | `quotacap models` |
 | `providers <list\|rename\|reset>` | Manage custom provider display name overrides. | `quotacap providers rename claude "Work"` |
 | `web [--port <n>] [--no-open]` | Serve the dashboard on :8787 and auto-start the daemon if none is running. `--no-open` (or `QUOTACAP_NO_OPEN=1`, which also covers bare `quotacap`) prints the URL instead of opening a browser. | `quotacap web` |
 | `daemon [--foreground]` | Run the daemon in the foreground (default) and poll `enabledProviders`. | `quotacap daemon` |

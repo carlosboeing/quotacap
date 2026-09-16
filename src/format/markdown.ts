@@ -28,3 +28,18 @@ export function renderRecommendationSummary(snapshot: StateSnapshot): string {
   const rec = snapshot.recommendation;
   return `${rec.use}: ${rec.reason}`;
 }
+
+export function renderModelsMarkdownTable(models: any[]): string {
+  const lines = models.map((m) => {
+    const name = m.displayName ?? m.id;
+    const leftover = m.leftoverPct != null ? `${m.leftoverPct}%` : "—";
+    const status = m.catalog?.status ?? "unfetched";
+    const ids = (m.catalog?.listed ?? []).map((x: any) => x.id).join(", ") || "(none)";
+    return `| ${esc(name)} | ${leftover} | ${esc(status)} | ${esc(ids)} |`;
+  });
+  return [
+    "| Provider | Leftover | Status | Models |",
+    "|---|---|---|---|",
+    ...lines,
+  ].join("\n");
+}

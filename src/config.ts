@@ -33,6 +33,7 @@ export const ProviderDisplayNameSchema = z
 const ConfigSchema = z.object({
   port: z.number().default(8787),
   pollMinutes: z.number().default(15),
+  catalogTtlHours: z.number().finite().positive().default(6),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
@@ -88,6 +89,7 @@ const VALID_PROVIDER_IDS = Object.keys(adapters).sort();
 const ServiceConfigSchema = z.object({
   port: z.number().int().min(1).max(65535),
   pollMinutes: z.number().finite().positive(),
+  catalogTtlHours: z.number().finite().positive().default(6),
   enabledProviders: z
     .array(z.string())
     .superRefine((ids, ctx) => {

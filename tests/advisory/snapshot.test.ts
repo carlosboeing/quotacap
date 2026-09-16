@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
+import { upsertCatalog } from "../../src/store/catalogs.js";
 import { recordAttempt } from "../../src/store/attempts.js";
 import {
   buildSnapshot,
@@ -141,5 +142,74 @@ describe("snapshot", () => {
         expect(k in row).toBe(true);
       }
     }
+  });
+
+  it("joins model catalog: provider catalog filled, recommendation.models equals pick's list, each alternative has catalog", () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "claude", usedPct: 80, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    quota(db, { provider: "kimi", usedPct: 20, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+
+    upsertCatalog(db, "claude", [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", default: true }], NOW.toISOString());
+    upsertCatalog(db, "kimi", [{ id: "k3", displayName: "K3" }], NOW.toISOString());
+
+    const s = buildSnapshot(db, { enabledProviders: ["claude", "kimi"], now: NOW, runtime: RT });
+
+    const claude = s.providers.find((p) => p.id === "claude")!;
+    expect(claude.catalog.status).toBe("ok");
+    expect(claude.catalog.listed.map((m) => m.id)).toEqual(["claude-sonnet-4-6"]);
+
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    expect(kimi.catalog.status).toBe("ok");
+    expect(kimi.catalog.listed.map((m) => m.id)).toEqual(["k3"]);
+
+    // Kimi is recommended (less usage, more headroom)
+    expect(s.recommendation.use).toBe("kimi");
+    expect(s.recommendation.models.map((m) => m.id)).toEqual(["k3"]);
+    expect(s.recommendation.catalogStatus).toBe("ok");
+    expect(s.recommendation.catalogFetchedAt).toBe(NOW.toISOString());
+
+    expect(s.recommendation.alternatives.length).toBeGreaterThan(0);
+    for (const alt of s.recommendation.alternatives) {
+      expect(alt).toHaveProperty("catalog");
+      expect(alt.catalog).toBeDefined();
+    }
+  });
+
+  it("recommend() yields the same pick whether catalogs exist in DB or not", () => {
+    const db1 = openDb(":memory:"); migrate(db1);
+    const db2 = openDb(":memory:"); migrate(db2);
+
+    quota(db1, { provider: "claude", usedPct: 80, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    quota(db1, { provider: "kimi", usedPct: 20, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+
+    quota(db2, { provider: "claude", usedPct: 80, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    quota(db2, { provider: "kimi", usedPct: 20, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+
+    upsertCatalog(db2, "claude", [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" }], NOW.toISOString());
+    upsertCatalog(db2, "kimi", [{ id: "k3", displayName: "K3" }], NOW.toISOString());
+
+    const s1 = buildSnapshot(db1, { enabledProviders: ["claude", "kimi"], now: NOW, runtime: RT });
+    const s2 = buildSnapshot(db2, { enabledProviders: ["claude", "kimi"], now: NOW, runtime: RT });
+
+    expect(s1.recommendation.use).toBe(s2.recommendation.use);
+    expect(s1.recommendation.reason).toBe(s2.recommendation.reason);
+  });
+
+  it("pre-catalog database without model_catalogs table succeeds with unfetched catalog", () => {
+    const db = openDb(":memory:");
+    // Do NOT call migrate(db). Create only the pre-catalog tables (no model_catalogs).
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
+      CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
+      CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
+      CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);
+    `);
+    quota(db, { provider: "claude", usedPct: 50, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+
+    const s = buildSnapshot(db, { enabledProviders: ["claude"], now: NOW, runtime: RT });
+    expect(s.providers[0].catalog.status).toBe("unfetched");
+    expect(s.providers[0].catalog.listed).toEqual([]);
+    expect(s.recommendation.catalogStatus).toBe("unfetched");
+    expect(s.recommendation.models).toEqual([]);
   });
 });

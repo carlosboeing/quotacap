@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
+import { upsertCatalog } from "../../src/store/catalogs.js";
+import { createServiceClientForBase } from "../../src/runtime/client.js";
 import { webAssets } from "../../src/webAssets.js";
 
 let tempHome: string;
@@ -492,6 +494,229 @@ describe("http token auth and mutating routes", () => {
       const body = JSON.parse(res.body);
       expect(body.error).toContain("failed to persist configuration");
     });
+  });
+});
+
+describe("/api/models and /api/models/refresh", () => {
+  it("GET /api/models Host and Origin allowlist", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const app = buildApp(testCtx(db, { enabledProviders: ["claude"], catalogFetchers: {} }));
+
+    // Loopback host is 200
+    const r1 = await app.inject({ method: "GET", url: "/api/models", headers: { host: "127.0.0.1:8787" } });
+    expect(r1.statusCode).toBe(200);
+
+    // Forbidden host is 403
+    const r2 = await app.inject({ method: "GET", url: "/api/models", headers: { host: "evil.com" } });
+    expect(r2.statusCode).toBe(403);
+
+    // Foreign origin is 403
+    const r3 = await app.inject({
+      method: "GET",
+      url: "/api/models",
+      headers: { host: "localhost:8787", origin: "http://evil.com" },
+    });
+    expect(r3.statusCode).toBe(403);
+  });
+
+  it("GET /api/models returns body elements with id, displayName, harness, vendor, leftoverPct, resetsAt, catalog", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const now = new Date();
+    upsertQuota(db, {
+      provider: "claude",
+      plan: "pro",
+      usedPct: 20,
+      resetsAt: new Date(Date.now() + 86400000).toISOString(),
+      periodStart: new Date().toISOString(),
+      source: "cli",
+      fetchedAt: now.toISOString(),
+    });
+    upsertCatalog(db, "claude", [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", default: true }], now.toISOString());
+
+    const app = buildApp(testCtx(db, { enabledProviders: ["claude"], catalogFetchers: {} }));
+    const res = await app.inject({ method: "GET", url: "/api/models" });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      id: "claude",
+      displayName: "Claude",
+      harness: "Claude Code",
+      vendor: "Anthropic",
+      leftoverPct: 80,
+      catalog: {
+        status: "ok",
+        listed: [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", default: true }],
+      },
+    });
+    expect(body[0]).toHaveProperty("resetsAt");
+  });
+
+  it("GET /api/models rejects unknown provider with 400", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const app = buildApp(testCtx(db, { enabledProviders: ["claude"], catalogFetchers: {} }));
+    const res = await app.inject({ method: "GET", url: "/api/models?provider=unknown-provider" });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining("unknown provider") });
+  });
+
+  it("POST /api/models/refresh requires token (401)", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const app = buildApp(testCtx(db, { token: "super-secret" }));
+
+    // No token
+    const r1 = await app.inject({ method: "POST", url: "/api/models/refresh" });
+    expect(r1.statusCode).toBe(401);
+
+    // Wrong token
+    const r2 = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh",
+      headers: { "x-quotacap-token": "wrong" },
+    });
+    expect(r2.statusCode).toBe(401);
+  });
+
+  it("POST /api/models/refresh succeeds with valid token and respects 60s cooldown", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertCatalog(db, "fake", [{ id: "m1", displayName: "M1" }], new Date().toISOString());
+
+    let fetchCount = 0;
+    const fetchers = {
+      fake: {
+        id: "fake",
+        fetch: async () => {
+          fetchCount++;
+          return { fake: [{ id: `m-${fetchCount}`, displayName: `M ${fetchCount}` }] };
+        },
+      },
+    };
+
+    let clock = 1_000_000_000;
+    const now = () => new Date(clock);
+
+    const app = buildApp(
+      testCtx(db, {
+        token: "valid-token",
+        enabledProviders: ["fake"],
+        catalogFetchers: fetchers,
+        now,
+      }),
+    );
+
+    // First call: fresh execution
+    const r1 = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh",
+      headers: { "x-quotacap-token": "valid-token" },
+    });
+    expect(r1.statusCode).toBe(200);
+    const b1 = JSON.parse(r1.body);
+    expect(b1.cooldown).toBe(false);
+    expect(fetchCount).toBe(1);
+
+    // Immediate second call inside 60s cooldown
+    clock += 10_000;
+    const r2 = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh",
+      headers: { "x-quotacap-token": "valid-token" },
+    });
+    expect(r2.statusCode).toBe(200);
+    const b2 = JSON.parse(r2.body);
+    expect(b2.cooldown).toBe(true);
+    expect(fetchCount).toBe(1); // fetch not called again
+
+    // Call after 61s: cooldown expired, runs again
+    clock += 51_000;
+    const r3 = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh",
+      headers: { "x-quotacap-token": "valid-token" },
+    });
+    expect(r3.statusCode).toBe(200);
+    const b3 = JSON.parse(r3.body);
+    expect(b3.cooldown).toBe(false);
+    expect(fetchCount).toBe(2);
+  });
+
+  it("injected fetcher resolving at 22s: HTTP GET /api/models with 30s client returns 200, 20s client aborts", async () => {
+    // Simulate a fetcher responding at 22ms scaled test time
+    const fakeFetch = vi.fn((_url: any, init?: RequestInit) => {
+      return new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(
+            new Response(JSON.stringify([{ id: "fake", catalog: { status: "ok", listed: [] } }]), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }, 22);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        });
+      });
+    });
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = fakeFetch as any;
+    try {
+      // 30ms client succeeds with 22ms fetcher
+      const client30 = createServiceClientForBase("http://127.0.0.1:8787", { timeoutMs: 30 });
+      const res30 = await client30.get("/api/models");
+      expect(res30[0].id).toBe("fake");
+
+      // 20ms client aborts with 22ms fetcher
+      const client20 = createServiceClientForBase("http://127.0.0.1:8787", { timeoutMs: 20 });
+      await expect(client20.get("/api/models")).rejects.toThrow(/service unavailable/);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("unfiltered GET /api/models includes synthetic agy:3p when agy is enabled", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const fetchers = {
+      agy: {
+        id: "agy",
+        fetch: async () => ({
+          agy: [{ id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash" }],
+          "agy:3p": [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" }],
+        }),
+      },
+    };
+    const app = buildApp(testCtx(db, { enabledProviders: ["agy"], catalogFetchers: fetchers }));
+    const res = await app.inject({ method: "GET", url: "/api/models" });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    const ids = body.map((b: any) => b.id);
+    expect(ids).toContain("agy");
+    expect(ids).toContain("agy:3p");
+  });
+
+  it("POST /api/models/refresh?provider=claude only refreshes the specified provider", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    let claudeFetched = 0;
+    let fakeFetched = 0;
+    const fetchers = {
+      claude: {
+        id: "claude",
+        fetch: async () => { claudeFetched++; return { claude: [{ id: "c1", displayName: "C1" }] }; },
+      },
+      fake: {
+        id: "fake",
+        fetch: async () => { fakeFetched++; return { fake: [{ id: "f1", displayName: "F1" }] }; },
+      },
+    };
+    const app = buildApp(testCtx(db, { token: "token", enabledProviders: ["claude", "fake"], catalogFetchers: fetchers }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh?provider=claude",
+      headers: { "x-quotacap-token": "token" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(claudeFetched).toBe(1);
+    expect(fakeFetched).toBe(0);
   });
 });
 

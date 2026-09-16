@@ -8,6 +8,8 @@ import { registerStatusCommand } from "./status.js";
 import { registerAdviseCommand } from "./advise.js";
 import { registerIngestCommand } from "./ingest.js";
 import { registerProvidersCommand } from "./providers.js";
+import { registerModelsCommand } from "./models.js";
+import type { CatalogFetcher } from "../catalog/index.js";
 import type { SleepFn } from "./takeover.js";
 import type { UpdateCache } from "../runtime/updates.js";
 
@@ -20,6 +22,7 @@ export interface CreateClientOptions {
 export interface ClientCommandDeps {
   createClient?: (opts: CreateClientOptions) => ServiceClient;
   openDb?: (dbPath: string) => any;
+  migrate?: (db: any) => void;
   resolveWidth?: () => { columns: number | undefined; tty: boolean };
   now?: () => Date;
   exit?: (code: number) => void;
@@ -31,12 +34,14 @@ export interface ClientCommandDeps {
     readToken?: () => string | undefined;
   };
   checkUpdates?: () => Promise<UpdateCache | null>;
+  catalogFetchers?: Record<string, CatalogFetcher>;
 }
 
 export function registerClientCommands(program: Command, deps?: ClientCommandDeps): void {
   registerStatusCommand(program, deps ?? {});
   registerAdviseCommand(program, deps ?? {});
   registerProvidersCommand(program, deps ?? {});
+  registerModelsCommand(program, deps ?? {});
   if (isExperimentalIngestEnabled()) {
     registerIngestCommand(program, deps ?? {});
   }
