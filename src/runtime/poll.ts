@@ -1,7 +1,7 @@
 // Poll coordinator: scheduled and manual refresh share one in-flight poll
 // with a completion-measured cooldown (decisions D3/D4).
 import { pollAll } from "../adapters/index.js";
-import { upsertQuota } from "../store/quotas.js";
+import { getAllLatest, upsertQuota } from "../store/quotas.js";
 import {
   recordAttempt,
   getAttempt,
@@ -81,6 +81,42 @@ function defaultPollFn(enabled: string[]): Promise<PollRow[]> {
   return pollAll(enabled) as Promise<PollRow[]>;
 }
 
+export const PRE_RESET_LEAD_MS = 5 * 60 * 1000;
+export const PRE_RESET_MIN_REMAINING_MS = 25 * 1000;
+
+export function nextPollDelayMs(opts: {
+  nowMs: number;
+  intervalMs: number;
+  latest: Array<{ provider: string; resetsAt?: string | null; resetsAtEstimated?: boolean }>;
+  lastCompletedPollAtMs: number | null;
+  enabledProviders: string[];
+}): number {
+  const { nowMs, intervalMs, latest, lastCompletedPollAtMs, enabledProviders } = opts;
+  let best = intervalMs;
+  for (const row of latest) {
+    const enabled =
+      enabledProviders.includes(row.provider) ||
+      (row.provider.startsWith("agy:") && enabledProviders.includes("agy"));
+    if (!enabled || row.resetsAtEstimated || !row.resetsAt) continue;
+    const resetsMs = new Date(row.resetsAt).getTime();
+    if (Number.isNaN(resetsMs) || resetsMs <= nowMs || resetsMs - nowMs < PRE_RESET_MIN_REMAINING_MS) {
+      continue;
+    }
+    const target = resetsMs - PRE_RESET_LEAD_MS;
+    if (
+      lastCompletedPollAtMs !== null &&
+      lastCompletedPollAtMs >= target &&
+      lastCompletedPollAtMs < resetsMs
+    ) {
+      continue;
+    }
+    const raw = Math.max(0, target - nowMs);
+    const delay = raw === 0 ? 1000 : raw;
+    best = Math.min(best, Math.min(intervalMs, delay));
+  }
+  return best;
+}
+
 export function mapFailureCategory(reason: unknown): Exclude<FailureCategory, null> {
   return classifyFailure("Provider", reason).category;
 }
@@ -112,7 +148,13 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
         const detail = classifyFailure("all", e).errorDetail;
         console.warn("[quotacap] scheduled poll failed", detail);
       });
-    }, intervalMs);
+    }, nextPollDelayMs({
+      nowMs: now(),
+      intervalMs,
+      latest: getAllLatest(db),
+      lastCompletedPollAtMs: lastCompletedPollAt ? completedAtMs : null,
+      enabledProviders,
+    }));
   }
 
   async function runGeneration(): Promise<RefreshResult> {
