@@ -472,6 +472,31 @@ describe("get_models", () => {
     }
   });
 
+  it("throws unreachable message when daemon is down", async () => {
+    const port = await closedPort();
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${port}`;
+    await expect(handleTool("get_models", {})).rejects.toThrow(
+      "model catalog unavailable (daemon unreachable)",
+    );
+  });
+
+  it("throws ServiceError when server returns 4xx", async () => {
+    const stub = await startStub({
+      "/api/models?provider=unknown": (_req, res) => {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "unknown provider: unknown" }));
+      },
+    });
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      await expect(handleTool("get_models", { provider: "unknown" })).rejects.toThrow(
+        /service error 400/,
+      );
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("production waiting clients pass CATALOG_CLIENT_TIMEOUT_MS (30000) and snapshot clients stay 2000/5000", () => {
     const mcpSrc = fs.readFileSync(path.resolve(__dirname, "../../src/mcp/server.ts"), "utf8");
     const cliSrc = fs.readFileSync(path.resolve(__dirname, "../../src/cli/models.ts"), "utf8");
@@ -484,7 +509,7 @@ describe("get_models", () => {
     expect(mcpSrc).toMatch(/createServiceClientForBase\(base,\s*\{\s*timeoutMs:\s*5000\s*\}\)/);
 
     // CLI models uses CATALOG_CLIENT_TIMEOUT_MS (30s)
-    expect(cliSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*timeoutMs:\s*CATALOG_CLIENT_TIMEOUT_MS\s*\}\)/);
+    expect(cliSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*token:\s*readTokenFn\(\),\s*timeoutMs:\s*CATALOG_CLIENT_TIMEOUT_MS,?\s*\}\)/);
 
     // Snapshot clients in advise and status stay 2000ms
     expect(adviseSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*timeoutMs:\s*2000\s*\}\)/);

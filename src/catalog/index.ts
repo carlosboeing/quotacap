@@ -1,5 +1,6 @@
 import { getCatalog, getCatalogs, upsertCatalog, markCatalogFailure } from "../store/catalogs.js";
 import { emptyCatalog, type CatalogFetcher, type CatalogView, type ListedModel } from "./types.js";
+import { classifyFailure } from "../diagnostics/failure.js";
 import { agyCatalogFetcher } from "./agy.js";
 import { claudeCatalogFetcher } from "./claude.js";
 import { codexCatalogFetcher } from "./codex.js";
@@ -10,6 +11,16 @@ import { museCatalogFetcher } from "./muse.js";
 export const CATALOG_CLIENT_TIMEOUT_MS = 30_000;
 export { MUSE_OVERALL_MS } from "./muse.js";
 export const CATALOG_FAIL_COOLDOWN_MS = 60_000;
+export type { CatalogFetcher, CatalogView, ListedModel } from "./types.js";
+
+// Returns enabled providers excluding manual, expanding agy to include synthetic agy:3p bucket.
+export function catalogProviders(enabledProviders: string[]): string[] {
+  const list = enabledProviders.filter((p) => p !== "manual");
+  if (enabledProviders.includes("agy") && !list.includes("agy:3p")) {
+    list.push("agy:3p");
+  }
+  return list;
+}
 
 // Fetcher map keyed by harness binary id. `agy:3p` resolves to the `agy`
 // fetcher (one spawn writes both rows).
@@ -156,12 +167,13 @@ export async function ensureCatalogs(opts: EnsureCatalogsOpts): Promise<Map<stri
     } else {
       const err = outcome.reason;
       lastFailAt.set(key, now().getTime());
+      const diag = classifyFailure(key, err);
       for (const bucket of buckets) {
         markCatalogFailure(db, bucket, {
-          diagnosticCode: err?.code ?? "fetch_error",
-          summary: String(err?.message ?? err).slice(0, 500),
-          action: "retry",
-          errorDetail: String(err?.stack ?? err).slice(0, 2000),
+          diagnosticCode: diag.diagnosticCode,
+          summary: diag.summary,
+          action: diag.action,
+          errorDetail: diag.errorDetail,
         });
       }
     }

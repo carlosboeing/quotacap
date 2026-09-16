@@ -8,7 +8,7 @@ import { validateForecastProvider, validateTask } from "../advisory/validate.js"
 import { getDbPath, readConfig } from "../config.js";
 import { forecastText, stateWord } from "../format/rows.js";
 import { renderMarkdownTable, renderRecommendationSummary, renderModelsMarkdownTable } from "../format/markdown.js";
-import { createServiceClientForBase, type ServiceClient } from "../runtime/client.js";
+import { createServiceClientForBase, ServiceUnavailable, type ServiceClient } from "../runtime/client.js";
 import { CATALOG_CLIENT_TIMEOUT_MS } from "../catalog/index.js";
 import { VERSION } from "../version.js";
 import {
@@ -97,14 +97,11 @@ export async function handleTool(name:string, args:any){
           { type:"text", text: JSON.stringify(body, null, 2) },
         ],
       };
-    } catch {
-      // Daemon unreachable: return empty content with a clear message.
-      return {
-        content: [
-          { type:"text", text: "model catalog unavailable (daemon unreachable)" },
-        ],
-        isError: true,
-      };
+    } catch (err: any) {
+      if (err instanceof ServiceUnavailable) {
+        throw new Error("model catalog unavailable (daemon unreachable)");
+      }
+      throw err;
     }
   }
   if(name==="forecast") {
@@ -160,9 +157,11 @@ export async function runMcpServer(){
         const toolName = params?.name;
         const toolArgs = params?.arguments ?? {};
         try {
-          const result = await handleTool(toolName, toolArgs);
+          const result: any = await handleTool(toolName, toolArgs);
           const content = Array.isArray(result?.content) ? result.content : [{ type:"text", text: JSON.stringify(result, null, 2) }];
-          if (!isNotification) respond(id, { content });
+          const res: any = { content };
+          if (result?.isError) res.isError = true;
+          if (!isNotification) respond(id, res);
         } catch (e:any) {
           const content = [{ type:"text", text: e?.message ?? String(e) }];
           if (!isNotification) respond(id, { content, isError:true });

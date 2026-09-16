@@ -27,7 +27,7 @@ import { classifyFailure } from "../diagnostics/failure.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { providerIdentity } from "../advisory/provider-names.js";
 import { setProviderNameOverride } from "../config.js";
-import { ensureCatalogs, CATALOG_FAIL_COOLDOWN_MS } from "../catalog/index.js";
+import { ensureCatalogs, catalogProviders, CATALOG_FAIL_COOLDOWN_MS } from "../catalog/index.js";
 import { getAllLatest } from "../store/quotas.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
@@ -275,12 +275,13 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
 
   app.get("/api/models", async (req: any, reply) => {
     const providerParam = req.query?.provider;
+    const allProviders = catalogProviders(ctx.enabledProviders);
     const providers = providerParam
       ? [String(providerParam)]
-      : ctx.enabledProviders;
+      : allProviders;
     // Unknown provider: 400 before the (expensive) waiting ensure.
     if (providerParam) {
-      const known = new Set([...ctx.enabledProviders, "agy:3p"]);
+      const known = new Set(allProviders);
       if (!known.has(providerParam)) {
         return reply.status(400).send({ error: `unknown provider: ${providerParam}` });
       }
@@ -299,19 +300,27 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
   });
 
   let lastModelsRefreshAt = 0;
-  let lastModelsRefreshResult: any[] = [];
 
   app.post("/api/models/refresh", async (req: any, reply) => {
     const headerToken = req.headers["x-quotacap-token"];
     if (!isValidToken(headerToken, ctx.token)) {
       return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
     }
+    const providerParam = req.query?.provider ?? req.body?.provider;
+    const allProviders = catalogProviders(ctx.enabledProviders);
+    if (providerParam) {
+      const known = new Set(allProviders);
+      if (!known.has(providerParam)) {
+        return reply.status(400).send({ error: `unknown provider: ${providerParam}` });
+      }
+    }
+    const providers = providerParam ? [String(providerParam)] : allProviders;
     const nowMs = (ctx.now?.() ?? new Date()).getTime();
-    if (lastModelsRefreshAt > 0 && nowMs - lastModelsRefreshAt < 60_000) {
+    if (lastModelsRefreshAt > 0 && nowMs - lastModelsRefreshAt < CATALOG_FAIL_COOLDOWN_MS) {
       const catalogs = await ensureCatalogs({
         db: ctx.db,
         wait: false,
-        providers: ctx.enabledProviders,
+        providers,
         ttlHours: catalogTtl,
         now: ctx.now,
         fetchers: ctx.catalogFetchers,
@@ -329,7 +338,7 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       db: ctx.db,
       wait: true,
       refresh: true,
-      providers: ctx.enabledProviders,
+      providers,
       ttlHours: catalogTtl,
       now: ctx.now,
       fetchers: ctx.catalogFetchers,
@@ -338,7 +347,6 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
     const quotaMap = new Map((quotas as any[]).map((q: any) => [q.provider, q]));
     const models = projectModels(catalogs, quotaMap);
     lastModelsRefreshAt = nowMs;
-    lastModelsRefreshResult = models;
     return {
       cooldown: false,
       models,

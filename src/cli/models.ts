@@ -2,11 +2,12 @@
 // Waiting command: passes a 30s client timeout for the /api/models endpoint.
 import type { Command } from "commander";
 import { ensureConfig, getDbPath } from "../config.js";
-import { createServiceClient } from "../runtime/client.js";
-import { CATALOG_CLIENT_TIMEOUT_MS, ensureCatalogs } from "../catalog/index.js";
-import { openDb } from "../store/db.js";
+import { CATALOG_CLIENT_TIMEOUT_MS, ensureCatalogs, catalogProviders } from "../catalog/index.js";
+import { openDb, migrate } from "../store/db.js";
 import { getAllLatest } from "../store/quotas.js";
 import { providerIdentity } from "../advisory/provider-names.js";
+import { readToken } from "../runtime/token.js";
+import { createServiceClient } from "../runtime/client.js";
 import { OFFLINE_LABEL } from "./snapshot-source.js";
 import type { ClientCommandDeps, CreateClientOptions } from "./clients.js";
 
@@ -63,6 +64,8 @@ function printTable(list: any[]): void {
 export function registerModelsCommand(program: Command, deps: ClientCommandDeps = {}): void {
   const createClient = deps.createClient ?? ((o: CreateClientOptions) => createServiceClient(o));
   const openDbFn = deps.openDb ?? openDb;
+  const migrateFn = deps.migrate ?? migrate;
+  const readTokenFn = deps.takeoverOpts?.readToken ?? readToken;
   const now = deps.now ?? (() => new Date());
   const exit = deps.exit ?? process.exit;
 
@@ -74,15 +77,17 @@ export function registerModelsCommand(program: Command, deps: ClientCommandDeps 
     .option("--refresh", "force refresh all catalogs")
     .action(async (o) => {
       const { config: cfg } = await ensureConfig();
-      const client = createClient({ port: cfg.port, timeoutMs: CATALOG_CLIENT_TIMEOUT_MS });
+      const client = createClient({
+        port: cfg.port,
+        token: readTokenFn(),
+        timeoutMs: CATALOG_CLIENT_TIMEOUT_MS,
+      });
 
       let body: any;
       try {
         const url = o.refresh
-          ? "/api/models/refresh"
-          : o.provider
-            ? `/api/models?provider=${encodeURIComponent(o.provider)}`
-            : "/api/models";
+          ? (o.provider ? `/api/models/refresh?provider=${encodeURIComponent(o.provider)}` : "/api/models/refresh")
+          : (o.provider ? `/api/models?provider=${encodeURIComponent(o.provider)}` : "/api/models");
         const method = o.refresh ? "post" : "get";
         if (method === "post") {
           body = await client.post(url, {});
@@ -103,21 +108,24 @@ export function registerModelsCommand(program: Command, deps: ClientCommandDeps 
         try {
           const dbPath = getDbPath();
           const db = openDbFn(dbPath);
+          migrateFn(db);
           const providerParam = o.provider;
-          const known = new Set([...cfg.enabledProviders, "agy:3p"]);
+          const allProviders = catalogProviders(cfg.enabledProviders);
+          const known = new Set(allProviders);
           if (providerParam && !known.has(providerParam)) {
             console.error(`unknown provider: ${providerParam}`);
             exit(1);
             return;
           }
-          const providers = providerParam ? [providerParam] : cfg.enabledProviders;
+          const providers = providerParam ? [providerParam] : allProviders;
           const catalogs = await ensureCatalogs({
             db,
             wait: true,
             refresh: !!o.refresh,
             providers,
-            ttlHours: 6,
+            ttlHours: cfg.catalogTtlHours,
             now,
+            fetchers: deps.catalogFetchers,
           });
           const quotas = getAllLatest(db);
           const quotaMap = new Map((quotas as any[]).map((q: any) => [q.provider, q]));

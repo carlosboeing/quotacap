@@ -242,4 +242,24 @@ describe("ensureCatalogs", () => {
     });
     expect(out.get("bogus")?.status).toBe("unfetched");
   });
+
+  it("catalogProviders filters manual and appends agy:3p when agy is present", () => {
+    expect(mod.catalogProviders(["claude", "manual", "agy"])).toEqual(["claude", "agy", "agy:3p"]);
+    expect(mod.catalogProviders(["claude", "codex"])).toEqual(["claude", "codex"]);
+  });
+
+  it("a thrown fetch classifies the diagnostic failure", async () => {
+    const d = makeDb();
+    const { fetchers } = spyFetcher("fake", async () => {
+      throw new Error("fake: failed to parse models output");
+    });
+    const out = await mod.ensureCatalogs({
+      db: d, wait: true, providers: ["fake"], ttlHours: 6, now: () => new Date(T0), fetchers,
+    });
+    const v = out.get("fake");
+    expect(v?.status).toBe("error");
+    expect(v?.diagnosticCode).toBe("parse_error");
+    expect(v?.summary).toContain("Unable to read");
+    expect(v?.action).toBeTruthy();
+  });
 });

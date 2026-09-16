@@ -22,7 +22,7 @@ import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
 import { classifyFailure } from "../diagnostics/failure.js";
-import { ensureCatalogs } from "../catalog/index.js";
+import { ensureCatalogs, catalogProviders } from "../catalog/index.js";
 
 export function resolveClaudeExecPath(): string | undefined {
   try {
@@ -225,6 +225,7 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       coordinator,
       enabledProviders: config.enabledProviders,
       providerNames: config.providerNames,
+      catalogTtlHours: config.catalogTtlHours,
       version: VERSION,
       exec: process.execPath,
       canWrite: () => claim.verify(),
@@ -264,8 +265,8 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
   void ensureCatalogs({
     db,
     wait: true,
-    providers: config.enabledProviders,
-    ttlHours: 6,
+    providers: catalogProviders(config.enabledProviders),
+    ttlHours: config.catalogTtlHours,
   }).catch(() => {});
 
   let stopping = false;

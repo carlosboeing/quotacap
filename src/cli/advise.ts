@@ -156,7 +156,7 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
       if (o.json) console.log(JSON.stringify(rec, null, 2));
       else {
         console.log(`${rec.use}: ${rec.reason}`);
-        const modelsLine = formatModelsLine(rec, t);
+        const modelsLine = formatModelsLine(rec, t, cfg.catalogTtlHours);
         if (modelsLine) console.log(modelsLine);
         printVersionLine(o, VERSION, health?.version);
         printUpdateFooter(o, footer);

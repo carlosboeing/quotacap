@@ -673,6 +673,51 @@ describe("/api/models and /api/models/refresh", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  it("unfiltered GET /api/models includes synthetic agy:3p when agy is enabled", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    const fetchers = {
+      agy: {
+        id: "agy",
+        fetch: async () => ({
+          agy: [{ id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash" }],
+          "agy:3p": [{ id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" }],
+        }),
+      },
+    };
+    const app = buildApp(testCtx(db, { enabledProviders: ["agy"], catalogFetchers: fetchers }));
+    const res = await app.inject({ method: "GET", url: "/api/models" });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    const ids = body.map((b: any) => b.id);
+    expect(ids).toContain("agy");
+    expect(ids).toContain("agy:3p");
+  });
+
+  it("POST /api/models/refresh?provider=claude only refreshes the specified provider", async () => {
+    const db = openDb(":memory:"); migrate(db);
+    let claudeFetched = 0;
+    let fakeFetched = 0;
+    const fetchers = {
+      claude: {
+        id: "claude",
+        fetch: async () => { claudeFetched++; return { claude: [{ id: "c1", displayName: "C1" }] }; },
+      },
+      fake: {
+        id: "fake",
+        fetch: async () => { fakeFetched++; return { fake: [{ id: "f1", displayName: "F1" }] }; },
+      },
+    };
+    const app = buildApp(testCtx(db, { token: "token", enabledProviders: ["claude", "fake"], catalogFetchers: fetchers }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/models/refresh?provider=claude",
+      headers: { "x-quotacap-token": "token" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(claudeFetched).toBe(1);
+    expect(fakeFetched).toBe(0);
+  });
 });
 
 

@@ -223,4 +223,49 @@ describe("CLI quotacap models", () => {
     expect(exitCode).toBe(1);
     expect(stderr.join("\n")).toContain("unknown provider: unknown-bogus");
   });
+
+  it("calls POST /api/models/refresh?provider=claude when --refresh --provider claude is used and passes token", async () => {
+    let requestedUrl = "";
+    let clientToken: string | undefined;
+    const mockClient = {
+      get: async () => {},
+      post: async (url: string) => {
+        requestedUrl = url;
+        return { cooldown: false, models: sampleModels };
+      },
+    };
+
+    const program = createMockProgram({
+      createClient: (opts: any) => {
+        clientToken = opts.token;
+        return mockClient;
+      },
+      takeoverOpts: {
+        readToken: () => "test-token",
+      },
+    });
+
+    await program.parseAsync(["node", "quotacap", "models", "--refresh", "--provider", "claude"]);
+    expect(requestedUrl).toBe("/api/models/refresh?provider=claude");
+    expect(clientToken).toBe("test-token");
+  });
+
+  it("offline fallback migrates database so model_catalogs exists before upsert", async () => {
+    const { config: cfg } = await ensureConfig();
+    cfg.enabledProviders = ["fake"];
+    await writeConfig(cfg);
+
+    const db = openDb(":memory:");
+    const failingClient = {
+      get: async () => { throw new Error("offline"); },
+      post: async () => {},
+    };
+    const program = createMockProgram({
+      createClient: () => failingClient,
+      openDb: () => db,
+    });
+    await program.parseAsync(["node", "quotacap", "models"]);
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='model_catalogs'").get();
+    expect(table).toBeDefined();
+  });
 });
