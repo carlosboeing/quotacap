@@ -1,5 +1,11 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.34 — 2026-09-16 (initial poll settling, provider outage resilience & notice polish)
+
+* Initial poll dashboard timing — `quotacap web` waits up to 5s for the daemon's initial background poll to settle before opening the browser, avoiding transient stale or not-reporting banners (#91)
+* Muse and Codex resilience — recognizes upstream unavailable states without failing, detects Codex refresh token reuse immediately without hanging, and advises sending a prompt to warm session limits (#91)
+* Refresh notice & status pill — green status pill preserved during rate-limit cooldown, and "Refresh cooling down" replaced with plain English "Already up to date — showing latest readings" (#91)
+
 ## Recently shipped — 0.0.33 — 2026-09-15 (dev loop, service stop, local install & versioning)
 
 * Local dev loop — one-command `npm run dev` running auto-restarting daemon and Vite HMR dashboard with port guard and proxy (#86)
