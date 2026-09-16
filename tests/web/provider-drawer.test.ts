@@ -133,6 +133,22 @@ describe("provider drawer", () => {
       "10.6%/day window average and 24.0%/day over the last 24h, against an ideal pace of 11.1%/day."
     );
   });
+  it("names Watch rows as near the cap instead of on-track or save copy", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const watchOnTrack = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, status: "watch", urgency: "on track" },
+    };
+    const why = rankingCopy(watchOnTrack as any, null);
+    expect(why.decision).toBe("Near the cap — position or reset clock uncertain.");
+    expect(why.decision).not.toMatch(/Pace matches the window|Unused quota/);
+    // A Watch row carrying save urgency used to fall through to the unused-quota copy.
+    const watchSave = { ...watchOnTrack, advisory: { ...watchOnTrack.advisory, urgency: "save" } };
+    expect(rankingCopy(watchSave as any, null).decision).toBe(
+      "Near the cap — position or reset clock uncertain."
+    );
+  });
   it("names exhausted windows in ranking rationale", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;

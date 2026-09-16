@@ -201,27 +201,10 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     };
   }
 
-  // 3. Check if all measured providers are healthy and on pace (status "on track").
-  const onTrack = advisories.filter(
-    a => a.paceSource !== "unknown" && a.status === "on track" && a.remaining > 0
-  );
-
-  if (onTrack.length > 0) {
-    return {
-      use: "none",
-      reason: "No subscription needs priority",
-      wastePct: 0,
-      idealRate: 0,
-      recommendationBasis: "none" as RecommendationBasis,
-      alternatives: quotas,
-      advisories,
-    };
-  }
-
-  // 4. No meaningful candidate (e.g. all quotas at risk or exhausted).
+  // 3. No meaningful candidate (e.g. all quotas at risk, watch, or exhausted).
   return {
     use: "none",
-    reason: "all quotas at risk or exhausted",
+    reason: "all quotas at risk, watch, or exhausted",
     wastePct: 0,
     idealRate: 0,
     recommendationBasis: "none" as RecommendationBasis,

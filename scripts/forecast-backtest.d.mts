@@ -145,6 +145,12 @@ export function blendForecast(recent: number | null, baseline: number | null, K:
 
 export function baselineFor(historyAvg: number | null, q: QuotaRow, now: Date): number | null;
 
+/** Mirror of getBurnRates for one provider over rows visible at `nowMs`. */
+export function recentRateForCycle(rows: QuotaRow[], nowMs: number): number | null;
+
+/** Mirror of getHistoryBaseline over the closes visible at one boundary. */
+export function historyBaselineFor(closes: CloseRow[], limit?: number): number | null;
+
 export function candidateVerdict(
   q: QuotaRow,
   recent: number | null,

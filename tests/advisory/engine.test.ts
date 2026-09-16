@@ -259,7 +259,9 @@ describe("advisory", () => {
     const rec = recommend([boundaryClaude], "any", new Map([["claude", { recent: 10, baseline: null }]]), now);
     expect(rec.use).toBe("none");
     expect(rec.recommendationBasis).toBe("none");
-    expect(rec.reason).toBe("all quotas at risk or exhausted");
+    // The all-Watch board routes to the no-candidate step; its copy must name
+    // the amber tier, not just risk and exhaustion.
+    expect(rec.reason).toBe("all quotas at risk, watch, or exhausted");
     expect(rec.advisories[0].status).toBe("watch");
     expect(rec.advisories[0].wastePct).toBe(0);
   });
@@ -274,7 +276,7 @@ describe("advisory", () => {
     ]), now);
     expect(rec.use).toBe("none");
     expect(rec.recommendationBasis).toBe("none");
-    expect(rec.reason).toBe("all quotas at risk or exhausted");
+    expect(rec.reason).toBe("all quotas at risk, watch, or exhausted");
   });
 
   it("carries the window average alongside the forecast pace", () => {

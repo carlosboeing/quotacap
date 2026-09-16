@@ -139,7 +139,7 @@ Estimated resets cap at Watch through that same gate (no special case), never re
 
 ### Model catalog (waiting vs non-waiting surfaces)
 
-QuotaCap maintains an inventory of currently listed models per provider bucket without altering the economic recommendation (`recommend()` arguments and logic are unchanged; model inventory is informational).
+QuotaCap maintains an inventory of currently listed models per provider bucket without altering the economic recommendation (`recommend()` reads only quotas and pace inputs; model inventory is informational).
 
 - **Cache and TTL:** Model listings are persisted in `model_catalogs` with a configurable TTL (`catalogTtlHours`, default 6 hours). In-process promise coalescing ensures concurrent requests share a single fetch per provider, with a 60s failure cooldown preventing repeated retry loops.
 - **Waiting surfaces:** `GET /api/models?provider=`, `POST /api/models/refresh`, MCP `get_models`, and CLI `quotacap models` are waiting surfaces configured with a 30s timeout (`CATALOG_CLIENT_TIMEOUT_MS`). When cache entries are missing, expired, or failed (past cooldown), waiting calls trigger fresh CLI spawns. Muse uses `runPty` with an overall 28s catalog abort signal (`MUSE_OVERALL_MS`).

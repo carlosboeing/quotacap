@@ -294,7 +294,7 @@ function currentCycle(sorted) {
 }
 
 // getBurnRates for one provider over the visible rows.
-function recentRateForCycle(rows, nowMs) {
+export function recentRateForCycle(rows, nowMs) {
   const pts = [];
   for (const r of rows) {
     const t = Date.parse(r.fetchedAt);
@@ -313,7 +313,7 @@ function recentRateForCycle(rows, nowMs) {
 }
 
 // getHistoryBaseline for one provider over the visible closes.
-function historyBaselineFor(closes, limit = 4) {
+export function historyBaselineFor(closes, limit = 4) {
   const newestFirst = [...closes]
     .sort((a, b) => Date.parse(b.detectedAt) - Date.parse(a.detectedAt) || (b.id ?? 0) - (a.id ?? 0))
     .slice(0, limit);

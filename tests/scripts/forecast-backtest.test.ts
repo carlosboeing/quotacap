@@ -10,10 +10,13 @@ import {
   currentVerdict,
   loadDatasetFromJson,
   loadDatasetFromDb,
+  recentRateForCycle,
+  historyBaselineFor,
   runBacktest,
   formatReport,
 } from "../../scripts/forecast-backtest.mjs";
 import { computeAdvisory } from "../../src/advisory/engine.js";
+import { getBurnRates, getHistoryBaseline } from "../../src/store/quotas.js";
 import { BLEND_K, RISK_MARGIN, GATE_TOL } from "../../src/advisory/types.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import type { Quota } from "../../src/adapters/types.js";
@@ -348,5 +351,61 @@ describe("forecast backtest — SQLite path", () => {
     const cli = spawnSync(process.execPath, [scriptPath, "--db", dbPath], { encoding: "utf8" });
     expect(cli.status).toBe(3);
     expect(cli.stdout).toContain("not evaluable — 0 recorded close receipts");
+  });
+});
+
+describe("forecast backtest — pace mirror equivalence", () => {
+  it("matches the real getBurnRates and getHistoryBaseline at every fixture day boundary", () => {
+    const dbPath = writeFixtureDb();
+    const db = openDb(dbPath) as any;
+    try {
+      const providers = [
+        ...new Set([...dataset.quotas, ...dataset.closes].map((r: any) => r.provider)),
+      ].sort();
+      const days = [...new Set(dataset.quotas.map((q: any) => String(q.fetchedAt).slice(0, 10)))].sort();
+      const retractClosesAfter = db.prepare(`DELETE FROM window_closes WHERE detected_at > ?`);
+      let recentChecks = 0;
+      let historyChecks = 0;
+
+      // Walk boundaries newest-first: getHistoryBaseline takes no clock, so
+      // retracting receipts newer than each boundary leaves the DB holding
+      // exactly the closes the replay loop could see at that instant.
+      for (const day of [...days].reverse()) {
+        const boundaryMs = Date.parse(`${day}T00:00:00.000Z`) + 86_400_000;
+        retractClosesAfter.run(new Date(boundaryMs).toISOString());
+        const realRecent = getBurnRates(db, boundaryMs);
+        const realHistory = getHistoryBaseline(db);
+
+        for (const provider of providers) {
+          const visibleQuotas = dataset.quotas.filter(
+            (q: any) => q.provider === provider && Date.parse(q.fetchedAt) <= boundaryMs,
+          );
+          const mirrorRecent = recentRateForCycle(visibleQuotas, boundaryMs);
+          if (mirrorRecent !== null) {
+            recentChecks++;
+            expect(realRecent.get(provider), `${provider} recent @ ${day}`).toBeCloseTo(mirrorRecent, 9);
+          } else {
+            expect(realRecent.has(provider), `${provider} recent absent @ ${day}`).toBe(false);
+          }
+
+          const visibleCloses = dataset.closes.filter(
+            (c: any) => c.provider === provider && Date.parse(c.detectedAt) <= boundaryMs,
+          );
+          const mirrorHistory = historyBaselineFor(visibleCloses);
+          if (mirrorHistory !== null) {
+            historyChecks++;
+            expect(realHistory.get(provider), `${provider} history @ ${day}`).toBeCloseTo(mirrorHistory, 9);
+          } else {
+            expect(realHistory.has(provider), `${provider} history absent @ ${day}`).toBe(false);
+          }
+        }
+      }
+
+      // The fixture must exercise both mirrors, not just the null paths.
+      expect(recentChecks).toBeGreaterThan(0);
+      expect(historyChecks).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
   });
 });
