@@ -91,7 +91,14 @@ export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
   detectedAt: string;
   reason: "usage-drop" | "resets-at-rolled" | "both";
 }> {
-  const rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];
+  } catch (e: any) {
+    // A pre-observability database read offline is never migrated, so the
+    // table can be absent. No table means no recorded closes.
+    if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
+  }
   return rows.map((r) => ({
     provider: r.provider,
     plan: r.plan ?? null,
