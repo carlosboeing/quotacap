@@ -15,7 +15,7 @@ import {
   ProviderDrawer,
   submitProviderRename,
 } from "../../web/src/components/ProviderDrawer.js";
-import { closeResetStamp, closeSampleStamp } from "../../web/src/components/ClosedWeeks.js";
+import { closeDateLabel, closeResetStamp, closeSampleStamp } from "../../web/src/components/ClosedWeeks.js";
 import { renameProvider } from "../../web/src/api.js";
 
 describe("provider drawer", () => {
@@ -358,13 +358,16 @@ describe("closed weeks drawer", () => {
     );
   }
 
+  // Cell labels render in the machine's timezone; derive them like the drawer does.
+  const label = (resetsAt: string) => closeDateLabel(resetsAt) ?? "";
+
   it("renders Closed weeks after the live 5h window, with dated cells", () => {
     const { s, claude } = claudeWith([closeRow()]);
     const html = render(claude, s);
     expect(html).toContain("Closed weeks");
     expect(html.indexOf("Weekly limit")).toBeLessThan(html.indexOf("Closed weeks"));
     expect(html.indexOf("5h Limit")).toBeLessThan(html.indexOf("Closed weeks"));
-    expect(html).toContain("10 Sep");
+    expect(html).toContain(label("2026-09-10T12:25:00+10:00"));
     expect(html).toContain("12% leftover");
     expect(html).toContain(`88% used, 12% leftover, reset ${closeResetStamp("2026-09-10T12:25:00+10:00")}`);
     const weeks = html.slice(html.indexOf("Closed weeks"), html.indexOf("Adapter and provenance"));
@@ -385,9 +388,9 @@ describe("closed weeks drawer", () => {
       closeRow({ resetsAt: "2026-08-20T12:25:00+10:00", sampledAt: "2026-08-20T12:20:00+10:00", detectedAt: "2026-08-20T12:40:00+10:00" }),
     ]);
     const html = render(claude, s);
-    expect(html.indexOf("20 Aug")).toBeLessThan(html.indexOf("27 Aug"));
-    expect(html.indexOf("27 Aug")).toBeLessThan(html.indexOf("3 Sep"));
-    expect(html.indexOf("3 Sep")).toBeLessThan(html.indexOf("10 Sep"));
+    expect(html.indexOf(label("2026-08-20T12:25:00+10:00"))).toBeLessThan(html.indexOf(label("2026-08-27T12:25:00+10:00")));
+    expect(html.indexOf(label("2026-08-27T12:25:00+10:00"))).toBeLessThan(html.indexOf(label("2026-09-03T12:25:00+10:00")));
+    expect(html.indexOf(label("2026-09-03T12:25:00+10:00"))).toBeLessThan(html.indexOf(label("2026-09-10T12:25:00+10:00")));
   });
 
   it("names an early reading on its cell and under the strip", () => {
@@ -396,7 +399,27 @@ describe("closed weeks drawer", () => {
     expect(html).toContain("read 3d early");
     expect(html).toContain(closeSampleStamp("2026-09-07T09:04:00+10:00")!);
     expect(html).toContain("3 days before that reset");
-    expect(html).toContain("10 Sep leftover is from the");
+    expect(html).toContain(`${label("2026-09-10T12:25:00+10:00")} leftover is from the`);
+  });
+
+  it("reads a one-hour-early sample in singular words on both lines", () => {
+    const resetsAt = "2026-09-10T12:25:00+10:00";
+    const sampledAt = new Date(Date.parse(resetsAt) - 60 * 60_000).toISOString();
+    const { s, claude } = claudeWith([closeRow({ sampledAt, resetsAt })]);
+    const html = render(claude, s);
+    expect(html).toContain("read 1h early");
+    expect(html).toContain("1 hour before that reset");
+    expect(html).not.toContain("1 hours");
+  });
+
+  it("floors the cell and the strip note the same way", () => {
+    const resetsAt = "2026-09-10T12:25:00+10:00";
+    const sampledAt = new Date(Date.parse(resetsAt) - 90 * 60_000).toISOString();
+    const { s, claude } = claudeWith([closeRow({ sampledAt, resetsAt })]);
+    const html = render(claude, s);
+    expect(html).toContain("read 1h early");
+    expect(html).toContain("1 hour before that reset");
+    expect(html).not.toContain("2 hours");
   });
 
   it("spaces every stale note under the strip", () => {

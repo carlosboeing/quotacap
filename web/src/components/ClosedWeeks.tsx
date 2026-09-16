@@ -36,22 +36,33 @@ export function closeResetStamp(resetsAt: string): string | null {
   return format(new Date(ms), "d MMM HH:mm");
 }
 
-function earlyCompact(ms: number): string {
-  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+type EarlyUnit = "s" | "m" | "h" | "d";
+
+/** One floored duration for both the compact cell line and the strip note. */
+function earlyParts(ms: number): { n: number; unit: EarlyUnit } {
+  if (ms < 60_000) return { n: Math.max(1, Math.floor(ms / 1000)), unit: "s" };
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return { n: minutes, unit: "m" };
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  if (hours < 48) return { n: hours, unit: "h" };
+  return { n: Math.floor(hours / 24), unit: "d" };
+}
+
+const EARLY_UNIT_WORDS: Record<EarlyUnit, string> = {
+  s: "second",
+  m: "minute",
+  h: "hour",
+  d: "day",
+};
+
+function earlyCompact(ms: number): string {
+  const { n, unit } = earlyParts(ms);
+  return `${n}${unit}`;
 }
 
 function earlyWords(ms: number): string {
-  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))} seconds`;
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes} minutes`;
-  const hours = Math.round(ms / 3_600_000);
-  if (hours < 48) return `${hours} hours`;
-  return `${Math.floor(hours / 24)} days`;
+  const { n, unit } = earlyParts(ms);
+  return `${n} ${EARLY_UNIT_WORDS[unit]}${n === 1 ? "" : "s"}`;
 }
 
 /** Four-cell strip of closed weekly windows, oldest left. Fill is used at
