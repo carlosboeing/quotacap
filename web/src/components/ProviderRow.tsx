@@ -64,7 +64,11 @@ export function ProviderRow({
       <div data-label="Reset" className="reset-cell">
         <span className="cell-b">{reset.top}</span>
         {reset.bottom && <span className="cell-s">{reset.bottom}</span>}
-        {last && <span className="cell-s">last week {last.leftoverPct}% leftover</span>}
+        {last && (
+          <span className="cell-s">
+            last week {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
+          </span>
+        )}
       </div>
       <div data-label="Pace">
         <Badge provider={provider} />

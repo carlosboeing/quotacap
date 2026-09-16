@@ -107,7 +107,11 @@ export function ProviderCard({
       <div className="pcard-foot">
         <div className="foot-meta">
           <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
-          {last && <span className="last-week">Last week {last.leftoverPct}% leftover</span>}
+          {last && (
+            <span className="last-week">
+              Last week {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
+            </span>
+          )}
         </div>
         <span className="rowbtn" aria-hidden="true">Inspect</span>
       </div>

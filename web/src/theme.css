@@ -1317,7 +1317,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .weeks .stale-note {
   font-weight: 500;
 }
-.weeks + .cell-s {
+.weeks ~ .cell-s {
   margin-top: var(--s2);
 }
 

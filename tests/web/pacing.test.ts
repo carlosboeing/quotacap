@@ -167,6 +167,20 @@ describe("closed weeks on card and row", () => {
     expect(noClose).not.toContain("leftover");
   });
 
+  it("marks estimated closes on card and row", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const estimated = { ...kimi, lastCloses: [{ ...CLOSE, resetsAtEstimated: true }] };
+    const card = flat(renderToString(
+      React.createElement(ProviderCard, { provider: estimated, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    expect(card).toContain("Last week 12% leftover (est.)");
+    const row = flat(renderToString(
+      React.createElement(ProviderRow, { provider: estimated, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ));
+    expect(row).toContain("last week 12% leftover (est.)");
+  });
+
   it("shows last week's leftover in the ledger reset cell, never in used vs elapsed", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;

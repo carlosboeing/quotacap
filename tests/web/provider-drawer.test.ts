@@ -398,6 +398,11 @@ describe("closed weeks drawer", () => {
     expect(html).toContain("10 Sep leftover is from the");
   });
 
+  it("spaces every stale note under the strip", () => {
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.weeks ~ \.cell-s \{[^}]*margin-top: var\(--s2\)/);
+  });
+
   it("marks estimated closes and leaves on-time closes unmarked", () => {
     const { s, claude } = claudeWith([closeRow({ resetsAtEstimated: true })]);
     expect(render(claude, s)).toContain("12% leftover (est.)");
