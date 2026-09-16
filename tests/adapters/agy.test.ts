@@ -263,7 +263,11 @@ describe("advisory handling for agy:3p", () => {
       source: "cli" as const,
       fetchedAt: now.toISOString(),
     } as Quota;
-    const rec = recommend([agyQuota, threePQuota], "any", new Map(), now);
+    const pace = new Map([
+      ["agy", { recent: null, baseline: 2 }],
+      ["agy:3p", { recent: null, baseline: 2 }],
+    ]);
+    const rec = recommend([agyQuota, threePQuota], "any", pace, now);
     expect(rec.use).toBe("agy:3p");
     expect(rec.advisories.find((a) => a.provider === "agy:3p")?.wastePct).toBeGreaterThan(50);
   });
@@ -290,7 +294,11 @@ describe("advisory handling for agy:3p", () => {
       source: "cli" as const,
       fetchedAt: now.toISOString(),
     } as Quota;
-    const rec = recommend([agyQuota, threePQuota], "any", new Map(), now);
+    const pace = new Map([
+      ["agy", { recent: null, baseline: 2 }],
+      ["agy:3p", { recent: null, baseline: 2 }],
+    ]);
+    const rec = recommend([agyQuota, threePQuota], "any", pace, now);
     expect(rec.use).toBe("agy");
     expect(rec.advisories.find((a) => a.provider === "agy")?.wastePct).toBeGreaterThan(50);
   });
@@ -306,7 +314,7 @@ describe("advisory handling for agy:3p", () => {
       source: "cli" as const,
       fetchedAt: now.toISOString(),
     } as Quota;
-    const burns = new Map([["agy:3p", 25]]);
+    const burns = new Map([["agy:3p", { recent: 25, baseline: null }]]);
     const rec = recommend([threePQuota], "any", burns, now);
     const adv = rec.advisories[0];
     expect(adv.provider).toBe("agy:3p");

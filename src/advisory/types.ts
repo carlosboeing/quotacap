@@ -37,7 +37,7 @@ export interface Advisory {
   burnRate: number | null;
   recentRate?: number | null;
   baselineRate?: number | null;
-  aheadOfElapsed?: boolean;
+  aheadOfElapsed?: boolean | null;
   /**
    * Window-average pace (used % ÷ days elapsed), always computed when the
    * window start is known — independent of `burnRate`, which is the forecast

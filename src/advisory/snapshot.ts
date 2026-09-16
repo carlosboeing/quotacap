@@ -1,9 +1,9 @@
 import type { Quota } from "../adapters/types.js";
-import { getAllLatest, getBurnRates, getWindowCloses } from "../store/quotas.js";
+import { getAllLatest, getBurnRates, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { getCatalogs } from "../store/catalogs.js";
 import { emptyCatalog } from "../catalog/types.js";
-import { recommend, averagePace, computeAdvisory } from "./engine.js";
+import { recommend, baselineFor, computeAdvisory } from "./engine.js";
 import { providerIdentity } from "./provider-names.js";
 import type {
   Advisory,
@@ -42,6 +42,9 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     remaining: Number.isFinite(adv.remaining) ? adv.remaining : 0,
     idealRate: Number.isFinite(adv.idealRate) ? adv.idealRate : 0,
     burnRate: adv.burnRate !== null && Number.isFinite(adv.burnRate) ? adv.burnRate : null,
+    recentRate: adv.recentRate != null && Number.isFinite(adv.recentRate) ? adv.recentRate : null,
+    baselineRate: adv.baselineRate != null && Number.isFinite(adv.baselineRate) ? adv.baselineRate : null,
+    aheadOfElapsed: typeof adv.aheadOfElapsed === "boolean" ? adv.aheadOfElapsed : null,
     avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,
@@ -74,11 +77,12 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
   );
 
   const burnRates = getBurnRates(db, asOfMs);
+  const history = getHistoryBaseline(db);
   const catalogMap = getCatalogs(db);
 
   const providerSnapshots: ProviderSnapshot[] = [];
   const eligibleQuotas: Quota[] = [];
-  const burnSubset = new Map<string, number>();
+  const paceByProvider = new Map<string, { recent: number | null; baseline: number | null }>();
   const allValidAdvisories: Advisory[] = [];
 
   for (const id of unionIds) {
@@ -155,20 +159,15 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
     // Offline (runtime.available=false) forces reporting=false for stale rows.
     const reporting = quota !== null && exclusionReason === null;
 
-    // Advisory computation
+    // Advisory computation: the engine blends recent toward the history
+    // baseline internally; this loop is the single place both inputs form.
     let rawAdvisory: Advisory | null = null;
+    let pace: { recent: number | null; baseline: number | null } | null = null;
     if (quota !== null && !isInvalid) {
-      const recentBurn = burnRates.get(id);
-      if (recentBurn !== undefined) {
-        rawAdvisory = computeAdvisory(quota, recentBurn, now, "recent");
-      } else {
-        const avg = averagePace(quota, now);
-        if (avg !== null) {
-          rawAdvisory = computeAdvisory(quota, avg, now, "window-average");
-        } else {
-          rawAdvisory = computeAdvisory(quota, null, now, "unknown");
-        }
-      }
+      const recent = burnRates.get(id) ?? null;
+      const baseline = baselineFor(history.get(id) ?? null, quota, now);
+      pace = { recent, baseline };
+      rawAdvisory = computeAdvisory(quota, recent, baseline, now);
     }
 
     const advisory = normalizeAdvisory(rawAdvisory);
@@ -190,9 +189,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
 
     if (enabled && quota !== null && exclusionReason === null) {
       eligibleQuotas.push(quota);
-      if (burnRates.has(id)) {
-        burnSubset.set(id, burnRates.get(id)!);
-      }
+      if (pace) paceByProvider.set(id, pace);
     }
 
     const catalog = catalogMap.get(id) ?? emptyCatalog();
@@ -232,7 +229,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       advisories: allValidAdvisories,
     };
   } else {
-    const rec = recommend(eligibleQuotas, "any", burnSubset, now);
+    const rec = recommend(eligibleQuotas, "any", paceByProvider, now);
     const chosenProvider = eligibleQuotas.find((q) => q.provider === rec.use);
     let reason = rec.reason;
     if (chosenProvider?.resetsAtEstimated) {

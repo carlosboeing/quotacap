@@ -55,12 +55,15 @@ describe("lastCloses on the snapshot", () => {
     expect(kimi.lastCloses[0].leftoverPct).toBe(20);
   });
 
-  it("leaves the recommendation payload untouched by closes", () => {
+  it("does not leak close rows into the recommendation payload", () => {
     const db = openDb(":memory:"); migrate(db);
     quota(db, { provider: "kimi", usedPct: 16, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
     const before = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
+    // A close whose 16% matches the current window average, so the history
+    // baseline is identical to the pre-close fallback: the recommendation
+    // itself must not change shape when the ledger gains a row.
     db.prepare(
-      `INSERT INTO window_closes(provider, plan, used_pct, leftover_pct, sampled_at, sampled_quota_id, period_start, resets_at, resets_at_estimated, detected_at, reason) VALUES('kimi','p',88,12,'2026-06-01T02:20:00Z',9999,'2026-05-25T02:25:00Z','2026-06-01T02:25:00Z',NULL,'2026-06-01T02:40:00Z','usage-drop')`,
+      `INSERT INTO window_closes(provider, plan, used_pct, leftover_pct, sampled_at, sampled_quota_id, period_start, resets_at, resets_at_estimated, detected_at, reason) VALUES('kimi','p',16,84,'2026-06-01T02:20:00Z',9999,'2026-05-25T02:25:00Z','2026-06-01T02:25:00Z',NULL,'2026-06-01T02:40:00Z','usage-drop')`,
     ).run();
     const after = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
     expect(after.providers.find(p => p.id === "kimi")!.lastCloses).toHaveLength(1);
