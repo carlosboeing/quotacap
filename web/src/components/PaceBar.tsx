@@ -2,18 +2,22 @@ import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring";
+export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring";
 
 /**
  * Pace-state badge from the mapping table. Exclusion always wins; otherwise
- * status "at risk" wins; otherwise urgency decides. No client thresholds.
+ * status "at risk" wins, then "watch", then "unknown"; on-track rows ahead of
+ * cumulative elapsed time read Ahead of pace; otherwise urgency decides. No
+ * client thresholds.
  */
 export function paceBadge(provider: ProviderView): PaceBadge {
   if (provider.exclusionReason !== null) return "Not reporting";
   const advisory = provider.advisory;
   if (!advisory) return "Not reporting";
   if (advisory.status === "at risk") return "Cap risk";
+  if (advisory.status === "watch") return "Watch";
   if (advisory.status === "unknown") return "Measuring";
+  if (advisory.aheadOfElapsed === true) return "Ahead of pace";
   switch (advisory.urgency) {
     case "burn now":
     case "use soon":
@@ -33,12 +37,19 @@ export interface PaceFigures {
   recent: number | null;
 }
 
-/** Split the advisory into its two displayed paces. `burnRate` doubles as the
- * forecast input, so the recent figure only exists when it was measured. */
-export function paceFigures(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceFigures {
+/** Split the advisory into its two displayed paces. The 24h figure is the
+ * measured `recentRate`, not the blended `burnRate` forecast input; an
+ * advisory from a daemon older than the blend falls back to `burnRate`,
+ * which was the raw measured rate then. */
+export function paceFigures(advisory: { avgPace?: number | null; burnRate: number | null; recentRate?: number | null; paceSource: string } | null | undefined): PaceFigures {
   if (!advisory) return { avg: null, recent: null };
   const avg = advisory.avgPace ?? null;
-  const recent = advisory.paceSource === "recent" ? advisory.burnRate : null;
+  const recent =
+    advisory.recentRate !== undefined
+      ? advisory.recentRate
+      : advisory.paceSource === "recent"
+        ? advisory.burnRate
+        : null;
   return { avg, recent };
 }
 
@@ -50,7 +61,7 @@ export interface PaceCells {
 /** Card pace cells: average and 24h rate side by side, each "—" when unknown.
  * Unlike the collapsed summaries, both cells always render so the pair
  * reads as two peer figures. */
-export function paceCells(advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string } | null | undefined): PaceCells {
+export function paceCells(advisory: { avgPace?: number | null; burnRate: number | null; recentRate?: number | null; paceSource: string } | null | undefined): PaceCells {
   const { avg, recent } = paceFigures(advisory);
   return {
     avg: avg !== null ? `${avg.toFixed(1)}%/day` : "—",
@@ -75,7 +86,7 @@ export interface PaceLine {
  * rate. Both paces always show when known (no collapsing) so rows read
  * uniformly. Empty when no advisory is present. */
 export function paceLines(
-  advisory: { avgPace?: number | null; burnRate: number | null; paceSource: string; idealRate: number } | null | undefined,
+  advisory: { avgPace?: number | null; burnRate: number | null; recentRate?: number | null; paceSource: string; idealRate: number } | null | undefined,
 ): PaceLine[] {
   if (!advisory) return [];
   const { avg, recent } = paceFigures(advisory);
@@ -216,6 +227,8 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--warn)";
     case "Ahead of pace":
       return "var(--ahead)";
+    case "Watch":
+      return "var(--watch)";
     case "Cap risk":
       return "var(--danger)";
     case "Measuring":
@@ -233,6 +246,8 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-behind)";
     case "Ahead of pace":
       return "var(--fill-ahead)";
+    case "Watch":
+      return "var(--fill-watch)";
     case "Cap risk":
       return "var(--fill-cap)";
     case "Measuring":
@@ -250,6 +265,8 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-behind)";
     case "Ahead of pace":
       return "var(--edge-ahead)";
+    case "Watch":
+      return "var(--edge-watch)";
     case "Cap risk":
       return "var(--edge-cap)";
     case "Measuring":
@@ -259,10 +276,12 @@ export function edgeToken(badge: PaceBadge): string {
   }
 }
 
-export function outKind(badge: PaceBadge): "behind" | "cap" | "ontrack" | "none" {
+export function outKind(badge: PaceBadge): "behind" | "watch" | "cap" | "ontrack" | "none" {
   switch (badge) {
     case "Behind pace":
       return "behind";
+    case "Watch":
+      return "watch";
     case "Cap risk":
       return "cap";
     case "On track":
@@ -280,6 +299,21 @@ export function hatchGradient(_badge?: PaceBadge): string {
   return "repeating-linear-gradient(45deg, color-mix(in oklch, var(--ink) 20%, transparent) 0 1.5px, transparent 1.5px 7px)";
 }
 
+/**
+ * Badge hover copy: red and amber explain the verdict; an estimated reset is
+ * confessed on the end. Other badges read their own label and need no title.
+ */
+export function badgeTitle(badge: PaceBadge, estimated: boolean): string | undefined {
+  let title: string | undefined;
+  if (badge === "Cap risk") {
+    title = "Burning faster than the window allows and ahead of elapsed time";
+  } else if (badge === "Watch") {
+    title = "Pace points at the cap, but position or the reset clock is uncertain";
+  }
+  if (title && estimated) title += " (estimated reset)";
+  return title;
+}
+
 export function Badge({ provider }: { provider: ProviderView }) {
   const badge = paceBadge(provider);
   const detail = exclusionDetail(provider.exclusionReason);
@@ -290,6 +324,8 @@ export function Badge({ provider }: { provider: ProviderView }) {
       ? "pace-ontrack"
       : badge === "Ahead of pace"
       ? "pace-ahead"
+      : badge === "Watch"
+      ? "pace-watch"
       : badge === "Cap risk"
       ? "pace-cap"
       : "pace-out"; // Not reporting and Measuring share the neutral style
@@ -297,6 +333,7 @@ export function Badge({ provider }: { provider: ProviderView }) {
     <span
       data-testid="pace-badge"
       className={`pace ${badgeClass}`}
+      title={badgeTitle(badge, provider.quota?.resetsAtEstimated === true)}
     >
       {badge}
       {detail ? ` · ${detail}` : ""}
@@ -409,6 +446,11 @@ export function forecastLine(provider: ProviderView): string | null {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
       ? `Cap risk · exhausts in ${advisory.daysToExhaust.toFixed(1)}d at current pace`
       : "Cap risk at current pace";
+  }
+  if (advisory.status === "watch") {
+    return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
+      ? `Watch · exhausts in ${advisory.daysToExhaust.toFixed(1)}d at current pace`
+      : "Watch at current pace";
   }
   if (advisory.wastePct !== null) {
     return `${Math.round(advisory.wastePct)}% waste in ${advisory.daysLeft.toFixed(1)}d`;

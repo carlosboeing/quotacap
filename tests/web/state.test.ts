@@ -19,6 +19,17 @@ describe("state mapping", () => {
     withClose.providers[0].lastCloses = [{ provider: "x", leftoverPct: 12 }];
     expect(toViewModel(withClose).providers[0].lastCloses).toHaveLength(1);
   });
+  it("passes Watch advisories and blend fields through the vendored mirror", () => {
+    const raw = JSON.parse(exampleStateSnapshotJson);
+    const kimi = raw.providers.find((p: any) => p.id === "kimi");
+    kimi.advisory = { ...kimi.advisory, status: "watch", recentRate: 6.2, baselineRate: 3.1, aheadOfElapsed: false };
+    const vm = toViewModel(raw);
+    const adv = vm.providers.find((p) => p.id === "kimi")!.advisory!;
+    expect(adv.status).toBe("watch");
+    expect(adv.recentRate).toBe(6.2);
+    expect(adv.baselineRate).toBe(3.1);
+    expect(adv.aheadOfElapsed).toBe(false);
+  });
   it("labels reading age from the server timestamp", () => {
     const now = Date.now();
     expect(ageLabel(new Date(now - 30_000).toISOString(), now)).toBe("read 30s ago");

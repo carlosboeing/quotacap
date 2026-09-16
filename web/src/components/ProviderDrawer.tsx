@@ -170,6 +170,8 @@ export function pacingStatusToken(provider: ProviderView): string {
       return "ontrack";
     case "Ahead of pace":
       return "ahead";
+    case "Watch":
+      return "watch";
     case "Cap risk":
       return "cap";
     case "Measuring":

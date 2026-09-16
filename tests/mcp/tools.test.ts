@@ -156,6 +156,47 @@ describe("get_quotas", () => {
       expect(markdown.text).toContain("invalid reading");
       expect(json.type).toBe("text");
       expect(JSON.parse(json.text)).toEqual(projectQuotasResponse(exampleStateSnapshot));
+      // The state JSON every MCP tool reads carries the blend fields.
+      for (const p of JSON.parse(exampleStateSnapshotJson).providers) {
+        if (!p.advisory) continue;
+        expect(p.advisory).toHaveProperty("recentRate");
+        expect(p.advisory).toHaveProperty("baselineRate");
+        expect(p.advisory).toHaveProperty("aheadOfElapsed");
+      }
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("carries the blend fields and the watch state through the shared rows", async () => {
+    const watchState = JSON.parse(exampleStateSnapshotJson);
+    const kimi = watchState.providers.find((p: any) => p.id === "kimi");
+    kimi.advisory = {
+      ...kimi.advisory,
+      status: "watch",
+      urgency: "save",
+      daysToExhaust: 2.1,
+      wastePct: 0,
+      recentRate: 6.2,
+      baselineRate: 3.1,
+      aheadOfElapsed: false,
+    };
+    const stub = await startStub(serveState(JSON.stringify(watchState)));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      const quotas: any = await handleTool("get_quotas", {});
+      expect(quotas.content[0].text).toContain("| Watch |");
+      expect(quotas.content[0].text).toContain("Exhausts in 2.1d — watch");
+      const forecast: any = await handleTool("forecast", { provider: "kimi" });
+      const body = JSON.parse(forecast.content[0].text);
+      expect(body.state).toBe("Watch");
+      expect(body.forecast).toBe("Exhausts in 2.1d — watch");
+      expect(body.advisory).toMatchObject({
+        recentRate: 6.2,
+        baselineRate: 3.1,
+        aheadOfElapsed: false,
+        status: "watch",
+      });
     } finally {
       await stub.close();
     }
@@ -216,6 +257,10 @@ describe("forecast", () => {
       expect(body.exclusionReason).toBeNull();
       expect(body.state).toBe("Behind pace");
       expect(body.forecast).toBe("56% waste in 7.0d");
+      // Blend composition rides the advisory JSON; old clients ignore it.
+      expect(body.advisory).toHaveProperty("recentRate", null);
+      expect(typeof body.advisory.baselineRate).toBe("number");
+      expect(body.advisory).toHaveProperty("aheadOfElapsed", false);
     } finally {
       await stub.close();
     }

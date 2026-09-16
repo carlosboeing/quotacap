@@ -6,7 +6,7 @@
 // freshness are never recomputed here.
 
 export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track";
-export type BurnStatus = "at risk" | "on track" | "unknown";
+export type BurnStatus = "at risk" | "watch" | "on track" | "unknown";
 export type PaceSource = "recent" | "window-average" | "unknown";
 export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
 
@@ -24,6 +24,12 @@ export interface AdvisoryView {
   remaining: number;
   idealRate: number;
   burnRate: number | null;
+  /** Measured 24h rolling rate; absent on advisories from a daemon older than the blend. */
+  recentRate?: number | null;
+  /** History-anchored baseline feeding the blend; null when unavailable. */
+  baselineRate?: number | null;
+  /** Cumulative position versus elapsed time; null on excluded/unknown branches. */
+  aheadOfElapsed?: boolean | null;
   /** Window-average pace (used % ÷ days elapsed); null before the window start is known. */
   avgPace: number | null;
   burnMeasured: boolean;

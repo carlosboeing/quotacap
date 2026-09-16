@@ -120,14 +120,14 @@ describe("provider drawer", () => {
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     const flat = {
       ...kimi,
-      advisory: { ...kimi.advisory!, burnRate: 0, avgPace: 10.6, paceSource: "recent", status: "on track" },
+      advisory: { ...kimi.advisory!, burnRate: 0, recentRate: 0, avgPace: 10.6, paceSource: "recent", status: "on track" },
     };
     expect(rankingCopy(flat as any, s.recommendation).pace).toBe(
       "10.6%/day window average and 0.0%/day over the last 24h. The ideal pace to finish is 11.1%/day."
     );
     const risky = {
       ...kimi,
-      advisory: { ...kimi.advisory!, burnRate: 24, avgPace: 10.6, paceSource: "recent", status: "at risk" },
+      advisory: { ...kimi.advisory!, burnRate: 24, recentRate: 24, avgPace: 10.6, paceSource: "recent", status: "at risk" },
     };
     expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
       "10.6%/day window average and 24.0%/day over the last 24h, against an ideal pace of 11.1%/day."

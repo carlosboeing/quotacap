@@ -277,6 +277,40 @@ describe("status process", () => {
     }
   }, 15000);
 
+  it("renders the watch tier in wide and compact output", async () => {
+    const watchState = JSON.parse(exampleStateSnapshotJson);
+    const kimi = watchState.providers.find((p: any) => p.id === "kimi");
+    kimi.advisory = {
+      ...kimi.advisory,
+      status: "watch",
+      urgency: "save",
+      daysToExhaust: 2.1,
+      wastePct: 0,
+      recentRate: 6.2,
+      baselineRate: 3.1,
+      aheadOfElapsed: false,
+    };
+    const stub = await startStub({
+      "/api/state": (_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(watchState));
+      },
+    });
+    try {
+      const home = tmpDir();
+      writeConfig(home, stub.port);
+      const wide = await runCli(home, ["status"]);
+      expect(wide.code).toBe(0);
+      expect(wide.stdout).toContain("Watch");
+      expect(wide.stdout).toContain("Exhausts in 2.1d — watch");
+      const compact = await runCli(home, ["status", "--compact"]);
+      expect(compact.code).toBe(0);
+      expect(compact.stdout).toContain("[kimi:22%~]");
+    } finally {
+      await stub.close();
+    }
+  }, 15000);
+
   it("no-data exits 0 with the start-service hint and creates nothing", async () => {
     const home = tmpDir();
     writeConfig(home, await closedPort());
