@@ -12,6 +12,8 @@ import {
   loadDatasetFromDb,
   recentRateForCycle,
   historyBaselineFor,
+  replay,
+  score,
   runBacktest,
   formatReport,
 } from "../../scripts/forecast-backtest.mjs";
@@ -282,6 +284,33 @@ describe("forecast-weeks fixture — scores", () => {
   it("counts missed caps (no red in a capped week's final 3 days), stratified", () => {
     expect(result.scores.current.missedCaps).toEqual({ total: 1, verified: 1, estimated: 0 });
     expect(result.scores.candidate.missedCaps).toEqual({ total: 0, verified: 0, estimated: 0 });
+    expect(result.scores.candidate.unobservedFinalThree).toEqual({ total: 0, verified: 0, estimated: 0 });
+    expect(result.scores.current.unobservedFinalThree).toEqual({ total: 0, verified: 0, estimated: 0 });
+  });
+
+  it("buckets a capped week with no final-3-day verdict as unobserved, not missed", () => {
+    const week = { id: 7, provider: "p", label: "capped", estimated: false } as any;
+    const day = (weekId: number, daysToClose: number) =>
+      ({
+        provider: "p",
+        day: "2026-09-01",
+        asOf: "2026-09-02T00:00:00.000Z",
+        estimated: false,
+        usedPct: 50,
+        weekId,
+        label: "capped",
+        daysToClose,
+        candidate: { status: "on track" },
+        current: { status: "on track" },
+      }) as any;
+    const sparse = score([day(7, 6)], [week]);
+    expect(sparse.candidate.missedCaps.total).toBe(0);
+    expect(sparse.candidate.unobservedFinalThree.total).toBe(1);
+    expect(sparse.current.missedCaps.total).toBe(0);
+    expect(sparse.current.unobservedFinalThree.total).toBe(1);
+    const observed = score([day(7, 6), day(7, 2)], [week]);
+    expect(observed.candidate.missedCaps.total).toBe(1);
+    expect(observed.candidate.unobservedFinalThree.total).toBe(0);
   });
 
   it("means |dte - actual| on capped weeks, stratified, excluding non-finite forecasts", () => {
@@ -354,6 +383,26 @@ describe("forecast backtest — SQLite path", () => {
   });
 });
 
+describe("forecast backtest — day slicing", () => {
+  it("groups offset timestamps by their UTC day", () => {
+    const dataset = {
+      quotas: [
+        {
+          provider: "p",
+          usedPct: 10,
+          resetsAt: "2026-09-17T00:00:00+10:00",
+          periodStart: "2026-09-10T00:00:00+10:00",
+          fetchedAt: "2026-09-10T02:00:00+10:00",
+        },
+      ],
+      closes: [],
+    };
+    const { days } = replay(dataset as any);
+    // 2026-09-10T02:00+10:00 is 2026-09-09T16:00Z: the UTC day, not the local one.
+    expect(days.map((d: any) => d.day)).toEqual(["2026-09-09"]);
+  });
+});
+
 describe("forecast backtest — pace mirror equivalence", () => {
   it("matches the real getBurnRates and getHistoryBaseline at every fixture day boundary", () => {
     const dbPath = writeFixtureDb();
@@ -362,7 +411,7 @@ describe("forecast backtest — pace mirror equivalence", () => {
       const providers = [
         ...new Set([...dataset.quotas, ...dataset.closes].map((r: any) => r.provider)),
       ].sort();
-      const days = [...new Set(dataset.quotas.map((q: any) => String(q.fetchedAt).slice(0, 10)))].sort();
+      const days = [...new Set(dataset.quotas.map((q: any) => new Date(q.fetchedAt).toISOString().slice(0, 10)))].sort();
       const retractClosesAfter = db.prepare(`DELETE FROM window_closes WHERE detected_at > ?`);
       let recentChecks = 0;
       let historyChecks = 0;

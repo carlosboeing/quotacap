@@ -683,6 +683,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .recB .tint-cap {
   background: var(--danger-soft);
 }
+.recB .tint-watch {
+  background: var(--watch-soft);
+}
 
 .lane-l {
   display: inline-flex;
@@ -702,6 +705,7 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .l-behind { color: var(--warn); }
 .l-ahead { color: var(--ahead); }
 .l-cap { color: var(--danger); }
+.l-watch { color: var(--watch); }
 .l-out { color: var(--ink-soft); }
 
 .rsub {

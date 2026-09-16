@@ -146,9 +146,21 @@ export function Recommendation({
   const { useMore, easeOff } = lanesFor(recommendation.advisories, providers);
   const asOfMs = Date.parse(asOf);
   const measuring = recommendation.use !== "none" && recommendation.wastePct === null;
-  const isClear = recommendation.use === "none" && useMore.length === 0 && easeOff.length === 0;
+  // Lane membership keys off urgency, and both risk tiers can carry urgency
+  // "on track" (burn inside 1.4x ideal), so a board with any at-risk or Watch
+  // provider is never "clear" even when both lanes are empty.
+  const hasRiskOrWatch = recommendation.advisories.some(
+    (a) => a.status === "at risk" || a.status === "watch"
+  );
+  const isClear =
+    recommendation.use === "none" && useMore.length === 0 && easeOff.length === 0 && !hasRiskOrWatch;
   const tracked = providers.filter((p) => p.enabled && p.id !== "manual").length;
-  const easeTint = easeOff.some((a) => a.status === "at risk") ? "tint-cap" : "tint-ahead";
+  const easeTint = easeOff.some((a) => a.status === "watch")
+    ? "tint-watch"
+    : easeOff.some((a) => a.status === "at risk")
+      ? "tint-cap"
+      : "tint-ahead";
+  const easeLane = easeTint === "tint-cap" ? "l-cap" : easeTint === "tint-watch" ? "l-watch" : "l-ahead";
   const pick = providers.find((p) => p.id === recommendation.use);
   const pickLeft = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
   const openAdvice = () => {
@@ -288,7 +300,7 @@ export function Recommendation({
             testId="lane-ease-off"
             label="Ease off"
             tintClass={easeTint}
-            laneClass={easeTint === "tint-cap" ? "l-cap" : "l-ahead"}
+            laneClass={easeLane}
             icon={
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 4v15M6 13l6 6 6-6" />

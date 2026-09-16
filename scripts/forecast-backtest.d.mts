@@ -102,6 +102,7 @@ export interface NullableMetric {
 export interface FormulaScores {
   falseRedDays: Metric;
   missedCaps: Metric;
+  unobservedFinalThree: Metric;
   dteSamples: Metric;
   meanAbsDteError: NullableMetric;
 }

@@ -168,6 +168,77 @@ describe("state catalog: mapping over fixtures", () => {
       easeOff: [],
     });
   });
+  it("keeps the clear banner off a board with a Watch provider", () => {
+    const advisory = {
+      provider: "kimi",
+      daysLeft: 7,
+      remaining: 60,
+      idealRate: 8.5,
+      burnRate: 12,
+      recentRate: 13,
+      baselineRate: 11,
+      aheadOfElapsed: false,
+      burnMeasured: true,
+      paceSource: "recent",
+      status: "watch",
+      wastePct: 0,
+      urgency: "on track",
+    };
+    const recommendation = {
+      use: "none",
+      reason: "all quotas at risk, watch, or exhausted",
+      wastePct: 0,
+      idealRate: 0,
+      recommendationBasis: "none",
+      alternatives: [],
+      advisories: [advisory],
+    };
+    const html = renderToString(
+      React.createElement(Recommendation, {
+        recommendation: recommendation as any,
+        providers: [{ id: "kimi", exclusionReason: null }] as any,
+        asOf: "2026-09-07T06:00:00+10:00",
+      })
+    );
+    expect(html).not.toContain("is-clear");
+    expect(html).toContain("all quotas at risk, watch, or exhausted");
+  });
+  it("tints a Watch ease-off lane member with the watch tint", () => {
+    const advisory = {
+      provider: "kimi",
+      daysLeft: 7,
+      remaining: 60,
+      idealRate: 8.5,
+      burnRate: 13,
+      recentRate: 13,
+      baselineRate: 12,
+      aheadOfElapsed: false,
+      burnMeasured: true,
+      paceSource: "recent",
+      status: "watch",
+      wastePct: 5,
+      urgency: "slow down",
+    };
+    const recommendation = {
+      use: "none",
+      reason: "all quotas at risk, watch, or exhausted",
+      wastePct: 0,
+      idealRate: 0,
+      recommendationBasis: "none",
+      alternatives: [],
+      advisories: [advisory],
+    };
+    const html = renderToString(
+      React.createElement(Recommendation, {
+        recommendation: recommendation as any,
+        providers: [{ id: "kimi", exclusionReason: null }] as any,
+        asOf: "2026-09-07T06:00:00+10:00",
+      })
+    );
+    expect(html).toContain("lane-ease-off");
+    expect(html).toContain("tint-watch");
+    expect(html).toContain("l-watch");
+  });
 });
 
 describe("state catalog: server-rendered components", () => {

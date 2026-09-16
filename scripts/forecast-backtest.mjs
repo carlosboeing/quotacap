@@ -443,6 +443,15 @@ function weekFor(provider, asOfMs, weeks) {
   return best;
 }
 
+// UTC calendar day of a timestamp. Real DBs and the fixture write Z-suffixed
+// ISO strings; normalizing through Date keeps offset timestamps on the day
+// their UTC instant falls in instead of silently shifting week membership.
+function utcDay(iso) {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) throw new Error(`invalid timestamp: ${iso}`);
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 export function replay(dataset, constants = DEFAULT_CONSTANTS) {
   const byProvider = new Map();
   for (const q of dataset.quotas) {
@@ -458,7 +467,7 @@ export function replay(dataset, constants = DEFAULT_CONSTANTS) {
     const sorted = [...rows].sort(
       (a, b) => Date.parse(a.fetchedAt) - Date.parse(b.fetchedAt) || (a.id ?? 0) - (b.id ?? 0),
     );
-    const dayKeys = [...new Set(sorted.map((r) => String(r.fetchedAt).slice(0, 10)))].sort();
+    const dayKeys = [...new Set(sorted.map((r) => utcDay(r.fetchedAt)))].sort();
 
     for (const day of dayKeys) {
       const asOfMs = Date.parse(`${day}T00:00:00.000Z`) + DAY_MS;
@@ -498,7 +507,7 @@ export function replay(dataset, constants = DEFAULT_CONSTANTS) {
 // ------------------------------------------------------------------ scoring
 
 function emptyAcc() {
-  return { falseRedDays: 0, missedCaps: 0, dteSamples: 0, dteSum: 0 };
+  return { falseRedDays: 0, missedCaps: 0, unobservedFinalThree: 0, dteSamples: 0, dteSum: 0 };
 }
 
 function scoreFormula(days, weeks, key) {
@@ -525,9 +534,20 @@ function scoreFormula(days, weeks, key) {
     // The final 3 days are the last three day-boundary verdicts before the
     // receipt's window end: boundaries 2, 1 and 0 days out. A boundary
     // exactly 3 days out starts the final stretch, it is not inside it.
-    const redInFinalThree = days.some(
-      (d) => d.weekId === week.id && d.daysToClose < FINAL_THREE_DAYS && d[key].status === "at risk",
+    const finalThree = days.filter(
+      (d) =>
+        d.weekId === week.id && typeof d.daysToClose === "number" && d.daysToClose < FINAL_THREE_DAYS,
     );
+    if (finalThree.length === 0) {
+      // No verdict inside the final stretch at all: a data gap (sparse polls,
+      // a sleeping laptop), not evidence of a missed cap. Counted separately
+      // so the missed-cap absolutes stay honest; both formulas see the same
+      // gap, so the gate delta is unaffected.
+      (week.estimated ? acc.estimated : acc.verified).unobservedFinalThree++;
+      acc.total.unobservedFinalThree++;
+      continue;
+    }
+    const redInFinalThree = finalThree.some((d) => d[key].status === "at risk");
     if (!redInFinalThree) {
       (week.estimated ? acc.estimated : acc.verified).missedCaps++;
       acc.total.missedCaps++;
@@ -542,6 +562,7 @@ function scoreFormula(days, weeks, key) {
   return {
     falseRedDays: metric((s) => s.falseRedDays),
     missedCaps: metric((s) => s.missedCaps),
+    unobservedFinalThree: metric((s) => s.unobservedFinalThree),
     dteSamples: metric((s) => s.dteSamples),
     meanAbsDteError: metric((s) => (s.dteSamples ? s.dteSum / s.dteSamples : null)),
   };
@@ -617,6 +638,12 @@ export function formatReport(result) {
     );
   }
 
+  const gaps = (key) => result.scores[key].unobservedFinalThree.total;
+  lines.push("");
+  lines.push(
+    `data gaps: capped weeks with no day-boundary verdict in the final 3 days ` +
+      `(excluded from missed caps): candidate ${gaps("candidate")}, current ${gaps("current")}`,
+  );
   lines.push("");
   lines.push(
     `gate: false-red days fall ${result.gate.falseRedFall}, new missed caps ${result.gate.newMissedCaps} -> ` +

@@ -137,6 +137,8 @@ The baseline comes from `getHistoryBaseline` (`src/store/quotas.ts`): the prior-
 
 Estimated resets cap at Watch through that same gate (no special case), never revive Ahead of pace, and demote `burn now` to `use soon` — urgency against a fictional clock misleads. `recommend()` splits waste-positive candidates into verified then estimated pools and reads the estimated pool only when no verified candidate exists, so a real impending deadline outranks a phantom `now + 7d` window.
 
+The engine keeps no "no priority" recommendation branch: an on-track board always carries positive avoidable waste, so the known-waste path owns it. The dashboard's *No subscription needs priority* banner is therefore gated on a board with no at-risk or Watch provider, not on an engine reason.
+
 ### Model catalog (waiting vs non-waiting surfaces)
 
 QuotaCap maintains an inventory of currently listed models per provider bucket without altering the economic recommendation (`recommend()` reads only quotas and pace inputs; model inventory is informational).
