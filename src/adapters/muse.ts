@@ -17,6 +17,9 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
   // After ANSI stripping the panel is ONE line (cursor-addressed, no
   // newlines), so no pattern here may anchor on ^, $ or \n.
   const cleaned = stripAnsi(text);
+  if (/currently unavailable|subscriptions aren't currently available|subscription_unavailable/i.test(cleaned)) {
+    throw new Error("muse: subscription currently unavailable in TUI output");
+  }
   const weekly = cleaned.match(/Weekly\s+(\d+)%\s+used/i);
   if (!weekly) throw new Error("muse: weekly usage not found in TUI output");
   const current = cleaned.match(/Current\s+(\d+)%\s+used/i);

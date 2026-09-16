@@ -38,6 +38,7 @@ describe("diagnostic boundary and failure classification", () => {
     expect(formatProviderName("kimi")).toBe("Kimi");
     expect(formatProviderName("agy")).toBe("Antigravity");
     expect(formatProviderName("agy:3p")).toBe("Antigravity (3rd-party)");
+    expect(formatProviderName("muse")).toBe("Muse");
     expect(formatProviderName("all")).toBe("QuotaCap service");
     expect(formatProviderName("unknown-provider")).toBe("Provider");
   });
@@ -169,6 +170,9 @@ describe("diagnostic boundary and failure classification", () => {
         { text: "expired credentials", expected: "auth" },
         { text: "missing api key", expected: "auth" },
         { text: "authentication failed", expected: "auth" },
+        { text: "Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.", expected: "auth" },
+        { text: "refresh token was already used", expected: "auth" },
+        { text: "Please log out and sign in again", expected: "auth" },
       ];
       for (const { text, expected } of cases) {
         const failure = classifyFailure("codex", new Error(text));
@@ -229,6 +233,23 @@ describe("diagnostic boundary and failure classification", () => {
       const failure = classifyFailure("codex", new Error('codex: bad 5h reset "02:43 on 15 Sep"'));
       expect(failure.summary).toBe("Unable to read Codex usage");
       expect(failure.action).toContain("Check for a QuotaCap update");
+    });
+
+    it("Order 8b: service_unavailable (subscription/service currently unavailable)", () => {
+      const f1 = classifyFailure("muse", new Error("muse: subscription currently unavailable"));
+      expect(f1.diagnosticCode).toBe("service_unavailable");
+      expect(f1.category).toBe("unknown");
+      expect(f1.summary).toBe("Muse usage currently unavailable");
+      expect(f1.errorDetail).toBe("subscription currently unavailable");
+      expect(f1.action).toContain("Muse reported that subscription usage is currently unavailable");
+
+      const f2 = classifyFailure("muse", new Error("subscription currently unavailable in TUI output"));
+      expect(f2.diagnosticCode).toBe("service_unavailable");
+      expect(f2.errorDetail).toBe("subscription currently unavailable");
+
+      const f3 = classifyFailure("codex", new Error("codex: limits refresh requested, run /status again shortly"));
+      expect(f3.diagnosticCode).toBe("service_unavailable");
+      expect(f3.summary).toBe("Codex usage currently unavailable");
     });
 
     it("Order 9: timeout (remaining explicit timeout / timed out)", () => {

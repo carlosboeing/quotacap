@@ -65,12 +65,21 @@ export function FaultBanner({
   providers,
   onRepoll,
   repolling,
+  polling,
 }: {
   providers: ProviderView[];
   onRepoll: () => void;
   repolling: boolean;
+  polling?: "idle" | "in-progress" | "degraded" | string;
 }) {
-  const faulted = providers.filter((p) => p.enabled && p.exclusionReason !== null);
+  const isPolling = repolling || polling === "in-progress";
+  const faulted = providers.filter((p) => {
+    if (!p.enabled || p.exclusionReason === null) return false;
+    if (isPolling && (p.exclusionReason === "stale" || p.exclusionReason === "not-reporting")) {
+      return false;
+    }
+    return true;
+  });
   if (faulted.length === 0) return null;
   return (
     <div>

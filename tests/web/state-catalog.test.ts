@@ -238,6 +238,19 @@ describe("state catalog: server-rendered components", () => {
     expect(banners).toContain("invalid reading"); // grok invalid
     expect(banners).not.toContain("manual"); // disabled providers never banner
   });
+  it("suppresses timing-based fault banners (stale and not-reporting) while polling is in-progress", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const banners = renderToString(
+      React.createElement(FaultBanner, {
+        providers: s.providers,
+        onRepoll: () => {},
+        repolling: false,
+        polling: "in-progress",
+      })
+    );
+    expect(banners).toContain("invalid reading");
+    expect(banners).not.toContain("stopped reporting");
+  });
   it("renders drawer fields and onboarding without synthesis", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const codex = s.providers.find((p) => p.id === "codex")!;

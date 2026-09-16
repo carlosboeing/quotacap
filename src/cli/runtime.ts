@@ -120,16 +120,25 @@ export async function launchWeb(
   if (health?.ok) {
     const skew = checkSkew(health, VERSION, process.execPath);
     if (skew === "match") {
+      if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+      }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
     }
     if (skew === "exec-only") {
       console.error(execSkewWarning(String(health.exec)));
+      if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+      }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
     }
     if (skew === "cli-older") {
       console.error(olderCliWarning(String(health.version ?? "unknown")));
+      if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+      }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
     }
@@ -150,6 +159,7 @@ export async function launchWeb(
         exit(1);
         return;
       }
+      await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
     }
@@ -169,6 +179,7 @@ export async function launchWeb(
     }
     // Unmanaged successor: foreground-start the new daemon and open it.
     const started = await start(o.port ? { port } : undefined);
+    await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
     await openDashboard(`http://127.0.0.1:${started.port}`, openBrowser);
     return;
   }
@@ -207,6 +218,7 @@ export async function launchWeb(
         if (!healthy) detail = `not ready within ${Math.round(readyTimeoutMs / 1000)}s`;
       }
       if (!detail) {
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
         await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
         return;
       }
@@ -219,7 +231,34 @@ export async function launchWeb(
   if (!foregroundOnly && !attemptedServiceStart && supported()) {
     console.error("for a background service that survives terminal closes, run 'quotacap service install'");
   }
+  await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
   await openDashboard(`http://127.0.0.1:${started.port}`, openBrowser);
+}
+
+export async function waitForInitialPoll(
+  port: number,
+  opts: {
+    createClient?: (opts: { port: number; timeoutMs: number }) => any;
+    sleep?: SleepFn;
+    timeoutMs?: number;
+  } = {},
+): Promise<void> {
+  const createClient = opts.createClient ?? createServiceClient;
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const deadline = Date.now() + timeoutMs;
+  const client = createClient({ port, timeoutMs: 1000 });
+  while (Date.now() < deadline) {
+    await sleep(250);
+    try {
+      const h = await client.get("/health");
+      if (!h?.ok || h?.polling !== "in-progress" || h?.lastCompletedPollAt) {
+        return;
+      }
+    } catch {
+      return;
+    }
+  }
 }
 
 async function defaultOpenBrowser(url: string): Promise<void> {

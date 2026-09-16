@@ -48,6 +48,12 @@ function parseFiveReset(raw: string, now: Date): string | null {
 
 export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   const cleaned = stripAnsi(text);
+  if (/refresh token was already used|please log out and sign in again|access token could not be refreshed/i.test(cleaned)) {
+    throw new Error("codex: your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.");
+  }
+  if (/Limits:\s*refresh requested/i.test(cleaned)) {
+    throw new Error("codex: limits refresh requested, run /status again shortly");
+  }
   let weeklyLeft: number | null = null;
   let fiveLeft: number | null = null;
   let weeklyRaw: string | null = null;
@@ -133,7 +139,8 @@ export const codexAdapter = {
       // Complete on the /status panel only. The startup statusline footer
       // ("· 5h N% left · weekly N% left") carries no reset timestamps and
       // would otherwise win the race, forcing a drifting now+7d estimate.
-      completionRegex: /Weekly limit:/i,
+      completionRegex:
+        /Weekly limit:|Limits:\s*refresh requested|refresh token was already used|log out and sign in again/i,
       abortOn: /Do you trust|Trust.*folder|trust the files in this folder/i,
       timeoutMs: 12000,
       maxBytes: 256 * 1024,
