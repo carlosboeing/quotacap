@@ -22,6 +22,7 @@ import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
 import { classifyFailure } from "../diagnostics/failure.js";
+import { ensureCatalogs } from "../catalog/index.js";
 
 export function resolveClaudeExecPath(): string | undefined {
   try {
@@ -258,6 +259,14 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       console.warn("[quotacap] initial poll failed", detail);
     });
   coordinator.start(config.pollMinutes * 60 * 1000);
+
+  // Background catalog warm: wait: true after listen, never blocks /health ready.
+  void ensureCatalogs({
+    db,
+    wait: true,
+    providers: config.enabledProviders,
+    ttlHours: 6,
+  }).catch(() => {});
 
   let stopping = false;
   let stopped = false;

@@ -8,6 +8,7 @@ import { registerStatusCommand } from "./status.js";
 import { registerAdviseCommand } from "./advise.js";
 import { registerIngestCommand } from "./ingest.js";
 import { registerProvidersCommand } from "./providers.js";
+import { registerModelsCommand } from "./models.js";
 import type { SleepFn } from "./takeover.js";
 import type { UpdateCache } from "../runtime/updates.js";
 
@@ -37,6 +38,7 @@ export function registerClientCommands(program: Command, deps?: ClientCommandDep
   registerStatusCommand(program, deps ?? {});
   registerAdviseCommand(program, deps ?? {});
   registerProvidersCommand(program, deps ?? {});
+  registerModelsCommand(program, deps ?? {});
   if (isExperimentalIngestEnabled()) {
     registerIngestCommand(program, deps ?? {});
   }

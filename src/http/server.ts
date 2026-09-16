@@ -27,6 +27,8 @@ import { classifyFailure } from "../diagnostics/failure.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { providerIdentity } from "../advisory/provider-names.js";
 import { setProviderNameOverride } from "../config.js";
+import { ensureCatalogs, CATALOG_FAIL_COOLDOWN_MS } from "../catalog/index.js";
+import { getAllLatest } from "../store/quotas.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -104,6 +106,8 @@ export interface RuntimeContext {
    */
   onRestart?: (info: { version?: string; exec?: string }) => void;
   configPath?: string;
+  catalogTtlHours?: number;
+  catalogFetchers?: Record<string, any>;
 }
 
 // Ingest writes outside the poll path, so it needs the same fence the
@@ -244,6 +248,102 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
         error: diagnosis.errorDetail,
       };
     }
+  });
+
+  // --- Model catalog ---
+
+  const catalogTtl = ctx.catalogTtlHours ?? 6;
+
+  function projectModels(catalogs: Map<string, any>, quotaMap: Map<string, any>) {
+    const out: any[] = [];
+    for (const [id, catalog] of catalogs) {
+      const identity = providerIdentity(id, ctx.providerNames);
+      const quota = quotaMap.get(id);
+      const leftoverPct = quota?.usedPct != null ? Math.round((100 - quota.usedPct) * 10) / 10 : null;
+      out.push({
+        id,
+        displayName: identity.displayName,
+        harness: identity.harness,
+        vendor: identity.vendor,
+        leftoverPct,
+        resetsAt: quota?.resetsAt ?? null,
+        catalog,
+      });
+    }
+    return out;
+  }
+
+  app.get("/api/models", async (req: any, reply) => {
+    const providerParam = req.query?.provider;
+    const providers = providerParam
+      ? [String(providerParam)]
+      : ctx.enabledProviders;
+    // Unknown provider: 400 before the (expensive) waiting ensure.
+    if (providerParam) {
+      const known = new Set([...ctx.enabledProviders, "agy:3p"]);
+      if (!known.has(providerParam)) {
+        return reply.status(400).send({ error: `unknown provider: ${providerParam}` });
+      }
+    }
+    const catalogs = await ensureCatalogs({
+      db: ctx.db,
+      wait: true,
+      providers,
+      ttlHours: catalogTtl,
+      now: ctx.now,
+      fetchers: ctx.catalogFetchers,
+    });
+    const quotas = getAllLatest(ctx.db);
+    const quotaMap = new Map((quotas as any[]).map((q: any) => [q.provider, q]));
+    return projectModels(catalogs, quotaMap);
+  });
+
+  let lastModelsRefreshAt = 0;
+  let lastModelsRefreshResult: any[] = [];
+
+  app.post("/api/models/refresh", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+    const nowMs = (ctx.now?.() ?? new Date()).getTime();
+    if (lastModelsRefreshAt > 0 && nowMs - lastModelsRefreshAt < 60_000) {
+      const catalogs = await ensureCatalogs({
+        db: ctx.db,
+        wait: false,
+        providers: ctx.enabledProviders,
+        ttlHours: catalogTtl,
+        now: ctx.now,
+        fetchers: ctx.catalogFetchers,
+      });
+      const quotas = getAllLatest(ctx.db);
+      const quotaMap = new Map((quotas as any[]).map((q: any) => [q.provider, q]));
+      const models = projectModels(catalogs, quotaMap);
+      return {
+        cooldown: true,
+        models,
+        results: models,
+      };
+    }
+    const catalogs = await ensureCatalogs({
+      db: ctx.db,
+      wait: true,
+      refresh: true,
+      providers: ctx.enabledProviders,
+      ttlHours: catalogTtl,
+      now: ctx.now,
+      fetchers: ctx.catalogFetchers,
+    });
+    const quotas = getAllLatest(ctx.db);
+    const quotaMap = new Map((quotas as any[]).map((q: any) => [q.provider, q]));
+    const models = projectModels(catalogs, quotaMap);
+    lastModelsRefreshAt = nowMs;
+    lastModelsRefreshResult = models;
+    return {
+      cooldown: false,
+      models,
+      results: models,
+    };
   });
 
   app.patch("/api/providers/:id", async (req: any, reply) => {

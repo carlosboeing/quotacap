@@ -107,6 +107,14 @@ describe("tool surface", () => {
         },
       },
       {
+        name: "get_models",
+        description: "Currently listed models per quota bucket (inventory, not a task ranking)",
+        inputSchema: {
+          type: "object",
+          properties: { provider: { type: "string" } },
+        },
+      },
+      {
         name: "forecast",
         description: expect.any(String),
         inputSchema: {
@@ -122,6 +130,11 @@ describe("tool surface", () => {
     const tool = tools.find((t) => t.name === "get_recommendation")!;
     expect(tool.description).not.toMatch(/task-specific|ranked|tailored|optimized/i);
     expect(tool.description).toMatch(/same advice for every task/);
+  });
+
+  it("get_models description exactly matches inventory disclaimer", () => {
+    const tool = tools.find((t) => t.name === "get_models")!;
+    expect(tool.description).toBe("Currently listed models per quota bucket (inventory, not a task ranking)");
   });
 });
 
@@ -394,5 +407,88 @@ describe("provider failure observability in MCP", () => {
     } finally {
       await stub.close();
     }
+  });
+});
+
+describe("get_models", () => {
+  const sampleModels = [
+    {
+      id: "claude",
+      displayName: "Claude",
+      harness: "Claude Code",
+      vendor: "Anthropic",
+      leftoverPct: 75,
+      resetsAt: "2026-09-20T00:00:00Z",
+      catalog: {
+        status: "ok",
+        fetchedAt: "2026-09-16T10:00:00Z",
+        listed: [
+          { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", default: true },
+          { id: "claude-opus-4-6", displayName: "Claude Opus 4.6" },
+        ],
+      },
+    },
+  ];
+
+  it("returns markdown table plus JSON from /api/models", async () => {
+    const stub = await startStub({
+      "/api/models": (_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(sampleModels));
+      },
+    });
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      const res: any = await handleTool("get_models", {});
+      expect(res.isError).toBeUndefined();
+      expect(res.content).toHaveLength(2);
+      const [markdown, json] = res.content;
+      expect(markdown.type).toBe("text");
+      expect(markdown.text).toContain("| Provider | Leftover | Status | Models |");
+      expect(markdown.text).toContain("| Claude | 75% | ok | claude-sonnet-4-6, claude-opus-4-6 |");
+      expect(json.type).toBe("text");
+      expect(JSON.parse(json.text)).toEqual(sampleModels);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("forwards provider query parameter", async () => {
+    let requestedUrl = "";
+    const stub = await startStub({
+      "/api/models?provider=claude": (req, res) => {
+        requestedUrl = req.url ?? "";
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(sampleModels));
+      },
+    });
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      const res: any = await handleTool("get_models", { provider: "claude" });
+      expect(res.isError).toBeUndefined();
+      expect(requestedUrl).toBe("/api/models?provider=claude");
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("production waiting clients pass CATALOG_CLIENT_TIMEOUT_MS (30000) and snapshot clients stay 2000/5000", () => {
+    const mcpSrc = fs.readFileSync(path.resolve(__dirname, "../../src/mcp/server.ts"), "utf8");
+    const cliSrc = fs.readFileSync(path.resolve(__dirname, "../../src/cli/models.ts"), "utf8");
+    const adviseSrc = fs.readFileSync(path.resolve(__dirname, "../../src/cli/advise.ts"), "utf8");
+    const statusSrc = fs.readFileSync(path.resolve(__dirname, "../../src/cli/status.ts"), "utf8");
+
+    // MCP get_models client uses CATALOG_CLIENT_TIMEOUT_MS (30s)
+    expect(mcpSrc).toMatch(/createServiceClientForBase\(base,\s*\{\s*timeoutMs:\s*CATALOG_CLIENT_TIMEOUT_MS\s*\}\)/);
+    // Snapshot client in MCP stays 5000ms
+    expect(mcpSrc).toMatch(/createServiceClientForBase\(base,\s*\{\s*timeoutMs:\s*5000\s*\}\)/);
+
+    // CLI models uses CATALOG_CLIENT_TIMEOUT_MS (30s)
+    expect(cliSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*timeoutMs:\s*CATALOG_CLIENT_TIMEOUT_MS\s*\}\)/);
+
+    // Snapshot clients in advise and status stay 2000ms
+    expect(adviseSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*timeoutMs:\s*2000\s*\}\)/);
+    expect(statusSrc).toMatch(/const timeoutMs = compact \? 1000 : 2000;/);
+    expect(statusSrc).toMatch(/createClient\(\{\s*port:\s*cfg\.port,\s*timeoutMs\s*\}\)/);
   });
 });
