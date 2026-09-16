@@ -4,8 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import {
   autoEnableNewProviders,
+  defaultConfig,
   isExperimentalIngestEnabled,
   LEGACY_KNOWN_PROVIDERS,
+  readConfig,
   readServiceConfig,
   readServiceMetadata,
   resetAllProviderNameOverrides,
@@ -42,6 +44,7 @@ describe("strict service config", () => {
     expect(cfg).toEqual({
       port: 8787,
       pollMinutes: 15,
+      catalogTtlHours: 6,
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       providerNames: {},
@@ -54,6 +57,7 @@ describe("strict service config", () => {
     const cfg = await readServiceConfig();
     expect(cfg.port).toBe(9999);
     expect(cfg.pollMinutes).toBe(15);
+    expect(cfg.catalogTtlHours).toBe(6);
     expect(cfg.enabledProviders).toEqual([
       "claude",
       "codex",
@@ -62,6 +66,14 @@ describe("strict service config", () => {
       "agy",
       "muse",
     ]);
+  });
+
+  it("readConfig and defaultConfig default catalogTtlHours to 6 when the key is omitted", async () => {
+    isolatedHome();
+    expect(defaultConfig().catalogTtlHours).toBe(6);
+    expect((await readConfig()).catalogTtlHours).toBe(6);
+    writeConfig({ port: 9999 });
+    expect((await readConfig()).catalogTtlHours).toBe(6);
   });
 
   it("(b) malformed JSON throws instead of defaults", async () => {

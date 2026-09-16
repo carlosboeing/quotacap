@@ -32,6 +32,16 @@ export function migrate(db:any){
            CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
            CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
            CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);
+           CREATE TABLE IF NOT EXISTS model_catalogs(
+             provider TEXT PRIMARY KEY,
+             fetched_at TEXT,
+             status TEXT NOT NULL,
+             models_json TEXT NOT NULL,
+             diagnostic_code TEXT,
+             summary TEXT,
+             action TEXT,
+             error_detail TEXT
+           );
            CREATE TABLE IF NOT EXISTS window_closes(
              id INTEGER PRIMARY KEY,
              provider TEXT NOT NULL,
