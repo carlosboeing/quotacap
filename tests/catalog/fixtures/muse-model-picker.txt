@@ -1,0 +1,12 @@
+Muse Code 2.1 · High Usage · 35% used · muse-spark-1.3·max
+~/  two panes · ready
+
+> /model
+
+Choose model
+  ❯ muse-spark-1.3 · max (current)
+    muse-spark-1.3-contributor
+    muse-spark-1.2
+    muse-spark-1.2-contributor
+
+Esc to cancel
