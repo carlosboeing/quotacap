@@ -3,7 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { formatInTimeZone } from "date-fns-tz";
-import { parseMuseTui, museAdapter } from "../../src/adapters/muse.js";
+import {
+  parseMuseTui,
+  museAdapter,
+  MUSE_UNAVAILABLE_MESSAGE,
+  recoverSubscription,
+  WARM_ATTEMPTS,
+  WARM_SETTLE_MS,
+  type RecoveryDeps,
+} from "../../src/adapters/muse.js";
+import type { ParsedQuota } from "../../src/adapters/types.js";
 import { stripAnsi } from "../../src/adapters/pty.js";
 import * as ptyMod from "../../src/adapters/pty.js";
 
@@ -206,5 +215,127 @@ describe("museAdapter.poll invocation contract", () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
     expect(captured["cwd"]).toBe(path.join(home, ".quotacap", "muse-probe"));
+  });
+});
+
+describe("recoverSubscription", () => {
+  const QUOTA = { provider: "muse" } as unknown as ParsedQuota;
+
+  it("recovers on the first warm turn", async () => {
+    const usagePass = vi.fn().mockResolvedValue(QUOTA);
+    const warmTurn = vi.fn().mockResolvedValue(undefined);
+    const sleeps: number[] = [];
+    const logs: string[] = [];
+    const quota = await recoverSubscription({
+      unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+      usagePass,
+      warmTurn,
+      sleep: async (ms) => { sleeps.push(ms); },
+      log: (m) => { logs.push(m); },
+    });
+    expect(quota).toBe(QUOTA);
+    expect(warmTurn).toHaveBeenCalledTimes(1);
+    expect(usagePass).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([WARM_SETTLE_MS, WARM_SETTLE_MS]);
+    expect(logs).toContain("subscription unavailable; recovered after 1 warm prompt(s)");
+  });
+
+  it("recovers on the second warm turn when the first read is still unavailable", async () => {
+    const usagePass = vi.fn()
+      .mockRejectedValueOnce(new Error(MUSE_UNAVAILABLE_MESSAGE))
+      .mockResolvedValueOnce(QUOTA);
+    const warmTurn = vi.fn().mockResolvedValue(undefined);
+    const quota = await recoverSubscription({
+      unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+      usagePass,
+      warmTurn,
+      sleep: async () => {},
+    });
+    expect(quota).toBe(QUOTA);
+    expect(warmTurn).toHaveBeenCalledTimes(2);
+    expect(usagePass).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after three warm turns and rethrows the unavailability", async () => {
+    const usagePass = vi.fn().mockRejectedValue(new Error(MUSE_UNAVAILABLE_MESSAGE));
+    const warmTurn = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      recoverSubscription({
+        unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+        usagePass,
+        warmTurn,
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow(MUSE_UNAVAILABLE_MESSAGE);
+    expect(warmTurn).toHaveBeenCalledTimes(WARM_ATTEMPTS);
+    expect(usagePass).toHaveBeenCalledTimes(WARM_ATTEMPTS);
+  });
+
+  it("logs a failed warm turn and continues", async () => {
+    const logs: string[] = [];
+    const usagePass = vi.fn().mockResolvedValue(QUOTA);
+    const warmTurn = vi.fn()
+      .mockRejectedValueOnce(new Error("Command failed: muse exec hi"))
+      .mockResolvedValueOnce(undefined);
+    const quota = await recoverSubscription({
+      unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+      usagePass,
+      warmTurn,
+      sleep: async () => {},
+      log: (m) => { logs.push(m); },
+    });
+    expect(quota).toBe(QUOTA);
+    expect(warmTurn).toHaveBeenCalledTimes(2);
+    expect(logs.some((l) => l.includes("warm attempt 1 failed"))).toBe(true);
+  });
+
+  it("propagates a non-unavailable read error without further warming", async () => {
+    const usagePass = vi.fn().mockRejectedValue(new Error("pty completion timeout after 14000ms"));
+    const warmTurn = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      recoverSubscription({
+        unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+        usagePass,
+        warmTurn,
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow("pty completion timeout after 14000ms");
+    expect(warmTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops when the budget is spent", async () => {
+    let time = 0;
+    const usagePass = vi.fn().mockRejectedValue(new Error(MUSE_UNAVAILABLE_MESSAGE));
+    const warmTurn = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      recoverSubscription({
+        unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+        usagePass,
+        warmTurn,
+        now: () => time,
+        sleep: async (ms) => { time += ms; },
+        budgetMs: 2 * WARM_SETTLE_MS,
+      }),
+    ).rejects.toThrow(MUSE_UNAVAILABLE_MESSAGE);
+    expect(warmTurn).toHaveBeenCalledTimes(1);
+    expect(usagePass).not.toHaveBeenCalled();
+  });
+
+  it("stops immediately when aborted during a warm turn", async () => {
+    let aborted = false;
+    const usagePass = vi.fn().mockResolvedValue(QUOTA);
+    const warmTurn = vi.fn().mockImplementation(async () => {
+      aborted = true;
+      throw new Error("muse: aborted");
+    });
+    const deps: RecoveryDeps = {
+      unavailable: new Error(MUSE_UNAVAILABLE_MESSAGE),
+      usagePass,
+      warmTurn,
+      sleep: async () => {},
+      aborted: () => aborted,
+    };
+    await expect(recoverSubscription(deps)).rejects.toThrow("muse: aborted");
+    expect(usagePass).not.toHaveBeenCalled();
   });
 });

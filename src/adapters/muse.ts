@@ -6,6 +6,79 @@ import { runPty, stripAnsi } from "./pty.js";
 import { adapterSignal } from "../runtime/spawn.js";
 import type { ParsedQuota } from "./types.js";
 
+/** Canonical unavailability error: parseMuseTui throws it, poll() recognises it
+ *  to start recovery, and failure.ts classifies its text as service_unavailable. */
+export const MUSE_UNAVAILABLE_MESSAGE = "muse: subscription currently unavailable in TUI output";
+
+export const WARM_ATTEMPTS = 3;
+export const WARM_SETTLE_MS = 3000;
+export const WARM_EXEC_TIMEOUT_MS = 20000;
+export const FALLBACK_BUDGET_MS = 60000;
+const USAGE_TIMEOUT_MS = 14000;
+const MIN_STEP_MS = 1000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface RecoveryDeps {
+  unavailable: Error;
+  usagePass: (timeoutMs: number) => Promise<ParsedQuota>;
+  warmTurn: (timeoutMs: number) => Promise<void>;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  aborted?: () => boolean;
+  log?: (message: string) => void;
+  attempts?: number;
+  settleMs?: number;
+  budgetMs?: number;
+}
+
+/**
+ * Recovery loop for an unavailable subscription, entered only on
+ * MUSE_UNAVAILABLE_MESSAGE. Attempt = settle, headless warm turn, settle,
+ * /usage re-read. The budget is checked before every step, and every step's
+ * timeout is clamped to what remains, so the loop always ends inside the
+ * adapter's own timeout. Exhaustion rethrows the last unavailability error.
+ */
+export async function recoverSubscription(deps: RecoveryDeps): Promise<ParsedQuota> {
+  const sleep = deps.sleep ?? delay;
+  const now = deps.now ?? Date.now;
+  const aborted = deps.aborted ?? (() => adapterSignal("muse")?.aborted === true);
+  const log = deps.log ?? ((message: string) => console.warn(`[quotacap] muse: ${message}`));
+  const attempts = deps.attempts ?? WARM_ATTEMPTS;
+  const settleMs = deps.settleMs ?? WARM_SETTLE_MS;
+  const deadline = now() + (deps.budgetMs ?? FALLBACK_BUDGET_MS);
+  const remaining = () => deadline - now();
+  let unavailable = deps.unavailable;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (remaining() < MIN_STEP_MS) break;
+    await sleep(Math.min(settleMs, remaining()));
+    if (remaining() < MIN_STEP_MS) break;
+    try {
+      await deps.warmTurn(Math.min(WARM_EXEC_TIMEOUT_MS, remaining()));
+    } catch (warmError) {
+      if (aborted()) throw warmError;
+      log(`warm attempt ${attempt} failed: ${(warmError as Error).message}`);
+      continue;
+    }
+    if (remaining() < MIN_STEP_MS) break;
+    await sleep(Math.min(settleMs, remaining()));
+    if (remaining() < MIN_STEP_MS) break;
+    try {
+      const quota = await deps.usagePass(Math.min(USAGE_TIMEOUT_MS, remaining()));
+      log(`subscription unavailable; recovered after ${attempt} warm prompt(s)`);
+      return quota;
+    } catch (readError) {
+      if ((readError as Error)?.message !== MUSE_UNAVAILABLE_MESSAGE) throw readError;
+      unavailable = readError as Error;
+    }
+  }
+  log("subscription still unavailable; warm recovery exhausted");
+  throw unavailable;
+}
+
 // QuotaCap-owned empty probe dir, beside the config and database. Muse loads
 // project-local skills, rules, hooks and plugin config from cwd, so the probe
 // never runs in $HOME or a user project — an empty dir grants nothing.
@@ -18,7 +91,7 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
   // newlines), so no pattern here may anchor on ^, $ or \n.
   const cleaned = stripAnsi(text);
   if (/currently unavailable|subscriptions aren't currently available|subscription_unavailable/i.test(cleaned)) {
-    throw new Error("muse: subscription currently unavailable in TUI output");
+    throw new Error(MUSE_UNAVAILABLE_MESSAGE);
   }
   const weekly = cleaned.match(/Weekly\s+(\d+)%\s+used/i);
   if (!weekly) throw new Error("muse: weekly usage not found in TUI output");
