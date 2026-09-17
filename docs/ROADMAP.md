@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.36 — 2026-09-17 (reset rail pin accuracy)
+
+* Reset rail pin accuracy — edge pins clamp their label and timestamp to the rail rather than translating the whole pin, so the dot stays on its reset time coordinate and pins no longer render out of chronological order (#101)
+
 ## Recently shipped — 0.0.35 — 2026-09-17 (model catalog, weekly ledger & pace-normalized forecast)
 
 * Live model catalog — tracks the currently listed models per quota bucket for all six providers (`agy`, `claude`, `codex`, `grok`, `kimi`, `muse`) via pure parsers, cached in SQLite with a configurable TTL; waiting surfaces (`GET /api/models`, `POST /api/models/refresh`, MCP `get_models`, CLI `models`) wait for fresh listings, while advisory surfaces join the cache without spawning processes and show `models:` with freshness indicators (#94)

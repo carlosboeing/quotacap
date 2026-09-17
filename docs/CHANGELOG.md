@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.36
+
+- Reset rail pin accuracy: edge pins clamp their label and timestamp to the rail instead of translating the whole pin button, so the dot stays on its reset time coordinate and pins render in chronological order (#101).
+
 ## 0.0.35
 
 - Live model catalog: tracks currently listed models per quota bucket across all six providers (`agy`, `claude`, `codex`, `grok`, `kimi`, `muse`) via pure parsers, cached in `model_catalogs` in SQLite with configurable TTL (`catalogTtlHours`, default 6h). Waiting surfaces (`GET /api/models`, `POST /api/models/refresh`, MCP `get_models`, and CLI `quotacap models`) wait up to 30s for fresh listings; non-waiting advisory surfaces (`advise`, MCP `get_recommendation`, `/api/recommendation`, `/api/state`) join the cache without spawning CLI processes and display `models:` with freshness indicators. Catalog fetching uses in-process coalescing, a 60s failure cooldown, and catalog-owned abort signals isolated from usage polling.
