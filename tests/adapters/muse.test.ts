@@ -151,7 +151,8 @@ describe("museAdapter.poll invocation contract", () => {
   const oldQcHome = process.env.QUOTACAP_HOME;
 
   afterEach(() => {
-    process.env.QUOTACAP_HOME = oldQcHome;
+    if (oldQcHome === undefined) delete process.env.QUOTACAP_HOME;
+    else process.env.QUOTACAP_HOME = oldQcHome;
   });
 
   it("spawns muse with the measured invocation (two-phase submit, responder on)", async () => {
@@ -162,6 +163,7 @@ describe("museAdapter.poll invocation contract", () => {
       captured = opts as unknown as Record<string, any>;
       return museRawTranscript({ weeklyReset: futureWeeklyReset() });
     });
+    const execSpy = vi.spyOn(spawnMod, "trackedExecFile").mockResolvedValue({ stdout: "", stderr: "" });
     const probeDir = path.join(home, ".quotacap", "muse-probe");
     let probeExisted = false;
     try {
@@ -173,6 +175,7 @@ describe("museAdapter.poll invocation contract", () => {
       probeExisted = fs.statSync(probeDir).isDirectory();
     } finally {
       spy.mockRestore();
+      execSpy.mockRestore();
       fs.rmSync(home, { recursive: true, force: true });
     }
     expect(probeExisted).toBe(true);
@@ -197,6 +200,7 @@ describe("museAdapter.poll invocation contract", () => {
     expect("Subscriptions aren't currently available for your account.").not.toMatch(abortOn);
     expect("error=subscription_unavailable").not.toMatch(abortOn);
     expect(stripAnsi(museRawTranscript())).not.toMatch(abortOn);
+    expect(execSpy).not.toHaveBeenCalled();
   });
 
   it("falls back to the homedir probe dir when QUOTACAP_HOME is unset", async () => {
@@ -223,7 +227,8 @@ describe("museAdapter.poll recovery", () => {
   const oldQcHome = process.env.QUOTACAP_HOME;
 
   afterEach(() => {
-    process.env.QUOTACAP_HOME = oldQcHome;
+    if (oldQcHome === undefined) delete process.env.QUOTACAP_HOME;
+    else process.env.QUOTACAP_HOME = oldQcHome;
     vi.useRealTimers();
   });
 
@@ -268,6 +273,41 @@ describe("museAdapter.poll recovery", () => {
     } finally {
       ptySpy.mockRestore();
       execSpy.mockRestore();
+    }
+  });
+
+  it("propagates the abort when the adapter signal fires mid-warm", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-muse-"));
+    process.env.QUOTACAP_HOME = home;
+    const controller = new AbortController();
+    spawnMod.installAdapterSignal("muse", controller.signal);
+    vi.useFakeTimers();
+    const ptySpy = vi.spyOn(ptyMod, "runPty")
+      .mockRejectedValueOnce(new Error("muse: subscription currently unavailable in TUI output"));
+    const execSpy = vi.spyOn(spawnMod, "trackedExecFile").mockImplementation(async () => {
+      controller.abort();
+      // pollAll clears the signal map entry in a microtask once its gate
+      // rejects; emulate that clear before the warm error reaches the loop,
+      // which is where the production bug lived.
+      spawnMod.clearAdapterSignal("muse");
+      throw new Error("muse: aborted");
+    });
+    try {
+      const pending = museAdapter.poll();
+      // Attach a handler before advancing: the abort rejects mid-advance, and
+      // the assertion below only subscribes after the fake clock has run.
+      void pending.catch(() => {});
+      // Fixed path rejects after the first settle; the extra budget lets a
+      // regression run all three attempts, failing the assertion instead of
+      // hanging the test on an unsettled promise.
+      await vi.advanceTimersByTimeAsync(3 * 2 * 3000 + 1000);
+      await expect(pending).rejects.toThrow("muse: aborted");
+    } finally {
+      ptySpy.mockRestore();
+      execSpy.mockRestore();
+      spawnMod.clearAdapterSignal("muse");
+      vi.useRealTimers();
+      fs.rmSync(home, { recursive: true, force: true });
     }
   });
 });

@@ -37,9 +37,10 @@ export interface RecoveryDeps {
 /**
  * Recovery loop for an unavailable subscription, entered only on
  * MUSE_UNAVAILABLE_MESSAGE. Attempt = settle, headless warm turn, settle,
- * /usage re-read. The budget is checked before every step, and every step's
- * timeout is clamped to what remains, so the loop always ends inside the
- * adapter's own timeout. Exhaustion rethrows the last unavailability error.
+ * /usage re-read. The budget is checked before every step, and the warm turn,
+ * sleep and readiness/completion waits are clamped to what remains; the
+ * adapter's 90 s timeout is the backstop for the fixed per-pass overheads.
+ * Exhaustion rethrows the last unavailability error.
  */
 export async function recoverSubscription(deps: RecoveryDeps): Promise<ParsedQuota> {
   const sleep = deps.sleep ?? delay;
@@ -60,7 +61,7 @@ export async function recoverSubscription(deps: RecoveryDeps): Promise<ParsedQuo
       await deps.warmTurn(Math.min(WARM_EXEC_TIMEOUT_MS, remaining()));
     } catch (warmError) {
       if (aborted()) throw warmError;
-      log(`warm attempt ${attempt} failed: ${(warmError as Error).message}`);
+      log(`warm attempt ${attempt} failed: ${(warmError as Error)?.message}`);
       continue;
     }
     if (remaining() < MIN_STEP_MS) break;
@@ -177,6 +178,10 @@ export const museAdapter = {
   id: "muse",
   requiresAuth: "muse login (CLI owns credentials)",
   async poll(): Promise<ParsedQuota> {
+    // Captured before the first pass: pollAll clears the adapter signal map
+    // entry in a microtask when its gate rejects, but clearing the map does
+    // not reset the signal object, so the loop can still observe the abort.
+    const signal = adapterSignal("muse");
     try {
       return await usagePass();
     } catch (e) {
@@ -191,6 +196,7 @@ export const museAdapter = {
             timeout: timeoutMs,
           });
         },
+        aborted: () => signal?.aborted === true,
       });
     }
   },
