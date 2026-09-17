@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.37 — 2026-09-17 (muse recovery)
+
+* Muse recovery — when the `/usage` panel reports `Currently unavailable`, the poll sends up to three minimal `muse exec "hi"` warm turns (empty probe dir, 20 s cap, 3 s settles, 60 s budget) and re-reads usage after each, so a stale subscription snapshot recovers without a manual prompt; healthy polls send nothing, and an exhausted recovery shows the same degraded row as before (#103)
+
 ## Recently shipped — 0.0.36 — 2026-09-17 (reset rail pin accuracy)
 
 * Reset rail pin accuracy — edge pins clamp their label and timestamp to the rail rather than translating the whole pin, so the dot stays on its reset time coordinate and pins no longer render out of chronological order (#101)
