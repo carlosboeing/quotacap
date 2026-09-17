@@ -22,7 +22,7 @@ const ADAPTER_TIMEOUTS: Record<string, number> = {
   kimi: 8000,
   grok: 14000,
   agy: 20000,
-  muse: 14000,
+  muse: 90000,
 };
 
 export interface PollAllOptions {

@@ -2,6 +2,7 @@
 
 ## 0.0.36
 
+- Muse recovery: when the `/usage` panel reports `Currently unavailable`, the poll now sends up to three minimal `muse exec "hi"` warm turns (empty probe dir, 20 s cap, 3 s settles, 60 s budget) and re-reads usage after each, so a stale subscription snapshot recovers without a manual prompt; healthy polls send nothing, and an exhausted recovery shows the same degraded row as before.
 - Reset rail pin accuracy: edge pins clamp their label and timestamp to the rail instead of translating the whole pin button, so the dot stays on its reset time coordinate and pins render in chronological order (#101).
 
 ## 0.0.35

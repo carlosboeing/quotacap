@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseResetText } from "./parse.js";
 import { runPty, stripAnsi } from "./pty.js";
-import { adapterSignal } from "../runtime/spawn.js";
+import { adapterSignal, trackedExecFile } from "../runtime/spawn.js";
 import type { ParsedQuota } from "./types.js";
 
 /** Canonical unavailability error: parseMuseTui throws it, poll() recognises it
@@ -137,41 +137,61 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
   };
 }
 
+/** One `/usage` read: the TUI scrape, shared by the first attempt and every
+ *  recovery re-read. */
+async function usagePass(timeoutMs = USAGE_TIMEOUT_MS): Promise<ParsedQuota> {
+  const cwd = museProbeDir();
+  fs.mkdirSync(cwd, { recursive: true });
+  const transcript = await runPty({
+    file: "muse",
+    args: ["--trust-workspace"],
+    cwd,
+    // Without this, a missing binary triggers a foreground 248 MB download
+    // on every poll; with it the launcher dies fast with a clear message.
+    env: { MUSE_NO_AUTO_UPDATE: "1" },
+    cols: 140,
+    rows: 50,
+    readyRegex: /muse-spark|Muse Code \d/,
+    readyTimeoutMs: 8000,
+    settleDelayMs: 1000,
+    // Two-phase submit: "/usage" first, CR 1500ms later. A single combined
+    // write is swallowed by the slash-command autocomplete and never runs.
+    input: "/usage",
+    submitInput: "\r",
+    submitAfterMs: 1500,
+    completionRegex: /Subscription/i,
+    // Trust prompt and the accidental-turn guard stay fail-closed. The
+    // unavailable-subscription message is deliberately not here: parseMuseTui
+    // owns detection so the poll can recover from it.
+    abortOn: /Do you trust this workspace|Working \(\d+s/,
+    timeoutMs,
+    respondToQueries: true,
+    maxBytes: 256 * 1024,
+    signal: adapterSignal("muse"),
+    label: "muse",
+  });
+  return parseMuseTui(transcript);
+}
+
 export const museAdapter = {
   id: "muse",
   requiresAuth: "muse login (CLI owns credentials)",
   async poll(): Promise<ParsedQuota> {
-    const cwd = museProbeDir();
-    fs.mkdirSync(cwd, { recursive: true });
-    const transcript = await runPty({
-      file: "muse",
-      args: ["--trust-workspace"],
-      cwd,
-      // Without this, a missing binary triggers a foreground 248 MB download
-      // on every poll; with it the launcher dies fast with a clear message.
-      env: { MUSE_NO_AUTO_UPDATE: "1" },
-      cols: 140,
-      rows: 50,
-      readyRegex: /muse-spark|Muse Code \d/,
-      readyTimeoutMs: 8000,
-      settleDelayMs: 1000,
-      // Two-phase submit: "/usage" first, CR 1500ms later. A single combined
-      // write is swallowed by the slash-command autocomplete and never runs.
-      input: "/usage",
-      submitInput: "\r",
-      submitAfterMs: 1500,
-      completionRegex: /Subscription/i,
-      // Trust prompt (in case a future Muse ignores the flag), an accidental
-      // model turn from a mistimed Enter, and the unavailable-subscription
-      // fast-fail — every one aborts to a degraded row, never a 14s timeout.
-      abortOn:
-        /Do you trust this workspace|Working \(\d+s|Subscriptions aren't currently available|subscription_unavailable/,
-      timeoutMs: 14000,
-      respondToQueries: true,
-      maxBytes: 256 * 1024,
-      signal: adapterSignal("muse"),
-      label: "muse",
-    });
-    return parseMuseTui(transcript);
+    try {
+      return await usagePass();
+    } catch (e) {
+      if ((e as Error)?.message !== MUSE_UNAVAILABLE_MESSAGE) throw e;
+      return recoverSubscription({
+        unavailable: e as Error,
+        usagePass: (timeoutMs) => usagePass(timeoutMs),
+        warmTurn: async (timeoutMs) => {
+          await trackedExecFile("muse", "muse", ["exec", "hi"], {
+            cwd: museProbeDir(),
+            env: { MUSE_NO_AUTO_UPDATE: "1" },
+            timeout: timeoutMs,
+          });
+        },
+      });
+    }
   },
 };

@@ -15,6 +15,7 @@ import {
 import type { ParsedQuota } from "../../src/adapters/types.js";
 import { stripAnsi } from "../../src/adapters/pty.js";
 import * as ptyMod from "../../src/adapters/pty.js";
+import * as spawnMod from "../../src/runtime/spawn.js";
 
 interface MuseFixtureOpts {
   plan?: string;
@@ -193,8 +194,8 @@ describe("museAdapter.poll invocation contract", () => {
     const abortOn = captured["abortOn"] as RegExp;
     expect("Do you trust this workspace? [1] Yes").toMatch(abortOn);
     expect("Working (12s) · thinking").toMatch(abortOn);
-    expect("Subscriptions aren't currently available for your account.").toMatch(abortOn);
-    expect("error=subscription_unavailable").toMatch(abortOn);
+    expect("Subscriptions aren't currently available for your account.").not.toMatch(abortOn);
+    expect("error=subscription_unavailable").not.toMatch(abortOn);
     expect(stripAnsi(museRawTranscript())).not.toMatch(abortOn);
   });
 
@@ -215,6 +216,57 @@ describe("museAdapter.poll invocation contract", () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
     expect(captured["cwd"]).toBe(path.join(home, ".quotacap", "muse-probe"));
+  });
+});
+
+describe("museAdapter.poll recovery", () => {
+  const oldQcHome = process.env.QUOTACAP_HOME;
+
+  afterEach(() => {
+    process.env.QUOTACAP_HOME = oldQcHome;
+    vi.useRealTimers();
+  });
+
+  it("recovers from an unavailable panel by warming, then re-reading", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-muse-"));
+    process.env.QUOTACAP_HOME = home;
+    vi.useFakeTimers();
+    const ptySpy = vi.spyOn(ptyMod, "runPty")
+      .mockRejectedValueOnce(new Error("muse: subscription currently unavailable in TUI output"))
+      .mockImplementation(async () => museRawTranscript({ weeklyReset: futureWeeklyReset() }));
+    const execSpy = vi.spyOn(spawnMod, "trackedExecFile").mockResolvedValue({ stdout: "", stderr: "" });
+    try {
+      const pending = museAdapter.poll();
+      await vi.advanceTimersByTimeAsync(2 * 3000 + 1000);
+      const q = await pending;
+      expect(q.provider).toBe("muse");
+      expect(q.usedPct).toBe(35);
+      expect(ptySpy).toHaveBeenCalledTimes(2);
+      expect(execSpy).toHaveBeenCalledTimes(1);
+      expect(execSpy.mock.calls[0][0]).toBe("muse");
+      expect(execSpy.mock.calls[0][1]).toBe("muse");
+      expect(execSpy.mock.calls[0][2]).toEqual(["exec", "hi"]);
+      expect(execSpy.mock.calls[0][3]).toMatchObject({
+        cwd: path.join(home, ".quotacap", "muse-probe"),
+        env: { MUSE_NO_AUTO_UPDATE: "1" },
+      });
+    } finally {
+      ptySpy.mockRestore();
+      execSpy.mockRestore();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("does not warm when the first pass fails with a non-unavailable error", async () => {
+    const ptySpy = vi.spyOn(ptyMod, "runPty").mockRejectedValue(new Error("pty completion timeout after 14000ms"));
+    const execSpy = vi.spyOn(spawnMod, "trackedExecFile").mockResolvedValue({ stdout: "", stderr: "" });
+    try {
+      await expect(museAdapter.poll()).rejects.toThrow("pty completion timeout after 14000ms");
+      expect(execSpy).not.toHaveBeenCalled();
+    } finally {
+      ptySpy.mockRestore();
+      execSpy.mockRestore();
+    }
   });
 });
 
