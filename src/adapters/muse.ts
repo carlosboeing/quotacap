@@ -187,7 +187,7 @@ export const museAdapter = {
         warmTurn: async (timeoutMs) => {
           await trackedExecFile("muse", "muse", ["exec", "hi"], {
             cwd: museProbeDir(),
-            env: { MUSE_NO_AUTO_UPDATE: "1" },
+            env: { ...(process.env as Record<string, string>), MUSE_NO_AUTO_UPDATE: "1" },
             timeout: timeoutMs,
           });
         },

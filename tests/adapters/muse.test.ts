@@ -250,6 +250,8 @@ describe("museAdapter.poll recovery", () => {
         cwd: path.join(home, ".quotacap", "muse-probe"),
         env: { MUSE_NO_AUTO_UPDATE: "1" },
       });
+      const warmEnv = (execSpy.mock.calls[0][3] as { env: Record<string, string> }).env;
+      expect(warmEnv.PATH).toBe(process.env.PATH);
     } finally {
       ptySpy.mockRestore();
       execSpy.mockRestore();
