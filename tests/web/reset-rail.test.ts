@@ -138,4 +138,21 @@ describe("reset rail", () => {
     expect(css).toMatch(/\.pin\.pin-start \.pin-tooltip/);
     expect(css).toMatch(/\.pin\.pin-end:hover \.pin-tooltip/);
   });
+
+  // Regression: pin-start and pin-end used to shift the whole pin button so
+  // its pill stayed on the rail, which dragged the dot (the data point) off
+  // its time coordinate by half a pill width. Only the text clamps now.
+  it("anchors edge-pin dots and clamps only the text", () => {
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.pin \{[^}]*transform: translateX\(-50%\)/);
+    expect(css).not.toMatch(/\.pin\.pin-start\s*\{[^}]*transform:/);
+    expect(css).not.toMatch(/\.pin\.pin-end\s*\{[^}]*transform:/);
+    expect(css).not.toMatch(/\.pin\.pin-(?:start|end) \.pin-(?:dot|stem)/);
+    expect(css).toMatch(
+      /\.pin\.pin-start \.pin-label,\s*\.pin\.pin-start \.pin-when\s*\{[^}]*translate: 50% 0/
+    );
+    expect(css).toMatch(
+      /\.pin\.pin-end \.pin-label,\s*\.pin\.pin-end \.pin-when\s*\{[^}]*translate: -50% 0/
+    );
+  });
 });

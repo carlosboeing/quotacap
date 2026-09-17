@@ -980,21 +980,16 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .pin.below .pin-when {
   margin-top: 4px;
 }
-.pin.pin-start {
-  transform: translateX(0);
-  align-items: flex-start;
+/* Edge pins clamp their text, not their position: the dot and stem mark the
+   reset's time coordinate, so the pin stays centred on it while only the
+   label and timestamp shift inward to avoid the rail edge. */
+.pin.pin-start .pin-label,
+.pin.pin-start .pin-when {
+  translate: 50% 0;
 }
-.pin.pin-start .pin-stem,
-.pin.pin-start .pin-dot {
-  margin-left: 8px;
-}
-.pin.pin-end {
-  transform: translateX(-100%);
-  align-items: flex-end;
-}
-.pin.pin-end .pin-stem,
-.pin.pin-end .pin-dot {
-  margin-right: 8px;
+.pin.pin-end .pin-label,
+.pin.pin-end .pin-when {
+  translate: -50% 0;
 }
 
 .pin-tooltip {
@@ -1031,13 +1026,13 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   transform-origin: top center;
 }
 .pin.pin-start .pin-tooltip {
-  left: 0;
+  left: 50%;
   transform: translateX(0) translateY(0) scale(0.96);
   transform-origin: top left;
 }
 .pin.pin-end .pin-tooltip {
   left: auto;
-  right: 0;
+  right: 50%;
   transform: translateX(0) translateY(0) scale(0.96);
   transform-origin: top right;
 }
