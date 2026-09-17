@@ -178,6 +178,29 @@ function spreadResetState(): any {
   };
 }
 
+/** Early pins inside the start clamp, one late pin inside the end clamp. */
+function edgeResetState(): any {
+  const s = exampleState();
+  const asOfMs = Date.parse(s.asOf);
+  const at = (days: number) => new Date(asOfMs + days * 24 * 60 * 60 * 1000).toISOString();
+  const dayOf: Record<string, number> = {
+    "agy:3p": 0.71,
+    claude: 0.885,
+    kimi: 1,
+    "my-plan": 4,
+    codex: 5,
+    agy: 6.72,
+  };
+  return {
+    ...s,
+    providers: s.providers.map((p: any) => {
+      const day = dayOf[p.id];
+      if (day === undefined || !p.quota) return p;
+      return { ...p, quota: { ...p.quota, resetsAt: at(day) } };
+    }),
+  };
+}
+
 test("renders recommendation advice with forecast waste percentage", async ({ page }) => {
   const stub = await stubFor(exampleState());
   await page.goto(stub.url);
@@ -570,6 +593,38 @@ test("every graphic carries its label", async ({ page }) => {
   }
   await expect(page.locator(".pin-label.pace-behind").first()).toBeVisible();
   await expect(page.getByTestId("rail")).toHaveCSS("overflow-x", "visible");
+});
+
+// Regression (#95): pin-start and pin-end used to translate the whole pin
+// button to keep the pill on the rail, carrying the dot off its time
+// coordinate and inverting chronological order near the edges.
+test("edge pins keep their dots on the reset coordinate", async ({ browser }) => {
+  const stub = await stubFor(edgeResetState());
+  const { context, page } = await themedPage(browser, "light", 1440);
+  try {
+    await page.goto(stub.url);
+    await expect(page.getByTestId("pin").first()).toBeVisible();
+    const pins = await page.getByTestId("pin").evaluateAll((els) =>
+      els.map((el) => {
+        const pin = el as HTMLElement;
+        const dot = pin.querySelector(".pin-dot")!.getBoundingClientRect();
+        return {
+          label: (pin.querySelector(".pin-label")?.textContent ?? "").trim(),
+          anchor: pin.offsetParent!.getBoundingClientRect().left + pin.offsetLeft,
+          center: dot.left + dot.width / 2,
+        };
+      })
+    );
+    expect(pins.length).toBeGreaterThan(2);
+    const offCoordinate = pins
+      .map((p) => ({ label: p.label, px: Math.round(Math.abs(p.center - p.anchor) * 10) / 10 }))
+      .filter((p) => p.px > 1.5);
+    expect(offCoordinate).toEqual([]);
+    const byAnchor = [...pins].sort((a, b) => a.anchor - b.anchor);
+    expect(byAnchor[0].center).toBeLessThan(byAnchor[1].center);
+  } finally {
+    await context.close();
+  }
 });
 
 test("fault banner per excluded provider carries last-read age", async ({ page }) => {
