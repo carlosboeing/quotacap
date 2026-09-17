@@ -241,7 +241,7 @@ describe("diagnostic boundary and failure classification", () => {
       expect(f1.category).toBe("unknown");
       expect(f1.summary).toBe("Muse usage currently unavailable");
       expect(f1.errorDetail).toBe("subscription currently unavailable");
-      expect(f1.action).toContain("Muse reported that subscription usage is currently unavailable");
+      expect(f1.action).toContain("QuotaCap already retried automatically with a warm-up prompt");
 
       const f2 = classifyFailure("muse", new Error("subscription currently unavailable in TUI output"));
       expect(f2.diagnosticCode).toBe("service_unavailable");
@@ -250,6 +250,7 @@ describe("diagnostic boundary and failure classification", () => {
       const f3 = classifyFailure("codex", new Error("codex: limits refresh requested, run /status again shortly"));
       expect(f3.diagnosticCode).toBe("service_unavailable");
       expect(f3.summary).toBe("Codex usage currently unavailable");
+      expect(f3.action).toContain("Send a prompt in Codex to refresh its session limits");
     });
 
     it("Order 9: timeout (remaining explicit timeout / timed out)", () => {

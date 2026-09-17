@@ -515,6 +515,7 @@ function mapCategory(code: DiagnosticCode): Exclude<FailureCategory, null | "ski
 function getSummaryAndAction(
   code: DiagnosticCode,
   providerName: string,
+  provider: string,
 ): { summary: string; action: string } {
   switch (code) {
     case "terminal_error":
@@ -550,7 +551,10 @@ function getSummaryAndAction(
     case "service_unavailable":
       return {
         summary: `${providerName} usage currently unavailable`,
-        action: `${providerName} reported that subscription usage is currently unavailable. Send a prompt in ${providerName} to refresh its session limits, or wait for the next scheduled poll.`,
+        action:
+          provider === "muse"
+            ? `${providerName} reported that subscription usage is currently unavailable. QuotaCap already retried automatically with a warm-up prompt. If this persists, send a prompt in ${providerName}, or wait for the next scheduled poll.`
+            : `${providerName} reported that subscription usage is currently unavailable. Send a prompt in ${providerName} to refresh its session limits, or wait for the next scheduled poll.`,
       };
     case "timeout":
       return {
@@ -582,7 +586,7 @@ export function classifyFailure(provider: string, reason: unknown): ClassifiedFa
 
   const category = mapCategory(diag.diagnosticCode);
   const pName = formatProviderName(provider);
-  const { summary, action } = getSummaryAndAction(diag.diagnosticCode, pName);
+  const { summary, action } = getSummaryAndAction(diag.diagnosticCode, pName, provider);
 
   return {
     diagnosticCode: diag.diagnosticCode,

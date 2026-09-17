@@ -23,9 +23,9 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 | Codex | `pty` — `codex --no-alt-screen` then `/status`, parse `Weekly/5h limit: X% left` | Live |
 | Kimi Code | `pty` — `kimi` then `/usage`, parse `Weekly/5h limit: Y% used` | Live |
 | Grok | `pty` — `grok` then `/usage`, parse `Weekly limit (plan)` + `Credits: $X` | Live |
-| Muse Code | `pty` — `muse --trust-workspace` then `/usage`, parse `Subscription · Muse Code <plan>` + `Weekly/Current N% used` | Live |
+| Muse Code | `pty` — `muse --trust-workspace` then `/usage`, parse `Subscription · Muse Code <plan>` + `Weekly/Current N% used`; on `Currently unavailable`, up to three headless `muse exec` warm turns and re-reads inside the poll | Live |
 
-Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion). It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
+Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion); `muse` can reach about 75 s when it has to warm an unavailable subscription. It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
 
 Live adapters invoke the CLIs you already logged into. No API keys. No token files are read.
 
