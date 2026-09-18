@@ -235,6 +235,17 @@ describe("diagnostic boundary and failure classification", () => {
       expect(failure.action).toContain("Check for a QuotaCap update");
     });
 
+    it("classifies opencode-go fixed phrases as parse_error", () => {
+      for (const msg of [
+        "opencode-go: rolling usage not found",
+        "opencode-go: bad rolling pct",
+        "opencode-go: usage status not ok",
+      ]) {
+        const f = classifyFailure("opencode-go", new Error(msg));
+        expect(f.diagnosticCode).toBe("parse_error");
+      }
+    });
+
     it("Order 8b: service_unavailable (subscription/service currently unavailable)", () => {
       const f1 = classifyFailure("muse", new Error("muse: subscription currently unavailable"));
       expect(f1.diagnosticCode).toBe("service_unavailable");

@@ -246,6 +246,10 @@ export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
 // mark every adapter known and silently disable auto-enable.
 export const LEGACY_KNOWN_PROVIDERS = ["claude", "codex", "kimi", "grok", "agy"];
 
+// Opt-in adapters are never auto-enabled: a binary on PATH is not consent.
+// opencode-go polls a stored credential, so only an explicit enable adds it.
+const OPT_IN_ADAPTERS = new Set(["opencode-go"]);
+
 // PATH lookup kept local: importing the sibling in src/service/macos.ts
 // would create a config<->service import cycle.
 function defaultWhich(bin: string): string | null {
@@ -273,7 +277,8 @@ export interface AutoEnableResult {
 
 /**
  * Auto-enable newly shipped adapters. For each registered adapter (minus
- * `manual`, which has no CLI binary) absent from knownProviders, resolve its
+ * `manual`, which has no CLI binary, and minus opt-in adapters, which an
+ * explicit enable must consent to) absent from knownProviders, resolve its
  * binary on PATH and append it to both lists when found. An adapter whose
  * binary is missing stays unknown so it is re-checked on the next start; a
  * provider already known but disabled is never re-added. Raw-JSON mutation
@@ -312,7 +317,7 @@ export async function autoEnableNewProviders(
   const enabled = [...prevEnabled];
   const known = [...prevKnown];
   for (const id of Object.keys(adapters)) {
-    if (id === "manual" || known.includes(id)) continue;
+    if (id === "manual" || OPT_IN_ADAPTERS.has(id) || known.includes(id)) continue;
     let resolved: string | null = null;
     try {
       resolved = which(id);
