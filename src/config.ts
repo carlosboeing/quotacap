@@ -37,6 +37,7 @@ const ConfigSchema = z.object({
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
+  opencodeGoConsentAt: z.string().nullable().default(null),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),
@@ -106,6 +107,7 @@ const ServiceConfigSchema = z.object({
   // start. A non-array still fails naming the field.
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
+  opencodeGoConsentAt: z.string().nullable().default(null),
   experimentalIngest: z.boolean().optional(),
 });
 
@@ -213,6 +215,50 @@ export async function setProviderNameOverride(
   }
 
   rawObj.providerNames = names;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
+/**
+ * Safe mutation of provider enablement in config.json: raw-JSON like
+ * setProviderNameOverride (unknown keys preserved). Enabling opencode-go
+ * records the consent timestamp; disabling it revokes the consent record.
+ */
+export async function setProviderEnabled(
+  id: string,
+  enabled: boolean,
+  p?: string,
+): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider enablement: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  const list: string[] = Array.isArray(rawObj.enabledProviders)
+    ? [...rawObj.enabledProviders]
+    : [...defaultConfig().enabledProviders];
+  if (enabled) {
+    if (!list.includes(id)) list.push(id);
+  } else {
+    const at = list.indexOf(id);
+    if (at >= 0) list.splice(at, 1);
+  }
+  rawObj.enabledProviders = list;
+  if (id === "opencode-go") {
+    rawObj.opencodeGoConsentAt = enabled ? new Date().toISOString() : null;
+  }
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
 }
