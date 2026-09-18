@@ -133,6 +133,29 @@ describe("opencodeGoAdapter.poll", () => {
     vi.stubGlobal("fetch", fetchSpy);
     await expect(opencodeGoAdapter.poll()).rejects.toThrow("fetch failed");
   });
+
+  it("a malformed auth file and a missing auth file both fail closed with the fixed subject", async () => {
+    mockHome = fs.mkdtempSync(path.join(os.tmpdir(), "qc-ocgo-"));
+    process.env.HOME = mockHome;
+    vi.spyOn(os, "homedir").mockReturnValue(mockHome);
+    // no auth file at all:
+    stubFetch(200, LIVE_BODY);
+    await expect(opencodeGoAdapter.poll()).rejects.toThrow("opencode-go: missing API key in auth file");
+    // auth file present but not JSON:
+    const dir = path.join(mockHome, ".local", "share", "opencode");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "auth.json"), "{ not json near sk-secretkeymaterial");
+    await expect(opencodeGoAdapter.poll()).rejects.toThrow("opencode-go: missing API key in auth file");
+    await expect(opencodeGoAdapter.poll()).rejects.not.toThrow(/sk-secretkeymaterial/);
+  });
+
+  it("a non-JSON 200 body fails closed with the fixed subject", async () => {
+    authHome({ "opencode-go": { type: "api", key: "sk-go" } });
+    fetchSpy = vi.fn().mockResolvedValue(new Response("not json {", { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(opencodeGoAdapter.poll()).rejects.toThrow("opencode-go: weekly usage not found");
+    await expect(opencodeGoAdapter.poll()).rejects.not.toThrow(/not json/);
+  });
 });
 
 describe("opencodeGoDetected", () => {

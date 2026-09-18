@@ -35,7 +35,12 @@ export function opencodeGoDetected(): boolean {
 function readBearerToken(env: NodeJS.Dict<string> = process.env): string {
   const fromEnv = env.OPENCODE_API_KEY;
   if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
-  const parsed = JSON.parse(fsSync.readFileSync(openCodeGoAuthPath(), "utf8")) as Record<string, unknown>;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(fsSync.readFileSync(openCodeGoAuthPath(), "utf8")) as Record<string, unknown>;
+  } catch {
+    throw new Error("opencode-go: missing API key in auth file");
+  }
   const entry = (parsed["opencode-go"] ?? parsed["opencode"]) as { type?: unknown; key?: unknown } | undefined;
   if (
     !entry ||
@@ -112,6 +117,12 @@ export const opencodeGoAdapter = {
     if (!res.ok) {
       throw new Error(`opencode-go: usage request failed with status ${res.status}`);
     }
-    return parseOpencodeGoUsage(JSON.parse(await res.text()));
+    let body: unknown;
+    try {
+      body = JSON.parse(await res.text());
+    } catch {
+      throw new Error("opencode-go: weekly usage not found");
+    }
+    return parseOpencodeGoUsage(body);
   },
 };
