@@ -31,6 +31,7 @@ export interface SnapshotOptions {
       upToDate: boolean;
       checkedAt: string | null;
     };
+    detectedProviders?: string[];
   };
 }
 
