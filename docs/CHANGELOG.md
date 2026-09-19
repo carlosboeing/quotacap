@@ -2,7 +2,7 @@
 
 ## 0.0.38 — unreleased
 
-- Provider adapter — OpenCode Go (`opencode-go`, opt-in): `GET https://opencode.ai/zen/go/v1/usage` with the OpenCode auth key read in-memory once per poll after explicit consent (`quotacap providers enable opencode-go` or the dashboard modal); detection by file existence never auto-enables, `POST /api/providers/:id/enabled` is token-gated with `consent: true` required, disable revokes consent, weekly maps to `usedPct` with a real reset (pre-reset wake and closed-week receipts for free) and rolling to the 5h Limit; the credential-free gate now allows the `auth.json` literal in exactly `src/adapters/opencode-go.ts` and asserts the read is read-only and entry-scoped; monthly stays parked (no field yet)
+- Provider adapter — OpenCode Go (`opencode-go`, opt-in): `GET https://opencode.ai/zen/go/v1/usage` with the OpenCode auth key read in-memory once per poll after explicit consent (`quotacap providers enable opencode-go` or the dashboard modal); detection by file existence never auto-enables, `POST /api/providers/:id/enabled` is token-gated with `consent: true` required, disable revokes consent, weekly maps to `usedPct` with a real reset (pre-reset wake and closed-week receipts for free) and rolling to the 5h Limit; the credential-free gate now allows the `auth.json` literal in exactly `src/adapters/opencode-go.ts` (the adapter that reads it) and the generated `src/webAssets.ts` dashboard bundle (which embeds the consent copy naming it) and asserts the read is read-only and entry-scoped; monthly stays parked (no field yet)
 
 ## 0.0.37
 

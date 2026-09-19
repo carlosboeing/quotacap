@@ -73,11 +73,18 @@ describe("Credential-free adapters regression", () => {
         "17e5f671-d194-4dfb-9706-5516cb48c098",
       ];
 
-      // The single consented exception: the OpenCode Go adapter names the
-      // OpenCode auth file. Only that literal, only that file. Anything
-      // else — including OAuth vocabulary inside that file — still fails.
+      // The single consented exception: the OpenCode auth file literal lives
+      // in exactly two pinned files — the authored adapter that reads it and
+      // the generated dashboard bundle that embeds the consent copy naming
+      // it. Only that literal in both. Anything else — including OAuth
+      // vocabulary inside those files — still fails.
       const staticAllowlist = new Map<string, string[]>([
         [path.join("adapters", "opencode-go.ts"), ["auth.json"]],
+        // Generated, committed dashboard bundle (scripts/build-embed.mjs): it
+        // embeds the consent copy verbatim, which names the auth file. String
+        // data, not credential-reading code; every other forbidden pattern
+        // still fails here.
+        [path.join("webAssets.ts"), ["auth.json"]],
       ]);
 
       for (const file of files) {
