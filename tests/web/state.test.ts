@@ -65,4 +65,13 @@ describe("state mapping", () => {
     expect(shortWindowLabel("grok")).toBeNull();
     expect(shortWindowLabel("manual")).toBeNull();
   });
+  it("labels the opencode-go short window like the other 5h providers", () => {
+    expect(shortWindowLabel("opencode-go")).toBe("5h Limit");
+  });
+  it("normalizes detectedProviders with an empty default for older daemons", () => {
+    const vm = toViewModel({ asOf: "x", runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "t" } as any, providers: [], recommendation: {} as any });
+    expect(vm.runtime.detectedProviders).toEqual([]);
+    const vm2 = toViewModel({ asOf: "x", runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "t", detectedProviders: ["opencode-go"] } as any, providers: [], recommendation: {} as any });
+    expect(vm2.runtime.detectedProviders).toEqual(["opencode-go"]);
+  });
 });

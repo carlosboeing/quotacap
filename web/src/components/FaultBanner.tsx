@@ -9,15 +9,21 @@ export interface Repair {
 
 /**
  * Repair routing per excluded provider. Auth failures point at signing into
- * the provider CLI (QuotaCap never handles those credentials); every other
+ * the provider CLI (by default QuotaCap never reads credentials; the only
+ * exception is OpenCode Go, which the user enables explicitly); every other
  * exclusion points at a re-poll. Service start/install is covered by the
  * service-unavailable panel when the daemon itself is down.
  */
 export function repairFor(provider: ProviderView): Repair {
   const name = provider.displayName;
   if (provider.lastAttempt?.failureCategory === "auth") {
+    if (provider.id === "opencode-go") {
+      return {
+        text: "Run `opencode auth login -p opencode-go`, then re-poll. QuotaCap reads that key only because you enabled OpenCode Go — `quotacap providers disable opencode-go` stops it.",
+      };
+    }
     return {
-      text: `Sign in to the ${name} CLI, then re-poll. QuotaCap never handles those credentials.`,
+      text: `Sign in to the ${name} CLI, then re-poll. By default QuotaCap never reads credentials; the only exception is OpenCode Go, which you enable explicitly.`,
     };
   }
   switch (provider.exclusionReason) {

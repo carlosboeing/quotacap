@@ -6,6 +6,7 @@ import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson } from "../fixtu
 import { providerSubtitle, toViewModel } from "../../web/src/state.js";
 import {
   compactSnapshot,
+  credentialLabel,
   drawerModel,
   paceBasis,
   rankingCopy,
@@ -42,6 +43,10 @@ describe("provider drawer", () => {
     expect(sourceLabel("cli")).toBe("Live CLI");
     expect(sourceLabel("tui")).toBe("Live TUI");
     expect(sourceLabel("manual")).toBe("Manual ingest");
+  });
+  it("labels the opencode-go api source as an in-memory opt-in read", () => {
+    const p = { id: "opencode-go", displayName: "OpenCode Go", quota: { source: "api" } } as any;
+    expect(credentialLabel(p)).toBe("read in-memory from OpenCode auth (opt-in), never stored");
   });
   it("renders the concept drawer sections from snapshot fields", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));

@@ -158,6 +158,9 @@ export function paceBasis(provider: ProviderView, asOfMs?: number): string {
 
 export function credentialLabel(provider: ProviderView): string {
   const source = provider.quota?.source;
+  if (provider.id === "opencode-go" && source === "api") {
+    return "read in-memory from OpenCode auth (opt-in), never stored";
+  }
   if (source === "cli" || source === "tui") return `handled by ${provider.displayName}`;
   return "not stored by QuotaCap";
 }

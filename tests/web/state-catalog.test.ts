@@ -366,7 +366,7 @@ describe("state catalog: server-rendered components", () => {
     );
     expect(setup).toContain("setup-step-1");
     expect(setup).toContain("Sign in first");
-    expect(setup).toContain("never handles those credentials");
+    expect(setup).toContain("By default QuotaCap never reads credentials");
   });
   it("shows skeleton loading before the first snapshot", () => {
     const html = renderToString(React.createElement(App));

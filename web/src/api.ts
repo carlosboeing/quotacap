@@ -129,3 +129,22 @@ export async function renameProvider(id: string, displayName: string | null): Pr
   if (!r.ok) throw new StateHttpError(r.status, await serverMessage(r));
 }
 
+/** Enable or disable a provider. Consent is required by the server for opencode-go. */
+export async function setProviderEnabled(id: string, enabled: boolean, consent?: boolean): Promise<void> {
+  const token = await fetchToken();
+  let r: Response;
+  try {
+    r = await fetch(`/api/providers/${encodeURIComponent(id)}/enabled`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-QuotaCap-Token": token,
+      },
+      body: JSON.stringify(consent === undefined ? { enabled } : { enabled, consent }),
+    });
+  } catch (e) {
+    throw new StateNetworkError(`/api/providers/${id}/enabled`, e);
+  }
+  if (!r.ok) throw new StateHttpError(r.status, await serverMessage(r));
+}
+

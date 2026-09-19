@@ -23,7 +23,8 @@ export function readiness(provider: ProviderView): Readiness {
   if (provider.lastAttempt?.success && provider.lastAttempt.succeededAt) {
     return { status: "Ready", detail: "Connected — no readings yet." };
   }
-  const credentialNote = "QuotaCap never handles those credentials.";
+  const credentialNote =
+    "By default QuotaCap never reads credentials; the only exception is OpenCode Go, which you enable explicitly.";
   if (provider.harness === null) {
     return {
       status: "Sign in first",
@@ -266,8 +267,8 @@ export function Onboarding({
                   <div>
                     <b>Usage history stays on this machine</b>
                     <span>
-                      QuotaCap reads quota percentages and reset times only. It never accesses code,
-                      prompts, or sensitive files.
+                      QuotaCap reads quota percentages and reset times only. It never accesses code
+                      or prompts.
                     </span>
                   </div>
                 </div>
@@ -315,8 +316,8 @@ export function Onboarding({
                   <div>
                     <b>Zero credential storage</b>
                     <span>
-                      Authentication stays in official CLI keychains. QuotaCap never handles or persists
-                      tokens.
+                      Authentication stays in official CLI keychains. QuotaCap never stores tokens,
+                      and reads one only if you explicitly enable OpenCode Go.
                     </span>
                   </div>
                 </div>
