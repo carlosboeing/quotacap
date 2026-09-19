@@ -516,6 +516,18 @@ describe("http token auth and mutating routes", () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it("rejects prototype-chain ids like constructor (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/constructor/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: true },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
     it("rejects a non-boolean enabled (400)", async () => {
       const db = openDb(":memory:"); migrate(db);
       const app = buildApp(testCtx(db));
@@ -592,7 +604,7 @@ describe("http token auth and mutating routes", () => {
 
     it("defaults to an empty array for older-style ctx", async () => {
       const db = openDb(":memory:"); migrate(db);
-      const app = buildApp(testCtx(db));
+      const app = buildApp(testCtx(db, { detectedProviders: undefined }));
       const res = await app.inject({ method: "GET", url: "/api/state" });
       expect(res.json().runtime.detectedProviders).toEqual([]);
     });

@@ -430,7 +430,7 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
     }
     const { id } = req.params;
-    if (typeof id !== "string" || !id || !(id in adapters) || id === "manual") {
+    if (typeof id !== "string" || !id || !Object.hasOwn(adapters, id) || id === "manual") {
       return reply.status(400).send({ error: `unknown provider id: ${id}` });
     }
     const body = (req.body ?? {}) as any;
