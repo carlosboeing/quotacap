@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildSnapshot, projectQuotasResponse } from "../../src/advisory/snapshot.js";
 import { sortProviders } from "../../src/format/rows.js";
-import { ServiceError, ServiceUnavailable } from "../../src/runtime/client.js";
+import { ServiceError, ServiceUnavailable, type ServiceClient } from "../../src/runtime/client.js";
 import { migrate, openDb } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 import { recordAttempt } from "../../src/store/attempts.js";
@@ -656,6 +656,29 @@ describe("status wiring", () => {
     } finally {
       if (desc) Object.defineProperty(process.stderr, "isTTY", desc);
     }
+  });
+
+  it("prints an opencode-go detection hint on stderr when detected but not enabled", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn().mockImplementation(async (p: string) => {
+        if (p === "/health") return { ok: true, version: "test", exec: "test" };
+        if (p === "/api/state") {
+          return {
+            asOf: "2026-09-17T00:00:00Z",
+            runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "test", detectedProviders: ["opencode-go"] },
+            providers: [],
+            recommendation: { use: "none", reason: "no quotas yet", wastePct: null, idealRate: 0, recommendationBasis: "none", models: [], catalogStatus: "unfetched", catalogFetchedAt: null, alternatives: [], advisories: [] },
+          };
+        }
+        return null;
+      }),
+      post: vi.fn(),
+    };
+
+    await runWired(["status"], onlineDeps({ createClient: () => mockClient }));
+
+    expect(errors.join("\n")).toMatch(/opencode-go detected/i);
+    expect(errors.join("\n")).toMatch(/quotacap providers enable opencode-go/);
   });
 
   describe("status --verbose with provider diagnostics", () => {

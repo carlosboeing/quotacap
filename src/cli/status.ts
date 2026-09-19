@@ -151,6 +151,14 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
         return;
       }
       if (resolved.source === "offline") console.error(OFFLINE_LABEL);
+      const detected = (resolved.snapshot.runtime as { detectedProviders?: string[] } | undefined)?.detectedProviders;
+      if (
+        Array.isArray(detected) &&
+        detected.includes("opencode-go") &&
+        !cfg.enabledProviders.includes("opencode-go")
+      ) {
+        console.error("opencode-go detected — run `quotacap providers enable opencode-go` to track 5h/weekly usage");
+      }
       const { snapshot } = resolved;
       if (o.json) {
         console.log(JSON.stringify(projectQuotasResponse(snapshot), null, 2));

@@ -306,3 +306,112 @@ describe("CLI quotacap providers reset", () => {
     expect(fs.readFileSync(cfgPath, "utf8")).toBe("{ malformed json");
   });
 });
+
+describe("CLI quotacap providers enable", () => {
+  it("enables opencode-go via POST with consent when --yes is passed", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ ok: true, id: "opencode-go", enabled: true, restartRequired: true }),
+      patch: vi.fn(),
+    };
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((msg) => logs.push(msg));
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    await program.parseAsync(["node", "quotacap", "providers", "enable", "opencode-go", "--yes"]);
+
+    expect(mockClient.post).toHaveBeenCalledWith("/api/providers/opencode-go/enabled", { enabled: true, consent: true });
+    const out = logs.join("\n");
+    expect(out).toContain("opencode auth login -p opencode-go");
+    expect(out).toContain("restart quotacap daemon to apply");
+  });
+
+  it("refuses non-TTY enable of opencode-go without --yes after printing the notice", async () => {
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const exitMock = vi.fn();
+    const isTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+
+    const mockClient: ServiceClient = { get: vi.fn(), post: vi.fn(), patch: vi.fn() };
+    const program = createMockProgram({ createClient: () => mockClient, exit: exitMock });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "enable", "opencode-go"]);
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
+    }
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(mockClient.post).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toMatch(/--yes/);
+  });
+
+  it("rejects an unregistered id with exit 1", async () => {
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+    const program = createMockProgram({ exit: exitMock });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "enable", "nope"]);
+    } catch {}
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toMatch(/unknown provider/i);
+  });
+
+  it("falls back to a config write when the daemon is offline", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockRejectedValue(new ServiceUnavailable("daemon down")),
+      patch: vi.fn(),
+    };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    await program.parseAsync(["node", "quotacap", "providers", "enable", "opencode-go", "--yes"]);
+
+    const cfg = await readConfig();
+    expect(cfg.enabledProviders).toContain("opencode-go");
+    expect(typeof cfg.opencodeGoConsentAt).toBe("string");
+  });
+});
+
+describe("CLI quotacap providers disable", () => {
+  it("disables via POST and reports it", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ ok: true, id: "opencode-go", enabled: false, restartRequired: true }),
+      patch: vi.fn(),
+    };
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((msg) => logs.push(msg));
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    await program.parseAsync(["node", "quotacap", "providers", "disable", "opencode-go"]);
+
+    expect(mockClient.post).toHaveBeenCalledWith("/api/providers/opencode-go/enabled", { enabled: false });
+    expect(logs.join("\n")).toContain("disabled opencode-go");
+  });
+
+  it("falls back to a config write offline and revokes consent", async () => {
+    const cfg = await readConfig();
+    cfg.enabledProviders = ["claude", "opencode-go"];
+    cfg.opencodeGoConsentAt = "2026-09-17T00:00:00Z";
+    await writeConfig(cfg);
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockRejectedValue(new ServiceUnavailable("daemon down")),
+      patch: vi.fn(),
+    };
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    await program.parseAsync(["node", "quotacap", "providers", "disable", "opencode-go"]);
+
+    const updated = await readConfig();
+    expect(updated.enabledProviders).not.toContain("opencode-go");
+    expect(updated.opencodeGoConsentAt).toBeNull();
+  });
+});

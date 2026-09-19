@@ -1,6 +1,8 @@
 // CLI command group for provider display names and user overrides.
 import type { Command } from "commander";
-import { readConfig, resetAllProviderNameOverrides, setProviderNameOverride } from "../config.js";
+import { adapters } from "../adapters/index.js";
+import { OPENCODE_GO_CONSENT_NOTICE } from "../adapters/opencode-go.js";
+import { readConfig, resetAllProviderNameOverrides, setProviderEnabled, setProviderNameOverride } from "../config.js";
 import { REGISTRY, providerIdentity } from "../advisory/provider-names.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { ServiceError, ServiceUnavailable, createServiceClient } from "../runtime/client.js";
@@ -179,6 +181,105 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
         }
         console.log(`reset display name for ${id}`);
       }
+    });
+
+  providers
+    .command("enable <id>")
+    .description("enable a provider (OpenCode Go requires explicit consent)")
+    .option("--yes", "skip the interactive consent prompt (scripts)")
+    .action(async (id: string, opts: { yes?: boolean }) => {
+      if (typeof id !== "string" || !id || !(id in adapters) || id === "manual") {
+        console.error(`error: unknown provider id: ${id}`);
+        exit(1);
+        return;
+      }
+      if (id === "opencode-go") {
+        console.log("**Enable OpenCode Go?**\n");
+        console.log(OPENCODE_GO_CONSENT_NOTICE + "\n");
+        if (!opts.yes) {
+          if (!process.stdin.isTTY) {
+            console.error("refusing to enable opencode-go without interactive consent — read the notice above and re-run with --yes");
+            exit(1);
+            return;
+          }
+          const readline = (await import("node:readline/promises")).default;
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const answer = (await rl.question("Proceed? [y/N] ")).trim().toLowerCase();
+          rl.close();
+          if (answer !== "y" && answer !== "yes") {
+            console.log("not enabled");
+            return;
+          }
+        }
+      }
+      const cfg = await readConfig();
+      const client = createClient({ port: cfg.port, token: readToken(), timeoutMs: 2000 });
+      try {
+        await client.post(`/api/providers/${encodeURIComponent(id)}/enabled`, {
+          enabled: true,
+          ...(id === "opencode-go" ? { consent: true } : {}),
+        });
+      } catch (e) {
+        if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
+          try {
+            await setProviderEnabled(id, true);
+          } catch (err: any) {
+            console.error(err?.message ?? String(err));
+            exit(1);
+            return;
+          }
+          if (e instanceof ServiceError && e.status === 404) {
+            console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
+          }
+        } else if (e instanceof ServiceError) {
+          console.error(e.message);
+          exit(1);
+          return;
+        } else {
+          console.error(e instanceof Error ? e.message : String(e));
+          exit(1);
+          return;
+        }
+      }
+      console.log(`enabled ${id} — restart quotacap daemon to apply`);
+    });
+
+  providers
+    .command("disable <id>")
+    .description("disable a provider and stop polling it")
+    .action(async (id: string) => {
+      if (typeof id !== "string" || !id || !(id in adapters) || id === "manual") {
+        console.error(`error: unknown provider id: ${id}`);
+        exit(1);
+        return;
+      }
+      const cfg = await readConfig();
+      const client = createClient({ port: cfg.port, token: readToken(), timeoutMs: 2000 });
+      try {
+        await client.post(`/api/providers/${encodeURIComponent(id)}/enabled`, { enabled: false });
+      } catch (e) {
+        if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
+          try {
+            await setProviderEnabled(id, false);
+          } catch (err: any) {
+            console.error(err?.message ?? String(err));
+            exit(1);
+            return;
+          }
+          if (e instanceof ServiceError && e.status === 404) {
+            console.warn("note: daemon returned 404 (version skew); updated local config, restart quotacap daemon to apply");
+          }
+        } else if (e instanceof ServiceError) {
+          console.error(e.message);
+          exit(1);
+          return;
+        } else {
+          console.error(e instanceof Error ? e.message : String(e));
+          exit(1);
+          return;
+        }
+      }
+      console.log(`disabled ${id} — restart quotacap daemon to apply`);
     });
 }
 
