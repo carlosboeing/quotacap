@@ -5,6 +5,7 @@ import {
   daemonEndpoint,
   loadState,
   triggerRefresh,
+  setProviderEnabled,
   StateHttpError,
   StateNetworkError,
 } from "./api.js";
@@ -19,6 +20,7 @@ import { navigate, routeFor, useRoute } from "./router.js";
 import { Onboarding } from "./pages/Onboarding.js";
 import { Header } from "./components/Header.js";
 import { FaultBanner } from "./components/FaultBanner.js";
+import { ConsentModal, OpencodeGoBanner, showOpenCodeGoBanner } from "./components/OpencodeGoBanner.js";
 import { SiteFooter } from "./components/PacingLegend.js";
 
 type ShellError =
@@ -121,6 +123,9 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [adviceOpen, setAdviceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [goSuppressed, setGoSuppressed] = useState(false);
   const route = useRoute();
   const target = snapshot ? routeFor(route, firstRun(snapshot)) : null;
 
@@ -180,6 +185,23 @@ function App() {
     }
   }, [load]);
 
+  const handleSetProviderEnabled = (id: string, enabled: boolean) => {
+    if (id === "opencode-go" && enabled) {
+      setConsentOpen(true);
+      return;
+    }
+    void (async () => {
+      try {
+        await setProviderEnabled(id, enabled);
+        setNotice(
+          `${id === "opencode-go" ? "OpenCode Go" : id} ${enabled ? "enabled" : "disabled"} — restart the daemon to apply it.`,
+        );
+      } catch (e) {
+        setNotice(`Could not update ${id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    })();
+  };
+
   const setupMode = target === "/setup";
   const pollErrorText = error
     ? error.kind === "http-error"
@@ -214,6 +236,7 @@ function App() {
           providers={snapshot.providers}
           onRefresh={() => void refresh()}
           refreshing={refreshing}
+          onSetProviderEnabled={handleSetProviderEnabled}
           onClose={() => setSettingsOpen(false)}
         />
         <SiteFooter version={snapshot.runtime.version} />
@@ -276,6 +299,9 @@ function App() {
             polling={snapshot.runtime.polling}
           />
         )}
+        {snapshot && showOpenCodeGoBanner(snapshot.runtime, snapshot.providers, goSuppressed) && (
+          <OpencodeGoBanner onEnable={() => setConsentOpen(true)} />
+        )}
         {snapshot && (
           <ReadyView
             snapshot={snapshot}
@@ -297,6 +323,27 @@ function App() {
         onClose={() => setSelectedProvider(null)}
         onRenamed={() => void load()}
       />
+      {consentOpen && (
+        <ConsentModal
+          busy={consentBusy}
+          onCancel={() => setConsentOpen(false)}
+          onConfirm={() =>
+            void (async () => {
+              setConsentBusy(true);
+              try {
+                await setProviderEnabled("opencode-go", true, true);
+                setGoSuppressed(true);
+                setConsentOpen(false);
+                setNotice("OpenCode Go enabled — restart the daemon to apply it.");
+              } catch (e) {
+                setNotice(`Could not enable OpenCode Go: ${e instanceof Error ? e.message : String(e)}`);
+              } finally {
+                setConsentBusy(false);
+              }
+            })()
+          }
+        />
+      )}
       {snapshot && (
         <AdviceDrawer
           open={adviceOpen}
@@ -311,6 +358,7 @@ function App() {
         providers={snapshot?.providers ?? []}
         onRefresh={() => void refresh()}
         refreshing={refreshing}
+        onSetProviderEnabled={handleSetProviderEnabled}
         onClose={() => setSettingsOpen(false)}
       />
       <SiteFooter version={snapshot?.runtime.version} />
