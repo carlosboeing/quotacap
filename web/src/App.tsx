@@ -193,6 +193,7 @@ function App() {
     void (async () => {
       try {
         await setProviderEnabled(id, enabled);
+        if (!enabled) setGoSuppressed(false);
         setNotice(
           `${id === "opencode-go" ? "OpenCode Go" : id} ${enabled ? "enabled" : "disabled"} — restart the daemon to apply it.`,
         );
@@ -224,6 +225,11 @@ function App() {
       <>
         {header}
         <main>
+          {notice && (
+            <div data-testid="refresh-notice" role="status">
+              {notice}
+            </div>
+          )}
           <Onboarding
             snapshot={snapshot}
             onFirstPoll={() => void refresh()}
@@ -239,6 +245,27 @@ function App() {
           onSetProviderEnabled={handleSetProviderEnabled}
           onClose={() => setSettingsOpen(false)}
         />
+        {consentOpen && (
+          <ConsentModal
+            busy={consentBusy}
+            onCancel={() => setConsentOpen(false)}
+            onConfirm={() =>
+              void (async () => {
+                setConsentBusy(true);
+                try {
+                  await setProviderEnabled("opencode-go", true, true);
+                  setGoSuppressed(true);
+                  setConsentOpen(false);
+                  setNotice("OpenCode Go enabled — restart the daemon to apply it.");
+                } catch (e) {
+                  setNotice(`Could not enable OpenCode Go: ${e instanceof Error ? e.message : String(e)}`);
+                } finally {
+                  setConsentBusy(false);
+                }
+              })()
+            }
+          />
+        )}
         <SiteFooter version={snapshot.runtime.version} />
       </>
     );

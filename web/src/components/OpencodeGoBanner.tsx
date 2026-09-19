@@ -81,7 +81,7 @@ export function ConsentModal({
           {OPENCODE_GO_CONSENT_COPY}
         </p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--s2)" }}>
-          <button type="button" className="btn btn-quiet" onClick={onCancel}>
+          <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
           <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={busy}>

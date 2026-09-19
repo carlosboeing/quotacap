@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect, vi } from "vitest";
@@ -114,5 +115,29 @@ describe("ConsentModal", () => {
     expect(enable).toBeTruthy();
     enable.props.onClick();
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables both actions while busy", () => {
+    const tree = (ConsentModal as any)({ onConfirm: vi.fn(), onCancel: vi.fn(), busy: true });
+    const cancel = findButton(tree, (label) => /cancel/i.test(label));
+    expect(cancel.props.disabled).toBe(true);
+    const enabling = findButton(tree, (label) => /enabling/i.test(label));
+    expect(enabling.props.disabled).toBe(true);
+  });
+});
+
+describe("setup-mode reachability", () => {
+  // SSR runs no effects, so an App-level render cannot reach the setup branch
+  // headlessly (loadState never fires, snapshot stays null). Structural gate on
+  // the setup-mode return instead, same style as responsive.test.ts's CSS read.
+  it("keeps the notice and consent modal inside the setup-mode return", () => {
+    const src = fs.readFileSync("web/src/App.tsx", "utf8");
+    const start = src.indexOf("if (snapshot && setupMode)");
+    const setupBlock = src.slice(start, src.indexOf("\n  return (", start));
+    expect(setupBlock).toContain('data-testid="refresh-notice"');
+    expect(setupBlock).toContain('role="status"');
+    expect(setupBlock).toContain("<ConsentModal");
+    expect(setupBlock).toContain("busy={consentBusy}");
+    expect(setupBlock).toContain("onSetProviderEnabled={handleSetProviderEnabled}");
   });
 });
