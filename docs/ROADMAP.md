@@ -145,7 +145,7 @@
 
 ## Next
 
-* OpenCode Go adapter (opt-in) — approved design and plan in the workbench; implementation on `feat/opencode-go-adapter`
+* OpenCode Go adapter (opt-in) — approved design and plan in the workbench; implementation in PR #106
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Forecast constants fixture-locked only — re-run `scripts/forecast-backtest.mjs` against the live DB once `window_closes` holds receipts

@@ -226,6 +226,11 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           ...(id === "opencode-go" ? { consent: true } : {}),
         });
       } catch (e) {
+        if (e instanceof ServiceError && e.status === 404 && id === "opencode-go") {
+          console.error("the running daemon predates OpenCode Go support (no enable route) — upgrade it with `quotacap update` before enabling; refusing to write config the old daemon cannot start with");
+          exit(1);
+          return;
+        }
         if (e instanceof ServiceUnavailable || (e instanceof ServiceError && e.status === 404)) {
           try {
             await setProviderEnabled(id, true);

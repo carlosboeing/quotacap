@@ -1,7 +1,7 @@
-// The one consented exception to credential-free polling (see the design:
-// opt-in detection and credential handling). This is the only src/ file the
-// static gate in tests/adapters/credential-free.test.ts allows to contain
-// the literal "auth.json" — and only that literal.
+// Consented exception to credential-free polling: reads the OpenCode auth
+// key in-memory, only after `providers enable opencode-go` records consent.
+// The static gate pins the auth-file literal to this adapter plus the
+// generated dashboard bundle — see tests/adapters/credential-free.test.ts.
 import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";

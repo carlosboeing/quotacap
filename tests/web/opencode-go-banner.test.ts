@@ -139,5 +139,7 @@ describe("setup-mode reachability", () => {
     expect(setupBlock).toContain("<ConsentModal");
     expect(setupBlock).toContain("busy={consentBusy}");
     expect(setupBlock).toContain("onSetProviderEnabled={handleSetProviderEnabled}");
+    expect(setupBlock).toContain("showOpenCodeGoBanner(snapshot.runtime, snapshot.providers, goSuppressed)");
+    expect(setupBlock).toContain("<OpencodeGoBanner");
   });
 });

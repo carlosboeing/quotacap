@@ -383,6 +383,45 @@ describe("CLI quotacap providers enable", () => {
     expect(cfg.enabledProviders).toContain("opencode-go");
     expect(typeof cfg.opencodeGoConsentAt).toBe("string");
   });
+
+  it("refuses opencode-go enable against a pre-route daemon instead of writing brick config", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockRejectedValue(new ServiceError(404, "not found")),
+      patch: vi.fn(),
+    };
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({ createClient: () => mockClient, exit: exitMock });
+    await program.parseAsync(["node", "quotacap", "providers", "enable", "opencode-go", "--yes"]);
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toMatch(/predates OpenCode Go|quotacap update/);
+    const cfg = await readConfig();
+    expect(cfg.enabledProviders).not.toContain("opencode-go");
+    expect(cfg.opencodeGoConsentAt).toBeNull();
+  });
+
+  it("still falls back to a config write for known ids on 404", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockRejectedValue(new ServiceError(404, "not found")),
+      patch: vi.fn(),
+    };
+    const warns: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((msg) => warns.push(msg));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    await program.parseAsync(["node", "quotacap", "providers", "enable", "claude", "--yes"]);
+
+    const cfg = await readConfig();
+    expect(cfg.enabledProviders).toContain("claude");
+    expect(warns.join("\n")).toMatch(/version skew/);
+  });
 });
 
 describe("CLI quotacap providers disable", () => {

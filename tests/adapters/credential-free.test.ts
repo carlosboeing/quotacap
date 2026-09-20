@@ -222,6 +222,11 @@ describe("Credential-free adapters regression", () => {
         if (typeof file === "string") accessedPaths.push(file);
         return (fsp.readFile as any).wrappedMethod ? (fsp.readFile as any).wrappedMethod(file, ...args) : "";
       });
+      const realReadFileSync = fs.readFileSync;
+      const readSyncSpy = vi.spyOn(fs, "readFileSync").mockImplementation((file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return realReadFileSync(file, ...args);
+      });
 
       try {
         const codexStatBefore = await fsp.stat(codexAuth);
@@ -316,6 +321,7 @@ describe("Credential-free adapters regression", () => {
         expect(museSessionsDir).toEqual(["snap-1.json"]);
       } finally {
         readSpy.mockRestore();
+        readSyncSpy.mockRestore();
         homedirSpy.mockRestore();
         runPtySpy.mockRestore();
         process.env.HOME = origHome;

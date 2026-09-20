@@ -230,6 +230,9 @@ function App() {
               {notice}
             </div>
           )}
+          {showOpenCodeGoBanner(snapshot.runtime, snapshot.providers, goSuppressed) && (
+            <OpencodeGoBanner onEnable={() => setConsentOpen(true)} />
+          )}
           <Onboarding
             snapshot={snapshot}
             onFirstPoll={() => void refresh()}
