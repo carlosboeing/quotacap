@@ -72,4 +72,23 @@ describe("settings", () => {
     btn.props.onClick();
     expect(onSetProviderEnabled).toHaveBeenCalledWith("opencode-go", true);
   });
+  it("hides the enable/disable toggle for agy:3p while keeping it for normal rows", () => {
+    const onSetProviderEnabled = vi.fn();
+    const providers = [
+      { id: "agy:3p", displayName: "Antigravity 3P", harness: "Antigravity", vendor: "Google", enabled: true, quota: null, exclusionReason: null, lastAttempt: null },
+      { id: "claude", displayName: "Claude Code", harness: "Claude Code", vendor: "Anthropic", enabled: true, quota: null, exclusionReason: null, lastAttempt: null },
+    ];
+    const props = {
+      providers: providers as any,
+      onRefresh: () => {},
+      refreshing: false,
+      onSetProviderEnabled,
+    };
+    const html = renderToString(React.createElement(ProvidersPanel, props));
+    expect(html).not.toMatch(/aria-label="Disable Antigravity 3P"/);
+    expect(html).toMatch(/aria-label="Disable Claude Code"/);
+    const tree = (ProvidersPanel as any)(props);
+    expect(findRowButton(tree, "Disable Antigravity 3P")).toBeNull();
+    expect(findRowButton(tree, "Disable Claude Code")).toBeTruthy();
+  });
 });

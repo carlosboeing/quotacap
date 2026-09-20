@@ -120,7 +120,8 @@ export function ProvidersPanel({
                 >
                   {connectionBadge(p)}
                 </span>
-                {onSetProviderEnabled && (
+                {/* agy:3p shares the agy adapter and has no enablement of its own */}
+                {onSetProviderEnabled && p.id !== "agy:3p" && (
                   <button
                     type="button"
                     className="btn btn-quiet"

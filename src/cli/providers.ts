@@ -188,7 +188,7 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
     .description("enable a provider (OpenCode Go requires explicit consent)")
     .option("--yes", "skip the interactive consent prompt (scripts)")
     .action(async (id: string, opts: { yes?: boolean }) => {
-      if (typeof id !== "string" || !id || !(id in adapters) || id === "manual") {
+      if (typeof id !== "string" || !id || !Object.hasOwn(adapters, id) || id === "manual") {
         console.error(`error: unknown provider id: ${id}`);
         exit(1);
         return;
@@ -204,11 +204,17 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           }
           const readline = (await import("node:readline/promises")).default;
           const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-          const answer = (await rl.question("Proceed? [y/N] ")).trim().toLowerCase();
-          rl.close();
-          if (answer !== "y" && answer !== "yes") {
+          try {
+            const answer = (await rl.question("Proceed? [y/N] ")).trim().toLowerCase();
+            if (answer !== "y" && answer !== "yes") {
+              console.log("not enabled");
+              return;
+            }
+          } catch {
             console.log("not enabled");
             return;
+          } finally {
+            rl.close();
           }
         }
       }
@@ -248,7 +254,7 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
     .command("disable <id>")
     .description("disable a provider and stop polling it")
     .action(async (id: string) => {
-      if (typeof id !== "string" || !id || !(id in adapters) || id === "manual") {
+      if (typeof id !== "string" || !id || !Object.hasOwn(adapters, id) || id === "manual") {
         console.error(`error: unknown provider id: ${id}`);
         exit(1);
         return;

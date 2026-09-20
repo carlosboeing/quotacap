@@ -117,8 +117,8 @@ export interface StateSnapshot {
     lastCompletedPollAt: string | null;
     version: string;
     update?: UpdateStatus;
-    /** Providers whose auth the daemon detected but that are not enabled
-     *  (consent-gated opt-ins). Empty on daemons predating the field. */
+    /** Auth detected for these provider ids (detection-only; consumers intersect with the enabled set).
+     *  Empty on daemons predating the field. */
     detectedProviders?: string[];
   };
   providers: ProviderSnapshot[];

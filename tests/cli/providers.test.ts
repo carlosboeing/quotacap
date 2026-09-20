@@ -7,6 +7,14 @@ import { registerProvidersCommand } from "../../src/cli/providers.js";
 import { ServiceError, ServiceUnavailable, type ServiceClient } from "../../src/runtime/client.js";
 import { readConfig, writeConfig } from "../../src/config.js";
 
+const { mockCreateInterface } = vi.hoisted(() => ({
+  mockCreateInterface: vi.fn(),
+}));
+
+vi.mock("node:readline/promises", () => ({
+  default: { createInterface: mockCreateInterface },
+}));
+
 let tmpHome = "";
 const oldQcHome = process.env.QUOTACAP_HOME;
 
@@ -413,5 +421,95 @@ describe("CLI quotacap providers disable", () => {
     const updated = await readConfig();
     expect(updated.enabledProviders).not.toContain("opencode-go");
     expect(updated.opencodeGoConsentAt).toBeNull();
+  });
+});
+
+describe("CLI provider id validation rejects prototype-chain names", () => {
+  it("enable constructor --yes with an online daemon exits 1 with unknown provider and no POST", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ ok: true }),
+      patch: vi.fn(),
+    };
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({ createClient: () => mockClient, exit: exitMock });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "enable", "constructor", "--yes"]);
+    } catch {}
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toMatch(/unknown provider/i);
+    expect(mockClient.post).not.toHaveBeenCalled();
+  });
+
+  it("disable constructor exits 1 with unknown provider and no POST", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockResolvedValue({ ok: true }),
+      patch: vi.fn(),
+    };
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({ createClient: () => mockClient, exit: exitMock });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "disable", "constructor"]);
+    } catch {}
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toMatch(/unknown provider/i);
+    expect(mockClient.post).not.toHaveBeenCalled();
+  });
+
+  it("enable constructor --yes offline does not write the junk id to config", async () => {
+    const mockClient: ServiceClient = {
+      get: vi.fn(),
+      post: vi.fn().mockRejectedValue(new ServiceUnavailable("daemon down")),
+      patch: vi.fn(),
+    };
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((msg) => errors.push(msg));
+    const exitMock = vi.fn();
+
+    const program = createMockProgram({ createClient: () => mockClient, exit: exitMock });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "enable", "constructor", "--yes"]);
+    } catch {}
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errors.join("\n")).toMatch(/unknown provider/i);
+    expect(mockClient.post).not.toHaveBeenCalled();
+    const cfg = await readConfig();
+    expect(cfg.enabledProviders).not.toContain("constructor");
+  });
+});
+
+describe("CLI opencode-go consent prompt EOF", () => {
+  it("treats a rejected question (Ctrl-D/EOF) as a no answer without POSTing", async () => {
+    const closeMock = vi.fn();
+    mockCreateInterface.mockReturnValue({
+      question: vi.fn().mockRejectedValue(new Error("EOF")),
+      close: closeMock,
+    });
+    const mockClient: ServiceClient = { get: vi.fn(), post: vi.fn(), patch: vi.fn() };
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((msg) => logs.push(msg));
+    const isTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+
+    const program = createMockProgram({ createClient: () => mockClient });
+    try {
+      await program.parseAsync(["node", "quotacap", "providers", "enable", "opencode-go"]);
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
+    }
+
+    expect(logs.join("\n")).toContain("not enabled");
+    expect(mockClient.post).not.toHaveBeenCalled();
+    expect(closeMock).toHaveBeenCalled();
   });
 });

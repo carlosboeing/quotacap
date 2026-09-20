@@ -94,7 +94,7 @@ const ServiceConfigSchema = z.object({
   enabledProviders: z
     .array(z.string())
     .superRefine((ids, ctx) => {
-      const bad = ids.filter((id) => !(id in adapters));
+      const bad = ids.filter((id) => !Object.hasOwn(adapters, id));
       if (bad.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
