@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.38 — 2026-09-20 (OpenCode Go adapter)
+
+* Provider adapter — OpenCode Go (`opencode-go`, opt-in): live 5h/weekly usage via the usage API with a consent-gated in-memory key read, dashboard banner + consent modal, CLI enable/disable, token-gated enable route; monthly parked (#106)
+
 ## Recently shipped — 0.0.37 — 2026-09-17 (muse recovery)
 
 * Muse recovery — when the `/usage` panel reports `Currently unavailable`, the poll sends up to three minimal `muse exec "hi"` warm turns (empty probe dir, 20 s cap, 3 s settles, 60 s budget) and re-reads usage after each, so a stale subscription snapshot recovers without a manual prompt; healthy polls send nothing, and an exhausted recovery shows the same degraded row as before (#103)
@@ -145,7 +149,6 @@
 
 ## Next
 
-* OpenCode Go adapter (opt-in) — approved design and plan in the workbench; implementation in PR #106
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Forecast constants fixture-locked only — re-run `scripts/forecast-backtest.mjs` against the live DB once `window_closes` holds receipts
