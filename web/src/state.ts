@@ -126,6 +126,7 @@ export interface RuntimeView {
   polling: "idle" | "in-progress" | "cooldown";
   lastCompletedPollAt: string | null;
   version: string;
+  detectedProviders?: string[];
   update?: UpdateView;
 }
 
@@ -163,7 +164,13 @@ export function toViewModel(s: StateSnapshot): ViewModel {
     : [];
   return {
     asOf: s.asOf,
-    runtime: { ...s.runtime },
+    runtime: {
+      ...s.runtime,
+      // A service older than opencode-go support omits this field.
+      detectedProviders: Array.isArray((s.runtime as RuntimeView | undefined)?.detectedProviders)
+        ? [...(s.runtime.detectedProviders as string[])]
+        : [],
+    },
     providers,
     recommendation: { ...s.recommendation, advisories },
   };
@@ -196,7 +203,8 @@ export function displayPlan(plan: string | null | undefined): string | null {
 /**
  * Short-window display name ("5h Limit"). Codex, Kimi, and Agy report a 5h limit;
  * Claude (current session) and Muse (current window) report an equivalent 5-hour
- * rolling window. Returns null when the provider reports no short window (grok, manual).
+ * rolling window, as does OpenCode Go. Returns null when the provider reports no
+ * short window (grok, manual).
  */
 export function shortWindowLabel(id: string): string | null {
   switch (id.split(":")[0]) {
@@ -205,6 +213,7 @@ export function shortWindowLabel(id: string): string | null {
     case "agy":
     case "claude":
     case "muse":
+    case "opencode-go":
       return "5h Limit";
     default:
       return null;

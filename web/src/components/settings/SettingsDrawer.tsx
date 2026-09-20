@@ -17,12 +17,14 @@ export function SettingsDrawer({
   providers,
   onRefresh,
   refreshing,
+  onSetProviderEnabled,
   onClose,
 }: {
   open: boolean;
   providers: ProviderView[];
   onRefresh: () => void;
   refreshing: boolean;
+  onSetProviderEnabled?: (id: string, enabled: boolean) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>("providers");
@@ -147,6 +149,7 @@ export function SettingsDrawer({
               providers={providers}
               onRefresh={onRefresh}
               refreshing={refreshing}
+              onSetProviderEnabled={onSetProviderEnabled}
             />
           )}
           {tab === "cli" && <CliIntegrationPanel />}

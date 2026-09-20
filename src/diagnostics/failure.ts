@@ -68,6 +68,8 @@ export function formatProviderName(provider: string): string {
       return "Antigravity (3rd-party)";
     case "muse":
       return "Muse";
+    case "opencode-go":
+      return "OpenCode Go";
     case "all":
       return "QuotaCap service";
     default:
@@ -299,6 +301,15 @@ function matchPrecedence(
   }
   if (/\bno weekly bucket\b/i.test(text)) {
     return { code: "parse_error", phrase: "no weekly bucket" };
+  }
+  if (/\brolling usage not found\b/i.test(text)) {
+    return { code: "parse_error", phrase: "rolling usage not found" };
+  }
+  if (/\bbad rolling pct\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad rolling pct" };
+  }
+  if (/\busage status not ok\b/i.test(text)) {
+    return { code: "parse_error", phrase: "usage status not ok" };
   }
 
   // Order 8b: service_unavailable — subscription or service currently unavailable

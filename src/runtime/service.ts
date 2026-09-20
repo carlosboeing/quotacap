@@ -21,6 +21,7 @@ import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
+import { opencodeGoDetected } from "../adapters/opencode-go.js";
 import { classifyFailure } from "../diagnostics/failure.js";
 import { ensureCatalogs, catalogProviders } from "../catalog/index.js";
 
@@ -224,6 +225,7 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       token,
       coordinator,
       enabledProviders: config.enabledProviders,
+      detectedProviders: opencodeGoDetected() ? ["opencode-go"] : [],
       providerNames: config.providerNames,
       catalogTtlHours: config.catalogTtlHours,
       version: VERSION,

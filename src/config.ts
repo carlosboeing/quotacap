@@ -37,6 +37,7 @@ const ConfigSchema = z.object({
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
+  opencodeGoConsentAt: z.string().nullable().default(null),
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),
@@ -93,7 +94,7 @@ const ServiceConfigSchema = z.object({
   enabledProviders: z
     .array(z.string())
     .superRefine((ids, ctx) => {
-      const bad = ids.filter((id) => !(id in adapters));
+      const bad = ids.filter((id) => !Object.hasOwn(adapters, id));
       if (bad.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -106,6 +107,7 @@ const ServiceConfigSchema = z.object({
   // start. A non-array still fails naming the field.
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
+  opencodeGoConsentAt: z.string().nullable().default(null),
   experimentalIngest: z.boolean().optional(),
 });
 
@@ -217,6 +219,50 @@ export async function setProviderNameOverride(
   await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
 }
 
+/**
+ * Safe mutation of provider enablement in config.json: raw-JSON like
+ * setProviderNameOverride (unknown keys preserved). Enabling opencode-go
+ * records the consent timestamp; disabling it revokes the consent record.
+ */
+export async function setProviderEnabled(
+  id: string,
+  enabled: boolean,
+  p?: string,
+): Promise<void> {
+  const file = getConfigPath(p);
+  let rawObj: Record<string, any> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`invalid config: ${file} must contain a JSON object`);
+    }
+    rawObj = parsed;
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      rawObj = {};
+    } else {
+      throw new Error(`cannot update provider enablement: failed to read ${file}: ${err?.message ?? err}`);
+    }
+  }
+
+  const list: string[] = Array.isArray(rawObj.enabledProviders)
+    ? [...rawObj.enabledProviders]
+    : [...defaultConfig().enabledProviders];
+  if (enabled) {
+    if (!list.includes(id)) list.push(id);
+  } else {
+    const at = list.indexOf(id);
+    if (at >= 0) list.splice(at, 1);
+  }
+  rawObj.enabledProviders = list;
+  if (id === "opencode-go") {
+    rawObj.opencodeGoConsentAt = enabled ? new Date().toISOString() : null;
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(rawObj, null, 2) + "\n");
+}
+
 export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
   const file = getConfigPath(p);
   let rawObj: Record<string, any> = {};
@@ -246,6 +292,10 @@ export async function resetAllProviderNameOverrides(p?: string): Promise<void> {
 // mark every adapter known and silently disable auto-enable.
 export const LEGACY_KNOWN_PROVIDERS = ["claude", "codex", "kimi", "grok", "agy"];
 
+// Opt-in adapters are never auto-enabled: a binary on PATH is not consent.
+// opencode-go polls a stored credential, so only an explicit enable adds it.
+const OPT_IN_ADAPTERS = new Set(["opencode-go"]);
+
 // PATH lookup kept local: importing the sibling in src/service/macos.ts
 // would create a config<->service import cycle.
 function defaultWhich(bin: string): string | null {
@@ -273,7 +323,8 @@ export interface AutoEnableResult {
 
 /**
  * Auto-enable newly shipped adapters. For each registered adapter (minus
- * `manual`, which has no CLI binary) absent from knownProviders, resolve its
+ * `manual`, which has no CLI binary, and minus opt-in adapters, which an
+ * explicit enable must consent to) absent from knownProviders, resolve its
  * binary on PATH and append it to both lists when found. An adapter whose
  * binary is missing stays unknown so it is re-checked on the next start; a
  * provider already known but disabled is never re-added. Raw-JSON mutation
@@ -312,7 +363,7 @@ export async function autoEnableNewProviders(
   const enabled = [...prevEnabled];
   const known = [...prevKnown];
   for (const id of Object.keys(adapters)) {
-    if (id === "manual" || known.includes(id)) continue;
+    if (id === "manual" || OPT_IN_ADAPTERS.has(id) || known.includes(id)) continue;
     let resolved: string | null = null;
     try {
       resolved = which(id);

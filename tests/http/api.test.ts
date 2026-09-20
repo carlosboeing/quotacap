@@ -495,6 +495,120 @@ describe("http token auth and mutating routes", () => {
       expect(body.error).toContain("failed to persist configuration");
     });
   });
+
+  describe("POST /api/providers/:id/enabled", () => {
+    it("rejects request without token header (401)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({ method: "POST", url: "/api/providers/opencode-go/enabled", payload: { enabled: true, consent: true } });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects unknown provider id (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/nope/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: true },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("rejects prototype-chain ids like constructor (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/constructor/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: true },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("rejects a non-boolean enabled (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/claude/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: "yes" },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("requires consent true when enabling opencode-go (400)", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db));
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/opencode-go/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: true },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/consent/i);
+    });
+
+    it("enables opencode-go with consent, persists config, reports restartRequired", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const cfgPath = path.join(tempHome, "enable-config.json");
+      const ctx = testCtx(db, { configPath: cfgPath, enabledProviders: ["claude"] });
+      const app = buildApp(ctx);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/opencode-go/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: true, consent: true },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ok: true, id: "opencode-go", enabled: true, restartRequired: true });
+      const raw = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+      expect(raw.enabledProviders).toContain("opencode-go");
+      expect(typeof raw.opencodeGoConsentAt).toBe("string");
+      // The in-memory poll set is NOT mutated — restart applies it.
+      expect(ctx.enabledProviders).toEqual(["claude"]);
+    });
+
+    it("disabling opencode-go clears the consent timestamp", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const cfgPath = path.join(tempHome, "disable-config.json");
+      fs.writeFileSync(cfgPath, JSON.stringify({ enabledProviders: ["opencode-go"], opencodeGoConsentAt: "2026-09-17T00:00:00Z" }));
+      const ctx = testCtx(db, { configPath: cfgPath });
+      const app = buildApp(ctx);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/providers/opencode-go/enabled",
+        headers: { "x-quotacap-token": "test-token" },
+        payload: { enabled: false },
+      });
+      expect(res.statusCode).toBe(200);
+      const raw = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+      expect(raw.enabledProviders).not.toContain("opencode-go");
+      expect(raw.opencodeGoConsentAt).toBeNull();
+    });
+  });
+
+  describe("GET /api/state detectedProviders", () => {
+    it("surfaces ctx-detected providers on the runtime object", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const ctx = testCtx(db, { detectedProviders: ["opencode-go"] });
+      const app = buildApp(ctx);
+      const res = await app.inject({ method: "GET", url: "/api/state" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().runtime.detectedProviders).toEqual(["opencode-go"]);
+    });
+
+    it("defaults to an empty array for older-style ctx", async () => {
+      const db = openDb(":memory:"); migrate(db);
+      const app = buildApp(testCtx(db, { detectedProviders: undefined }));
+      const res = await app.inject({ method: "GET", url: "/api/state" });
+      expect(res.json().runtime.detectedProviders).toEqual([]);
+    });
+  });
 });
 
 describe("/api/models and /api/models/refresh", () => {

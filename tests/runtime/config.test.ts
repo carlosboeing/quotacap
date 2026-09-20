@@ -11,6 +11,7 @@ import {
   readServiceConfig,
   readServiceMetadata,
   resetAllProviderNameOverrides,
+  setProviderEnabled,
   setProviderNameOverride,
   writeServiceMetadata,
   type ServiceMetadata,
@@ -48,6 +49,7 @@ describe("strict service config", () => {
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       providerNames: {},
+      opencodeGoConsentAt: null,
     });
   });
 
@@ -398,6 +400,45 @@ describe("provider auto-enable", () => {
     writeConfig({ knownProviders: ["claude", "retired-adapter"] });
     const cfg = await readServiceConfig();
     expect(cfg.knownProviders).toEqual(["claude", "retired-adapter"]);
+  });
+
+  it("never auto-enables opencode-go even when a binary resolves on PATH", async () => {
+    isolatedHome();
+    writeConfig({ enabledProviders: FIVE, knownProviders: [...FIVE, "muse"] });
+    const r = await autoEnableNewProviders({ which: () => "/bin/on-path" });
+    expect(r?.enabledProviders).not.toContain("opencode-go");
+    expect(r?.knownProviders).not.toContain("opencode-go");
+  });
+
+  it("setProviderEnabled enables with a consent timestamp and disables clearing it", async () => {
+    isolatedHome();
+    await setProviderEnabled("opencode-go", true);
+    let raw = JSON.parse(fs.readFileSync(cfgPath(), "utf8"));
+    expect(raw.enabledProviders).toContain("opencode-go");
+    expect(typeof raw.opencodeGoConsentAt).toBe("string");
+    expect(Number.isFinite(Date.parse(raw.opencodeGoConsentAt))).toBe(true);
+
+    await setProviderEnabled("opencode-go", false);
+    raw = JSON.parse(fs.readFileSync(cfgPath(), "utf8"));
+    expect(raw.enabledProviders).not.toContain("opencode-go");
+    expect(raw.opencodeGoConsentAt).toBeNull();
+  });
+
+  it("setProviderEnabled preserves unknown config keys", async () => {
+    isolatedHome();
+    fs.mkdirSync(path.dirname(cfgPath()), { recursive: true });
+    fs.writeFileSync(cfgPath(), JSON.stringify({ port: 9999, customKey: "keep-me" }));
+    await setProviderEnabled("claude", false);
+    const raw = JSON.parse(fs.readFileSync(cfgPath(), "utf8"));
+    expect(raw.port).toBe(9999);
+    expect(raw.customKey).toBe("keep-me");
+    expect(raw.enabledProviders).not.toContain("claude");
+  });
+
+  it("reads opencodeGoConsentAt from config with a null default", async () => {
+    isolatedHome();
+    const cfg = await readConfig();
+    expect(cfg.opencodeGoConsentAt).toBeNull();
   });
 });
 

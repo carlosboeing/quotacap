@@ -117,6 +117,9 @@ export interface StateSnapshot {
     lastCompletedPollAt: string | null;
     version: string;
     update?: UpdateStatus;
+    /** Auth detected for these provider ids (detection-only; consumers intersect with the enabled set).
+     *  Empty on daemons predating the field. */
+    detectedProviders?: string[];
   };
   providers: ProviderSnapshot[];
   recommendation: Recommendation;

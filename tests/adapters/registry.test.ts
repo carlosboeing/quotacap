@@ -10,9 +10,9 @@ afterEach(() => {
 });
 
 describe("adapter registry", () => {
-  it("registers claude, manual, codex, kimi, grok, agy and muse", () => {
-    expect(Object.keys(adapters).sort()).toEqual(["agy", "claude", "codex", "grok", "kimi", "manual", "muse"]);
-    for (const id of ["claude", "codex", "kimi", "grok", "agy", "manual", "muse"]) {
+  it("registers claude, manual, codex, kimi, grok, agy, muse and opencode-go", () => {
+    expect(Object.keys(adapters).sort()).toEqual(["agy", "claude", "codex", "grok", "kimi", "manual", "muse", "opencode-go"]);
+    for (const id of ["claude", "codex", "kimi", "grok", "agy", "manual", "muse", "opencode-go"]) {
       expect(adapters[id].id).toBe(id);
     }
   });

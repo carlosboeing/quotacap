@@ -15,6 +15,8 @@ const CONNECTION_NAMES = new Map<string, string>([
   ["grok", "Grok"],
   ["agy", "Antigravity"],
   ["agy:3p", "Antigravity 3P"],
+  ["muse", "Muse Code"],
+  ["opencode-go", "OpenCode Go"],
 ]);
 
 export function connectionName(id: string): string {
@@ -51,10 +53,12 @@ export function ProvidersPanel({
   providers,
   onRefresh,
   refreshing,
+  onSetProviderEnabled,
 }: {
   providers: ProviderView[];
   onRefresh: () => void;
   refreshing: boolean;
+  onSetProviderEnabled?: (id: string, enabled: boolean) => void;
 }) {
   const listed = adapterProviders(providers);
   return (
@@ -101,20 +105,35 @@ export function ProvidersPanel({
                   {sourceLabel(p.quota?.source)}
                 </span>
               </div>
-              <span
-                className={isReady ? "st-ready" : "st-todo"}
-                style={{
-                  fontSize: "var(--t-1)",
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  background: isReady ? "var(--good-soft)" : "var(--warn-soft)",
-                  border: `1px solid ${isReady ? "var(--good)" : "var(--warn)"}`,
-                  color: isReady ? "var(--good)" : "var(--warn)",
-                  fontWeight: 600,
-                }}
-              >
-                {connectionBadge(p)}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", flex: "none" }}>
+                <span
+                  className={isReady ? "st-ready" : "st-todo"}
+                  style={{
+                    fontSize: "var(--t-1)",
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: isReady ? "var(--good-soft)" : "var(--warn-soft)",
+                    border: `1px solid ${isReady ? "var(--good)" : "var(--warn)"}`,
+                    color: isReady ? "var(--good)" : "var(--warn)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {connectionBadge(p)}
+                </span>
+                {/* agy:3p shares the agy adapter and has no enablement of its own */}
+                {onSetProviderEnabled && p.id !== "agy:3p" && (
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    aria-label={`${p.enabled ? "Disable" : "Enable"} ${connectionName(p.id)}`}
+                    onClick={() => onSetProviderEnabled(p.id, !p.enabled)}
+                    disabled={refreshing}
+                    style={{ fontSize: "var(--t-1)", padding: "4px 8px", flex: "none", marginLeft: "8px" }}
+                  >
+                    {p.enabled ? "Disable" : "Enable"}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

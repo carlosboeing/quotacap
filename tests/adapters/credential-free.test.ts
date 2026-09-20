@@ -14,6 +14,7 @@ import { claudeAdapter, parseClaudeUsage } from "../../src/adapters/claude.js";
 import { agyAdapter, parseAgyUsage } from "../../src/adapters/agy.js";
 import { museAdapter, parseMuseTui } from "../../src/adapters/muse.js";
 import { manualAdapter, parseManualUsage } from "../../src/adapters/manual.js";
+import { opencodeGoAdapter, parseOpencodeGoUsage } from "../../src/adapters/opencode-go.js";
 import { formatInTimeZone } from "date-fns-tz";
 
 const SENSITIVE_PATTERNS = [
@@ -31,6 +32,14 @@ const SENSITIVE_PATTERNS = [
   /\.qc-tmp/i,
   /model-catalog/i,
 ];
+
+const LIVE_BODY = {
+  usage: {
+    rolling: { status: "ok", percent: 5, resetsAt: "2026-09-17T10:54:52.662Z" },
+    weekly: { status: "ok", percent: 8, resetsAt: "2026-09-21T00:00:00.662Z" },
+    monthly: { status: "ok", percent: 82, resetsAt: "2026-09-22T13:05:15.662Z" },
+  },
+};
 
 describe("Credential-free adapters regression", () => {
   describe("Static code verification", () => {
@@ -64,12 +73,29 @@ describe("Credential-free adapters regression", () => {
         "17e5f671-d194-4dfb-9706-5516cb48c098",
       ];
 
+      // The single consented exception: the OpenCode auth file literal lives
+      // in exactly two pinned files — the authored adapter that reads it and
+      // the generated dashboard bundle that embeds the consent copy naming
+      // it. Only that literal in both. Anything else — including OAuth
+      // vocabulary inside those files — still fails.
+      const staticAllowlist = new Map<string, string[]>([
+        [path.join("adapters", "opencode-go.ts"), ["auth.json"]],
+        // Generated, committed dashboard bundle (scripts/build-embed.mjs): it
+        // embeds the consent copy verbatim, which names the auth file. String
+        // data, not credential-reading code; every other forbidden pattern
+        // still fails here.
+        [path.join("webAssets.ts"), ["auth.json"]],
+      ]);
+
       for (const file of files) {
         const content = await fsp.readFile(file, "utf8");
+        const rel = path.relative(srcDir, file);
+        const allowed = staticAllowlist.get(rel) ?? [];
         for (const pattern of forbidden) {
+          if (allowed.includes(pattern)) continue;
           expect(
             content.includes(pattern),
-            `File ${path.relative(srcDir, file)} contains forbidden token "${pattern}"`,
+            `File ${rel} contains forbidden token "${pattern}"`,
           ).toBe(false);
         }
       }
@@ -113,6 +139,7 @@ describe("Credential-free adapters regression", () => {
         }, now);
         parseManualUsage("custom", "50% used · resets Aug 29 at 11am", now);
         parseMuseTui("Subscription · Muse Code High Usage  Current 11% used · Resets at 3:51 PM  Weekly 35% used · Resets Sep 14 at 10:00 AM  as of 12:34 PM", now);
+        parseOpencodeGoUsage(LIVE_BODY, now);
 
         for (const p of accessedPaths) {
           for (const pattern of SENSITIVE_PATTERNS) {
@@ -134,6 +161,9 @@ describe("Credential-free adapters regression", () => {
       const museAuth = path.join(mockHome, ".config", "muse", "auth.json");
       const museHistory = path.join(mockHome, ".config", "muse", "tui-history.jsonl");
       const museSession = path.join(mockHome, ".local", "share", "muse", "sessions", "snap-1.json");
+      const opencodeAuth = path.join(mockHome, ".local", "share", "opencode", "auth.json");
+      await fsp.mkdir(path.dirname(opencodeAuth), { recursive: true });
+      await fsp.writeFile(opencodeAuth, JSON.stringify({ "opencode-go": { type: "api", key: "sk-dummy-go" } }));
 
       await fsp.mkdir(path.dirname(codexAuth), { recursive: true });
       await fsp.writeFile(codexAuth, JSON.stringify({ access_token: "dummy_codex_tok", refresh_token: "dummy_codex_rf" }));
@@ -192,6 +222,11 @@ describe("Credential-free adapters regression", () => {
         if (typeof file === "string") accessedPaths.push(file);
         return (fsp.readFile as any).wrappedMethod ? (fsp.readFile as any).wrappedMethod(file, ...args) : "";
       });
+      const realReadFileSync = fs.readFileSync;
+      const readSyncSpy = vi.spyOn(fs, "readFileSync").mockImplementation((file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return realReadFileSync(file, ...args);
+      });
 
       try {
         const codexStatBefore = await fsp.stat(codexAuth);
@@ -200,6 +235,7 @@ describe("Credential-free adapters regression", () => {
         const museAuthStatBefore = await fsp.stat(museAuth);
         const museHistoryStatBefore = await fsp.stat(museHistory);
         const museSessionStatBefore = await fsp.stat(museSession);
+        const opencodeStatBefore = await fsp.stat(opencodeAuth);
 
         // 1. Exercise codexAdapter.poll()
         const codexQuota = await codexAdapter.poll();
@@ -258,6 +294,8 @@ describe("Credential-free adapters regression", () => {
         const museAuthStatAfter = await fsp.stat(museAuth);
         const museHistoryStatAfter = await fsp.stat(museHistory);
         const museSessionStatAfter = await fsp.stat(museSession);
+        const opencodeStatAfter = await fsp.stat(opencodeAuth);
+        expect(opencodeStatAfter.mtimeMs).toBe(opencodeStatBefore.mtimeMs);
 
         expect(codexStatAfter.mtimeMs).toBe(codexStatBefore.mtimeMs);
         expect(kimiStatAfter.mtimeMs).toBe(kimiStatBefore.mtimeMs);
@@ -283,12 +321,79 @@ describe("Credential-free adapters regression", () => {
         expect(museSessionsDir).toEqual(["snap-1.json"]);
       } finally {
         readSpy.mockRestore();
+        readSyncSpy.mockRestore();
         homedirSpy.mockRestore();
         runPtySpy.mockRestore();
         process.env.HOME = origHome;
         if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
         else process.env.QUOTACAP_HOME = origQcHome;
         claudeAdapter.execPath = origExecPath;
+        await fsp.rm(mockHome, { recursive: true, force: true });
+      }
+    });
+
+    it("an enabled opencode-go poll reads only the consented auth path, read-only", async () => {
+      const mockHome = await fsp.mkdtemp(path.join(os.tmpdir(), "qc-ocgo-gate-"));
+      const opencodeAuth = path.join(mockHome, ".local", "share", "opencode", "auth.json");
+      await fsp.mkdir(path.dirname(opencodeAuth), { recursive: true });
+      await fsp.writeFile(opencodeAuth, JSON.stringify({ "opencode-go": { type: "api", key: "sk-dummy-go" } }), { mode: 0o600 });
+
+      const origHome = process.env.HOME;
+      const origQcHome = process.env.QUOTACAP_HOME;
+      const origEnvKey = process.env.OPENCODE_API_KEY;
+      delete process.env.OPENCODE_API_KEY;
+      const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(mockHome);
+      process.env.HOME = mockHome;
+      delete process.env.QUOTACAP_HOME;
+
+      const accessedPaths: string[] = [];
+      const realReadFile = fsp.readFile;
+      const readSpy = vi.spyOn(fsp, "readFile").mockImplementation(async (file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return realReadFile(file, ...args);
+      });
+      const realReadFileSync = fs.readFileSync;
+      const readSyncSpy = vi.spyOn(fs, "readFileSync").mockImplementation((file: any, ...args: any[]) => {
+        if (typeof file === "string") accessedPaths.push(file);
+        return realReadFileSync(file, ...args);
+      });
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(LIVE_BODY), { status: 200 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        const statBefore = await fsp.stat(opencodeAuth);
+        const quota = await opencodeGoAdapter.poll();
+        expect(quota.provider).toBe("opencode-go");
+        expect(quota.usedPct).toBe(8);
+        expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-dummy-go");
+
+        // Reads land on the consented path only; everything else stays clean.
+        expect(accessedPaths).toContain(opencodeAuth);
+        for (const p of accessedPaths) {
+          if (p === opencodeAuth) continue;
+          for (const pattern of SENSITIVE_PATTERNS) {
+            expect(pattern.test(p), `enabled poll unexpectedly accessed sensitive path: ${p}`).toBe(false);
+          }
+        }
+
+        // Read-only: mtime and mode unchanged, no sibling files created.
+        const statAfter = await fsp.stat(opencodeAuth);
+        expect(statAfter.mtimeMs).toBe(statBefore.mtimeMs);
+        expect(statAfter.mode & 0o777).toBe(statBefore.mode & 0o777);
+        const dirEntries = await fsp.readdir(path.dirname(opencodeAuth));
+        expect(dirEntries).toEqual(["auth.json"]);
+      } finally {
+        vi.unstubAllGlobals();
+        readSpy.mockRestore();
+        readSyncSpy.mockRestore();
+        homedirSpy.mockRestore();
+        process.env.HOME = origHome;
+        if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
+        else process.env.QUOTACAP_HOME = origQcHome;
+        if (origEnvKey === undefined) delete process.env.OPENCODE_API_KEY;
+        else process.env.OPENCODE_API_KEY = origEnvKey;
         await fsp.rm(mockHome, { recursive: true, force: true });
       }
     });

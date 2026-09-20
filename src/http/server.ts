@@ -16,6 +16,7 @@ import { validateTask } from "../advisory/validate.js";
 import { readUpdateCache } from "../runtime/updates.js";
 import { compareVersions } from "../runtime/versions.js";
 import { parseManualUsage } from "../adapters/manual.js";
+import { adapters } from "../adapters/index.js";
 import { upsertQuota } from "../store/quotas.js";
 import {
   createCoordinator,
@@ -26,7 +27,7 @@ import {
 import { classifyFailure } from "../diagnostics/failure.js";
 import { validateDisplayName } from "../advisory/validation.js";
 import { providerIdentity } from "../advisory/provider-names.js";
-import { setProviderNameOverride } from "../config.js";
+import { setProviderNameOverride, setProviderEnabled } from "../config.js";
 import { ensureCatalogs, catalogProviders, CATALOG_FAIL_COOLDOWN_MS } from "../catalog/index.js";
 import { getAllLatest } from "../store/quotas.js";
 
@@ -89,6 +90,8 @@ export interface RuntimeContext {
   coordinator: Coordinator;
   enabledProviders: string[];
   providerNames?: Record<string, string>;
+  /** Detected-but-not-enabled opt-in providers, computed once at start. */
+  detectedProviders?: string[];
   version: string;
   exec: string;
   now?: () => Date;
@@ -124,6 +127,7 @@ export function testCtx(db: any, overrides?: Partial<RuntimeContext>): RuntimeCo
     coordinator: createCoordinator({ db, enabledProviders: [] }),
     enabledProviders: [],
     providerNames: {},
+    detectedProviders: [],
     version: "test",
     exec: "test",
     ingestEnabled: false,
@@ -153,6 +157,7 @@ function snapshotOf(ctx: RuntimeContext): StateSnapshot {
         upToDate: !cache || compareVersions(cache.latest, ctx.version) <= 0,
         checkedAt: cache?.checkedAt ?? null,
       },
+      detectedProviders: ctx.detectedProviders ?? [],
     },
   });
 }
@@ -413,6 +418,39 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       builtinName: identity.builtinName,
       override: validatedName,
     };
+  });
+
+  // Enable/disable a provider. Token-gated like refresh. Consent is recorded
+  // protocol-level for the one provider whose key QuotaCap reads. The
+  // coordinator's enabled set is a start-time snapshot, so the response
+  // tells every caller a restart applies it — no live mutation.
+  app.post("/api/providers/:id/enabled", async (req: any, reply) => {
+    const headerToken = req.headers["x-quotacap-token"];
+    if (!isValidToken(headerToken, ctx.token)) {
+      return reply.status(401).send({ error: "unauthorized: missing or invalid X-QuotaCap-Token header" });
+    }
+    const { id } = req.params;
+    if (typeof id !== "string" || !id || !Object.hasOwn(adapters, id) || id === "manual") {
+      return reply.status(400).send({ error: `unknown provider id: ${id}` });
+    }
+    const body = (req.body ?? {}) as any;
+    if (typeof body !== "object" || body === null || typeof body.enabled !== "boolean") {
+      return reply.status(400).send({ error: "invalid-argument: body must contain enabled: boolean" });
+    }
+    const enabling = body.enabled === true;
+    if (id === "opencode-go" && enabling && body.consent !== true) {
+      return reply.status(400).send({ error: "consent required: enabling opencode-go requires consent: true" });
+    }
+    if (ctx.configPath) {
+      try {
+        await setProviderEnabled(id, enabling, ctx.configPath);
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: `failed to persist configuration: ${err?.message ?? String(err)}`,
+        });
+      }
+    }
+    return { ok: true, id, enabled: enabling, restartRequired: true };
   });
 
 

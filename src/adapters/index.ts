@@ -5,6 +5,7 @@ import { kimiAdapter } from "./kimi.js";
 import { grokAdapter } from "./grok.js";
 import { agyAdapter } from "./agy.js";
 import { museAdapter } from "./muse.js";
+import { opencodeGoAdapter } from "./opencode-go.js";
 import { installAdapterSignal, clearAdapterSignal } from "../runtime/spawn.js";
 import type { Adapter } from "./types.js";
 export const adapters: Record<string, Adapter> = {
@@ -15,6 +16,7 @@ export const adapters: Record<string, Adapter> = {
   grok: grokAdapter,
   agy: agyAdapter,
   muse: museAdapter,
+  "opencode-go": opencodeGoAdapter,
 };
 const ADAPTER_TIMEOUTS: Record<string, number> = {
   claude: 8000,
@@ -23,6 +25,7 @@ const ADAPTER_TIMEOUTS: Record<string, number> = {
   grok: 14000,
   agy: 20000,
   muse: 90000,
+  "opencode-go": 8000,
 };
 
 export interface PollAllOptions {

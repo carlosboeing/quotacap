@@ -49,6 +49,17 @@ describe("provider naming registry", () => {
     });
   });
 
+  it("pre-seeds opencode-go for the opt-in adapter", () => {
+    expect(providerIdentity("opencode-go")).toEqual({
+      displayName: "OpenCode Go",
+      builtinName: "OpenCode Go",
+      vendor: "Anomaly",
+      harness: "OpenCode",
+      description:
+        "OpenCode Go subscription usage via the zen/go usage API, polled only after you explicitly enable it.",
+    });
+  });
+
   it("falls back to the raw id with null metadata for unknown ids", () => {
     expect(providerIdentity("my-plan")).toEqual({
       displayName: "my-plan",

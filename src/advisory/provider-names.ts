@@ -84,6 +84,16 @@ export const REGISTRY = new Map<
     },
   ],
   [
+    "opencode-go",
+    {
+      displayName: "OpenCode Go",
+      vendor: "Anomaly",
+      harness: "OpenCode",
+      description:
+        "OpenCode Go subscription usage via the zen/go usage API, polled only after you explicitly enable it.",
+    },
+  ],
+  [
     "manual",
     {
       displayName: "Manual",

@@ -87,7 +87,7 @@ describe("fault repair", () => {
       lastAttempt: { failureCategory: "auth" },
     } as any);
     expect(auth.text).toMatch(/sign in to the claude cli/i);
-    expect(auth.text).toMatch(/never handles those credentials/i);
+    expect(auth.text).toMatch(/By default QuotaCap never reads credentials/i);
     const stale = repairFor({ id: "kimi", displayName: "Kimi", exclusionReason: "stale", lastAttempt: null } as any);
     expect(stale.text).toMatch(/poll again/i);
   });
