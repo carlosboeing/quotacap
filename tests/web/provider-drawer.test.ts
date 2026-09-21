@@ -2,12 +2,13 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect } from "vitest";
-import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson } from "../fixtures/stable-state.js";
+import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson } from "../fixtures/stable-state.js";
 import { providerSubtitle, toViewModel } from "../../web/src/state.js";
 import {
   compactSnapshot,
   credentialLabel,
   drawerModel,
+  monthlyMeta,
   paceBasis,
   rankingCopy,
   sourceLabel,
@@ -206,8 +207,11 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(bare).not.toContain("undefined");
-    expect(bare).not.toContain("null");
+    // The raw JSON block is data, not copy: it carries explicit null monthly
+    // fields by design. No stray null/undefined may reach the rendered words.
+    const copy = bare.replace(/<pre class="draw-code">[\s\S]*?<\/pre>/, "");
+    expect(copy).not.toContain("undefined");
+    expect(copy).not.toContain("null");
   });
 
   it("renders Built-in: label when provider has an active override", () => {
@@ -457,6 +461,57 @@ describe("closed weeks drawer", () => {
     const html = render(onTime, s2);
     expect(html).not.toContain("read 3d early");
     expect(html).not.toContain("12% leftover (est.)");
+  });
+});
+
+describe("drawer windows", () => {
+  const render = (json: string, id: string) => {
+    const s = JSON.parse(json);
+    return renderToString(React.createElement(ProviderDrawer, {
+      provider: s.providers.find((p: any) => p.id === id), asOf: s.asOf,
+      recommendation: s.recommendation, onClose: () => {},
+    })).replace(/<!-- -->/g, "");
+  };
+
+  it("renders the badge once, in the header, and none in the Weekly section", () => {
+    const html = render(monthlyStateSnapshotJson, "opencode-go");
+    expect(html.match(/data-testid="pace-badge"/g)).toHaveLength(1);
+    expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("Close provider details"));
+    expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("Weekly limit"));
+  });
+
+  it("stacks Weekly, 5h and Monthly for OpenCode Go and has no Monthly for Claude", () => {
+    const go = render(monthlyStateSnapshotJson, "opencode-go");
+    const w = go.indexOf("<h3>Weekly limit</h3>");
+    const f = go.indexOf("<h3>5h Limit</h3>");
+    const m = go.indexOf("<h3>Monthly limit</h3>");
+    expect(w).toBeGreaterThan(-1);
+    expect(f).toBeGreaterThan(w);
+    expect(m).toBeGreaterThan(f);
+    expect(render(exampleStateSnapshotJson, "claude")).not.toContain("Monthly limit");
+  });
+
+  it("names the binding month in the meta line", () => {
+    const near = JSON.parse(monthlyStateSnapshotJson).providers[0];
+    expect(monthlyMeta(near)).toMatch(/^Resets \S+ \d\d:\d\d · 5% of month left$/);
+    const full = JSON.parse(monthlyExhaustedStateSnapshotJson).providers[0];
+    expect(monthlyMeta(full)).toMatch(/^Resets \S+ \d\d:\d\d · weekly leftover unused until then$/);
+    expect(render(monthlyExhaustedStateSnapshotJson, "opencode-go")).toContain("100% used");
+  });
+
+  it("the copyable snapshot explains the badge it shows", () => {
+    const go = JSON.parse(monthlyStateSnapshotJson).providers[0];
+    const snap = compactSnapshot(go, Date.parse(JSON.parse(monthlyStateSnapshotJson).asOf));
+    expect(snap).toMatchObject({ monthlyPct: 95, monthlyStatus: "ok", bindingWindow: "monthly" });
+    expect(snap.monthlyResetsAt).toBe("2026-09-15T12:00:00.000Z");
+  });
+
+  it("drawerModel copies fiveHourPct and the monthly fields without synthesizing any", () => {
+    const m = drawerModel(JSON.parse(monthlyStateSnapshotJson).providers[0]);
+    expect(m.fiveHourPct).toBe(12);
+    expect(m.monthlyPct).toBe(95);
+    const claude = drawerModel(JSON.parse(exampleStateSnapshotJson).providers.find((p: any) => p.id === "claude"));
+    expect("monthlyPct" in claude).toBe(false);
   });
 });
 

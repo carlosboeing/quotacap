@@ -47,6 +47,10 @@ export interface DrawerModel {
   exclusionReason: ExclusionReason;
   exclusionWords: string | null;
   fiveHourPct?: number;
+  monthlyPct?: number;
+  monthlyResetsAt?: string;
+  monthlyStatus?: "ok" | "exhausted";
+  monthlyKind?: "included";
   /** Type-level guard: a session reset is never synthesized, so this stays absent. */
   sessionReset?: undefined;
 }
@@ -120,6 +124,13 @@ export function drawerModel(provider: ProviderView): DrawerModel {
   };
   if (provider.quota?.fiveHourPct !== undefined && provider.quota.fiveHourPct !== null) {
     model.fiveHourPct = provider.quota.fiveHourPct;
+  }
+  const q = provider.quota;
+  if (q?.monthlyKind === "included") {
+    model.monthlyKind = q.monthlyKind;
+    if (q.monthlyPct !== undefined) model.monthlyPct = q.monthlyPct;
+    if (q.monthlyResetsAt !== undefined) model.monthlyResetsAt = q.monthlyResetsAt;
+    if (q.monthlyStatus !== undefined) model.monthlyStatus = q.monthlyStatus;
   }
   return model;
 }
@@ -200,6 +211,22 @@ export function resetUnderline(provider: ProviderView, asOfMs: number): string |
   return left ? `Resets ${stamp} · in ${left}` : `Resets ${stamp}`;
 }
 
+/** Monthly section meta line. Null when the provider has no included monthly window. */
+export function monthlyMeta(provider: ProviderView): string | null {
+  const q = provider.quota;
+  if (q?.monthlyKind !== "included" || !q.monthlyResetsAt) return null;
+  const clock = resetClock(q.monthlyResetsAt);
+  const base = clock ? `Resets ${clock}` : "Reset unknown";
+  const adv = provider.advisory;
+  if (q.monthlyStatus === "exhausted" || (adv?.bindingWindow === "monthly" && adv.bindingRemaining === 0)) {
+    return `${base} · weekly leftover unused until then`;
+  }
+  if (adv?.bindingWindow === "monthly") {
+    return `${base} · ${Math.round(adv.bindingRemaining)}% of month left`;
+  }
+  return base;
+}
+
 export function rankingCopy(
   provider: ProviderView,
   recommendation: RecommendationView | null
@@ -263,6 +290,10 @@ export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<
     usedPct: quota?.weeklyPct ?? null,
     elapsedPct: elapsedPct !== null ? Math.round(elapsedPct) : null,
     resetsAt: quota?.resetsAt ?? null,
+    monthlyPct: quota?.monthlyPct ?? null,
+    monthlyResetsAt: quota?.monthlyResetsAt ?? null,
+    monthlyStatus: quota?.monthlyStatus ?? null,
+    bindingWindow: provider.advisory?.bindingWindow ?? null,
     source: quota?.source ?? null,
     pacingStatus: pacingStatusToken(provider),
     reporting: provider.reporting,
@@ -557,6 +588,8 @@ export function ProviderDrawer({
             <span className="sub">{providerSubtitle(provider) ?? sub}</span>
           </div>
 
+          <Badge provider={provider} />
+
           <button
             className="drawer-close"
             type="button"
@@ -592,9 +625,6 @@ export function ProviderDrawer({
 
         <section className="dsec" aria-label="Weekly limit">
           <h3>Weekly limit</h3>
-          <div className="pcard-topline">
-            <Badge provider={provider} />
-          </div>
           {provider.quota ? (
             <>
               <PaceBar provider={provider} asOf={asOf} />
@@ -621,6 +651,26 @@ export function ProviderDrawer({
                 }}
               />
             </div>
+          </section>
+        )}
+
+        {model.monthlyKind === "included" && model.monthlyPct !== undefined && Number.isFinite(model.monthlyPct) && (
+          <section className="dsec" aria-label="Monthly limit" data-testid="drawer-monthly">
+            <h3>Monthly limit</h3>
+            <div className="pcard-topline">
+              <span className="used">{model.monthlyPct}% used</span>
+            </div>
+            <div className="track" role="img" aria-label={`${model.monthlyPct} percent of monthly limit used`}>
+              <div
+                className="fill"
+                style={{
+                  width: `${Math.min(100, Math.max(0, model.monthlyPct))}%`,
+                  background: model.monthlyPct >= 80 ? "var(--fill-cap)" : "var(--fill-ontrack)",
+                  ["--fill-edge" as string]: model.monthlyPct >= 80 ? "var(--edge-cap)" : "var(--edge-ontrack)",
+                }}
+              />
+            </div>
+            {monthlyMeta(provider) && <div className="pcard-underline">{monthlyMeta(provider)}</div>}
           </section>
         )}
 
