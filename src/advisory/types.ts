@@ -67,6 +67,7 @@ export interface Recommendation {
   wastePct: number | null;
   idealRate: number;
   recommendationBasis: RecommendationBasis;
+  bindingWindow: BindingWindow;
   models: ListedModel[];
   catalogStatus: CatalogStatus;
   catalogFetchedAt: string | null;

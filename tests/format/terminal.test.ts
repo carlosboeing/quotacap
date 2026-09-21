@@ -52,7 +52,7 @@ function quota(over: Partial<QuotaWire> = {}): QuotaWire {
 }
 
 function advisory(over: Partial<Advisory> = {}): Advisory {
-  return {
+  const a = {
     provider: "x",
     daysLeft: 7,
     remaining: 90,
@@ -60,12 +60,18 @@ function advisory(over: Partial<Advisory> = {}): Advisory {
     burnRate: 3,
     avgPace: 3,
     burnMeasured: false,
-    paceSource: "window-average",
+    paceSource: "window-average" as const,
     daysToExhaust: 30,
-    status: "on track",
+    status: "on track" as const,
     wastePct: 60,
-    urgency: "save",
+    urgency: "save" as const,
     ...over,
+  };
+  return {
+    bindingWindow: "weekly",
+    bindingRemaining: a.remaining,
+    bindingDaysLeft: a.daysLeft,
+    ...a,
   };
 }
 
@@ -118,6 +124,7 @@ function snap(providers: ProviderSnapshot[], use = "none"): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      bindingWindow: "weekly",
       models: [],
       catalogStatus: "unfetched",
       catalogFetchedAt: null,

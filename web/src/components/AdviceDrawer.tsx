@@ -65,8 +65,12 @@ export function AdviceDrawer({
     pick?.advisory?.remaining !== null && pick?.advisory?.remaining !== undefined
       ? Math.round(pick.advisory.remaining)
       : null;
-  const waste =
-    recommendation.wastePct !== null
+  // A monthly-bound pick's leftover is unusable until the month resets, so
+  // the weekly expiry sentence would restate issue 109; show the reason.
+  const monthlyBound = recommendation.bindingWindow === "monthly";
+  const waste = monthlyBound
+    ? null
+    : recommendation.wastePct !== null
       ? Math.round(recommendation.wastePct)
       : pick?.advisory?.wastePct !== null && pick?.advisory?.wastePct !== undefined
         ? Math.round(pick.advisory.wastePct)

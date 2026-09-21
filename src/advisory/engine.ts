@@ -163,6 +163,18 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft };
 }
 
+/**
+ * Known-waste sort key. `wastePct` is a flow (budget forecast to go unspent
+ * by the weekly deadline); `bindingRemaining` is a stock. The binding window's
+ * headroom per day, priced over the weekly days-left the pool sorts on, caps
+ * the claim at what the account can actually absorb. Weekly-bound providers
+ * are untouched: the ratio is 1 and `wastePct <= remaining` always.
+ */
+function rankWaste(a: Advisory & { wastePct: number }): number {
+  const affordable = a.bindingRemaining * (a.daysLeft / a.bindingDaysLeft);
+  return Math.min(a.wastePct, affordable);
+}
+
 export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<string,{ recent: number | null; baseline: number | null }>(), now=new Date()){
   if(!quotas.length) {
     return {
@@ -171,6 +183,7 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
       wastePct: 0,
       idealRate: 0,
       recommendationBasis: "none" as RecommendationBasis,
+      bindingWindow: "weekly" as BindingWindow,
       alternatives: [] as Quota[],
       advisories: [] as Advisory[],
     };
@@ -190,20 +203,23 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
   // 1. Prefer measured providers with positive avoidable waste (actionable "Use more" candidates).
   const positiveWaste = advisories.filter(
     (a): a is Advisory & { wastePct: number; burnRate: number } =>
-      a.paceSource !== "unknown" && a.wastePct !== null && a.wastePct > 0
+      a.paceSource !== "unknown" && a.wastePct !== null && a.wastePct > 0 && a.bindingRemaining > 0
   );
 
   if (positiveWaste.length > 0) {
     const verified = positiveWaste.filter(a => !estimatedProviders.has(a.provider));
     const pool = verified.length ? verified : positiveWaste.filter(a => estimatedProviders.has(a.provider));
-    const burnNow = pool.filter(a => a.urgency === "burn now");
-    const use = (burnNow.length ? burnNow : pool).sort((a, b) => b.wastePct - a.wastePct)[0];
+    const burnNow = pool.filter(a => a.urgency === "burn now" && a.bindingWindow === "weekly");
+    const use = (burnNow.length ? burnNow : pool).sort((a, b) => rankWaste(b) - rankWaste(a))[0];
     return {
       use: use.provider,
-      reason: `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
-      wastePct: use.wastePct,
+      reason: use.bindingWindow === "monthly"
+        ? `${Math.round(use.bindingRemaining)}% of month left in ${use.bindingDaysLeft.toFixed(1)}d`
+        : `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
+      wastePct: rankWaste(use),
       idealRate: use.idealRate,
       recommendationBasis: "known-waste" as RecommendationBasis,
+      bindingWindow: use.bindingWindow,
       alternatives: quotas,
       advisories,
     };
@@ -211,19 +227,22 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
 
   // 2. Low-confidence fallback: rank unknown providers by remaining headroom (remaining / daysLeft).
   const unknownProviders = advisories.filter(
-    a => a.paceSource === "unknown" && a.remaining > 0
+    a => a.paceSource === "unknown" && a.bindingRemaining > 0
   );
 
   if (unknownProviders.length > 0) {
     const use = unknownProviders.sort(
-      (a, b) => (b.remaining / b.daysLeft) - (a.remaining / a.daysLeft)
+      (a, b) => (b.bindingRemaining / b.bindingDaysLeft) - (a.bindingRemaining / a.bindingDaysLeft)
     )[0];
     return {
       use: use.provider,
-      reason: `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
+      reason: use.bindingWindow === "monthly"
+        ? `Measuring pace; ${Math.round(use.bindingRemaining)}% of month left with ${use.bindingDaysLeft.toFixed(1)}d until reset`
+        : `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
       wastePct: null,
       idealRate: use.idealRate,
       recommendationBasis: "unknown-headroom" as RecommendationBasis,
+      bindingWindow: use.bindingWindow,
       alternatives: quotas,
       advisories,
     };
@@ -236,6 +255,7 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     wastePct: 0,
     idealRate: 0,
     recommendationBasis: "none" as RecommendationBasis,
+    bindingWindow: "weekly" as BindingWindow,
     alternatives: quotas,
     advisories,
   };

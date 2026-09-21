@@ -230,6 +230,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      bindingWindow: "weekly",
       models: [],
       catalogStatus: "unfetched",
       catalogFetchedAt: null,

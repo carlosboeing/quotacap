@@ -11,7 +11,8 @@ export type Density = "cards" | "table";
 
 /**
  * Sort over server fields only. Recommended puts the server pick first, then
- * lane members, then the rest in server order, excluded last. Sort is stable.
+ * lane members, then the rest in server order, excluded last. A blocked month
+ * sorts with the excluded rows. Sort is stable.
  */
 export function sortProviders(
   providers: ProviderView[],
@@ -27,11 +28,14 @@ export function sortProviders(
     for (const a of [...useMore, ...easeOff]) {
       if (!order.has(a.provider)) order.set(a.provider, rank++);
     }
+    const blocked = (p: ProviderView): boolean =>
+      p.exclusionReason !== null ||
+      (p.advisory?.bindingWindow === "monthly" && p.advisory.bindingRemaining === 0);
     const ranked = list
-      .filter((p) => p.exclusionReason === null && order.has(p.id))
+      .filter((p) => !blocked(p) && order.has(p.id))
       .sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-    const rest = list.filter((p) => p.exclusionReason === null && !order.has(p.id));
-    const excluded = list.filter((p) => p.exclusionReason !== null);
+    const rest = list.filter((p) => !blocked(p) && !order.has(p.id));
+    const excluded = list.filter(blocked);
     return [...ranked, ...rest, ...excluded];
   }
   const resetMs = (p: ProviderView): number => (p.quota ? Date.parse(p.quota.resetsAt) : NaN);

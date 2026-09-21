@@ -207,6 +207,7 @@ export function sortProviders(
       const score = (p: ProviderSnapshot): number => {
         if (p.id === use && use !== "none") return 0;
         if (p.exclusionReason !== null) return 2;
+        if (p.advisory?.bindingWindow === "monthly" && p.advisory.bindingRemaining === 0) return 2;
         return 1;
       };
       indexed.sort((a, b) => {

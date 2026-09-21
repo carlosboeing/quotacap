@@ -49,6 +49,7 @@ export interface RecommendationView {
   wastePct: number | null;
   idealRate: number;
   recommendationBasis: RecommendationBasis;
+  bindingWindow: "weekly" | "monthly";
   alternatives: unknown[];
   advisories: AdvisoryView[];
 }

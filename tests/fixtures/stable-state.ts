@@ -161,3 +161,60 @@ export const exampleStateSnapshotJson = JSON.stringify(exampleStateSnapshot, nul
 export const staleStateSnapshotJson = JSON.stringify(staleStateSnapshot, null, 2);
 export const resetPassedStateSnapshotJson = JSON.stringify(resetPassedStateSnapshot, null, 2);
 export const unknownPaceStateSnapshotJson = JSON.stringify(unknownPaceStateSnapshot, null, 2);
+
+// OpenCode Go with an included month. At FIXED_NOW (2026-09-06T20:00Z) the
+// week has 3.2 days left and the month 8.7 days, so monthly binds (5 left ÷
+// 8.7d against 56 left ÷ 3.2d) while the weekly story stays Behind pace.
+export const GO_MONTHLY_RESETS_AT = "2026-09-15T12:00:00.000Z"; // Tuesday
+
+function addGo(db: any, status: "ok" | "exhausted"): void {
+  upsertQuota(db, {
+    provider: "opencode-go", plan: "unknown", source: "api",
+    weeklyPct: 44, fiveHourPct: 12,
+    resetsAt: "2026-09-10T00:00:00.000Z", periodStart: "2026-09-03T00:00:00.000Z",
+    fetchedAt: FIXED_NOW.toISOString(),
+    monthlyKind: "included", monthlyStatus: status,
+    monthlyPct: status === "exhausted" ? 100 : 95,
+    monthlyResetsAt: GO_MONTHLY_RESETS_AT,
+  });
+  recordAttempt(db, {
+    provider: "opencode-go",
+    attemptedAt: FIXED_NOW.toISOString(),
+    completedAt: FIXED_NOW.toISOString(),
+    succeededAt: FIXED_NOW.toISOString(),
+    success: true,
+    failureCategory: null,
+  });
+}
+
+export function buildMonthlyDb(status: "ok" | "exhausted"): any {
+  const db = openDb(":memory:");
+  migrate(db);
+  addGo(db, status);
+  return db;
+}
+
+export function buildBoardMonthlyDb(): any {
+  const db = buildFixtureDb();
+  addGo(db, "ok");
+  return db;
+}
+
+export const monthlyStateSnapshot: StateSnapshot = buildSnapshot(buildMonthlyDb("ok"), {
+  enabledProviders: ["opencode-go"],
+  now: FIXED_NOW,
+  runtime: RT,
+});
+export const monthlyExhaustedStateSnapshot: StateSnapshot = buildSnapshot(buildMonthlyDb("exhausted"), {
+  enabledProviders: ["opencode-go"],
+  now: FIXED_NOW,
+  runtime: RT,
+});
+export const boardMonthlyStateSnapshot: StateSnapshot = buildSnapshot(buildBoardMonthlyDb(), {
+  enabledProviders: [...ENABLED, "opencode-go"],
+  now: FIXED_NOW,
+  runtime: RT,
+});
+export const monthlyStateSnapshotJson = JSON.stringify(monthlyStateSnapshot, null, 2);
+export const monthlyExhaustedStateSnapshotJson = JSON.stringify(monthlyExhaustedStateSnapshot, null, 2);
+export const boardMonthlyStateSnapshotJson = JSON.stringify(boardMonthlyStateSnapshot, null, 2);
