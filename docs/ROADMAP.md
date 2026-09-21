@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.39 — 2026-09-21 (MCP-free Claude polls)
+
+* Claude polls start no MCP servers — `claude -p /usage` and the `claude -p /model` catalog fetch pass `--strict-mcp-config`, so the daemon no longer starts the user's MCP servers on every poll, and their launchd PATH failures no longer stay cached and hide those servers from the user's own sessions (#111)
+
 ## Recently shipped — 0.0.38 — 2026-09-20 (OpenCode Go adapter)
 
 * Provider adapter — OpenCode Go (`opencode-go`, opt-in): live 5h/weekly usage via the usage API with a consent-gated in-memory key read, dashboard banner + consent modal, CLI enable/disable, token-gated enable route; monthly parked (#106)

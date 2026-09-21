@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.39 — unreleased
+## 0.0.39
 
 - Claude polls start no MCP servers: `claude -p /usage` and the `claude -p /model` catalog fetch now pass `--strict-mcp-config`. Before, every poll booted the user's MCP servers under the daemon's PATH, which lacks `node` and `npx` under launchd. Claude Code cached each failure for 15 minutes, and each poll renewed it, so those servers were skipped at the start of the user's own sessions.
 
