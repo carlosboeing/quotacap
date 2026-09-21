@@ -614,30 +614,30 @@ describe("wide table", () => {
     const lines = wide();
     expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.length);
     expect(lines[0]).toBe(
-      line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS   ", "STATE          ", "FORECAST"]),
+      line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS   ", "STATE              ", "FORECAST"]),
     );
   });
   it("pins the recommended row exactly", () => {
     expect(wide()[1]).toBe(
-      line(["★ my-plan       ", "   12%", "     50%", "1.7 avg     ", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "76% waste in 7.0d"]),
+      line(["★ my-plan       ", "   12%", "     50%", "1.7 avg     ", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace        ", "76% waste in 7.0d"]),
     );
   });
   it("pins reporting, unknown-pace, stale, invalid, and not-reporting rows", () => {
     const lines = wide();
     expect(lines[2]).toBe(
-      line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace    ", "56% waste in 7.0d"]),
+      line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace        ", "56% waste in 7.0d"]),
     );
     expect(lines[5]).toBe(
-      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "Measuring      ", "Measuring pace; 50% remains with 7.0d until reset"]),
+      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "Measuring          ", "Measuring pace; 50% remains with 7.0d until reset"]),
     );
     expect(lines[6]).toBe(
-      line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting  ", "stale 3h ago"]),
+      line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting      ", "stale 3h ago"]),
     );
     expect(lines[7]).toBe(
-      line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "invalid reading"]),
+      line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting      ", "invalid reading"]),
     );
     expect(lines[8]).toBe(
-      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting  ", "no readings yet"]),
+      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting      ", "no readings yet"]),
     );
   });
   it("every row honors the column contract", () => {
@@ -654,7 +654,7 @@ describe("wide table", () => {
       expect(line.slice(70, 72)).toBe("  ");
       expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
       expect(line.slice(81, 83)).toBe("  ");
-      expect(line.slice(83, 98)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting) *$/);
+      expect(line.slice(83, 102)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting) *$/);
       expect(line.slice(98, 100)).toBe("  ");
       expect(line.slice(100).length).toBeGreaterThan(0);
     }

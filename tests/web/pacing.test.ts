@@ -4,11 +4,13 @@ import {
   staleStateSnapshotJson,
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
+  monthlyStateSnapshotJson,
+  monthlyExhaustedStateSnapshotJson,
 } from "../fixtures/stable-state.js";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { Badge, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -303,5 +305,30 @@ describe("recommended sort", () => {
     expect(byReset.indexOf("grok")).toBeGreaterThan(byReset.indexOf("kimi"));
     const byUsed = sortProviders(s.providers, "used-desc", s.recommendation).map((p: any) => p.id);
     expect(byUsed[0]).toBe("agy:3p"); // 60% used
+  });
+});
+
+describe("monthly headline", () => {
+  const go = (json: string) => toViewModel(JSON.parse(json)).providers.find((p) => p.id === "opencode-go")!;
+  const bar = (json: string) => renderToString(
+    React.createElement(PaceBar, { provider: go(json), asOf: JSON.parse(json).asOf }),
+  ).replace(/<!-- -->/g, "");
+
+  it("binds with leftover: → 5% of month left, behind colour, no hatch", () => {
+    const html = bar(monthlyStateSnapshotJson);
+    expect(html).toContain("out-behind");
+    expect(html).toContain("→ 5% of month left");
+    expect(html).not.toContain("pace-hatch");
+    expect(html).not.toContain("expires unused");
+  });
+
+  it("empty month: → unused until Tue, cap colour, no hatch, red badge", () => {
+    const html = bar(monthlyExhaustedStateSnapshotJson);
+    expect(html).toContain("out-cap");
+    expect(html).toContain("→ unused until Tue");
+    expect(html).not.toContain("pace-hatch");
+    const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
+    expect(badge).toContain("pace-cap");
+    expect(badge).toContain("Monthly exhausted");
   });
 });

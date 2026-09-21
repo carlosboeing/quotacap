@@ -4,7 +4,7 @@
 // pace rules stay in src/advisory and are never recomputed.
 import type { ProviderSnapshot } from "../advisory/types.js";
 
-export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting";
+export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
 export type CompactSuffix = "" | "!" | "~" | "?";
@@ -46,6 +46,11 @@ export function fmtDuration(ms: number): string {
   if (ms >= 48 * HOUR_MS) return `${Math.floor(ms / DAY_MS)}d`;
   if (ms >= 90 * MIN_MS) return `${Math.floor(ms / HOUR_MS)}h`;
   return `${Math.max(1, Math.floor(ms / MIN_MS))}m`;
+}
+
+// Short weekday of an ISO instant in the local zone, e.g. "Tue".
+export function weekdayOf(iso: string | undefined): string {
+  return new Date(iso ?? "").toLocaleDateString(undefined, { weekday: "short" });
 }
 
 export function countdownText(ps: ProviderSnapshot, now: Date): string {
@@ -96,6 +101,9 @@ export function stateWord(ps: ProviderSnapshot): StateWord {
   if (ps.exclusionReason !== null) return "Not reporting";
   const adv = ps.advisory;
   if (!adv) return "Not reporting";
+  // A blocked month outranks every weekly verdict: weekly leftover cannot be
+  // spent until the month resets.
+  if (adv.bindingWindow === "monthly" && adv.bindingRemaining === 0) return "Monthly exhausted";
   if (adv.status === "at risk") return "Cap risk";
   if (adv.status === "watch") return "Watch";
   if (adv.status === "unknown") return "Measuring";
@@ -144,7 +152,11 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   const adv = ps.advisory;
   if (!adv) return "no readings yet";
   let text: string;
-  if (adv.remaining <= 0) {
+  if (adv.bindingWindow === "monthly" && adv.bindingRemaining <= 0) {
+    text = `unused until ${weekdayOf(ps.quota?.monthlyResetsAt)}`;
+  } else if (adv.bindingWindow === "monthly") {
+    text = `${Math.round(adv.bindingRemaining)}% of month left`;
+  } else if (adv.remaining <= 0) {
     text = "Exhausted";
   } else if (adv.paceSource === "unknown" || adv.burnRate === null) {
     text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${adv.daysLeft.toFixed(1)}d until reset`;
