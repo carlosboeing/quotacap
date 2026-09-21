@@ -81,6 +81,26 @@ describe("claudeAdapter execPath", () => {
     }
   });
 
+  it("polls with --strict-mcp-config so the headless claude starts no MCP servers", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qc-claude-test-"));
+    const scriptPath = path.join(tmpDir, "mock-claude-args");
+    const argsFile = path.join(tmpDir, "args");
+    const jsonOutput = JSON.stringify({ result: sample });
+    fs.writeFileSync(
+      scriptPath,
+      `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsFile}'\nprintf '%s' '${jsonOutput}'\n`,
+      { mode: 0o755 },
+    );
+
+    try {
+      await claudeAdapter.poll(scriptPath);
+      const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+      expect(args).toEqual(["-p", "/usage", "--output-format", "json", "--strict-mcp-config"]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("allows passing an explicit execPath parameter to poll()", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qc-claude-test-"));
     const scriptPath = path.join(tmpDir, "mock-claude-arg");

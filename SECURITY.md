@@ -38,7 +38,7 @@ QuotaCap is a local quota tracker. It records one usage window per provider and 
 
 ## Adapter mechanisms and caveats
 
-- Exec adapters — `claude` (`claude -p /usage --output-format json`, 8 s) and `agy` (`agy -p /usage --output-format json`, 20 s, emits `agy` and `agy:3p`) via `execFile` with an argv list, no shell (`src/adapters/claude.ts`, `src/adapters/agy.ts`). `claude` binary is pinned at daemon start via `which claude` (`src/daemon.ts:resolveClaudeExecPath`).
+- Exec adapters — `claude` (`claude -p /usage --output-format json --strict-mcp-config`, 8 s; the flag starts no MCP servers) and `agy` (`agy -p /usage --output-format json`, 20 s, emits `agy` and `agy:3p`) via `execFile` with an argv list, no shell (`src/adapters/claude.ts`, `src/adapters/agy.ts`). `claude` binary is pinned at daemon start via `which claude` (`src/daemon.ts:resolveClaudeExecPath`).
 - HTTP adapter — `opencode-go` (`GET https://opencode.ai/zen/go/v1/usage`, 8 s, opt-in only): reads the OpenCode auth key in-memory per poll and maps the `weekly` and `rolling` (5h) windows. Consent-gated: never enabled by default, never auto-enabled, disable revokes consent.
 - PTY adapters — `codex` (`codex --no-alt-screen` → `/status`, 12 s), `kimi` (`kimi` → `/usage`, 8 s), `grok` (`grok` → `/usage`, 14 s, `creditsUsd`) via `src/adapters/pty.ts` (`node-pty`). The runner waits a settle delay or readiness regex, writes `\r`, collects until a completion regex or timeout, caps at 256 KiB, then kills clean.
 - TUI-fragile: vendor text changes break the regex. The row then degrades fail-closed (stale) until the pattern is fixed. This is the trade-off for credential-free polling.
