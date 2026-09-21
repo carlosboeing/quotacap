@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.40 — 2026-09-22 (nested included monthly windows)
+
+* Nested included monthly windows — OpenCode Go's included monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind`) and ranking uses bottleneck headroom, so a provider whose month is exhausted leaves both recommendation pools and reads **Monthly exhausted**; the forecast names the binding month (`5% of month left` / `unused until Tue`), the board adds one collapsed windows row under the weekly bar (`5h` · `Mth`), the drawer stacks Weekly / 5h / Monthly with the badge in its header, and `Quota.usedPct`/`sessionPct` are renamed `weeklyPct`/`fiveHourPct` with one-release `QuotaWire` aliases (#109)
+
 ## Recently shipped — 0.0.39 — 2026-09-21 (MCP-free Claude polls)
 
 * Claude polls start no MCP servers — `claude -p /usage` and the `claude -p /model` catalog fetch pass `--strict-mcp-config`, so the daemon no longer starts the user's MCP servers on every poll, and their launchd PATH failures no longer stay cached and hide those servers from the user's own sessions (#111)
