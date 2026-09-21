@@ -28,7 +28,13 @@ import {
   staleStateSnapshotJson,
   unknownPaceStateSnapshot,
   unknownPaceStateSnapshotJson,
+  monthlyStateSnapshot,
+  monthlyStateSnapshotJson,
+  monthlyExhaustedStateSnapshot,
+  monthlyExhaustedStateSnapshotJson,
 } from "../fixtures/stable-state.js";
+import { toViewModel } from "../../web/src/state.js";
+import { forecastLine, paceBadge } from "../../web/src/components/PaceBar.js";
 
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -420,6 +426,89 @@ describe("parity: provider-error observability", () => {
       mcpQuotas.content[0].text,
     ]) {
       expect(surface).not.toContain(secret);
+    }
+  });
+});
+
+describe("parity: monthly windows", () => {
+  let current = "";
+  let closeServer: () => Promise<void>;
+  beforeEach(async () => {
+    const server = http.createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(current);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    closeServer = () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+  });
+  afterEach(async () => { await closeServer(); });
+
+  const cli = (s: StateSnapshot) => s.providers.find((p) => p.id === "opencode-go")!;
+  const web = (json: string) => toViewModel(JSON.parse(json)).providers.find((p) => p.id === "opencode-go")!;
+
+  it("names the month on every surface when it binds with leftover", async () => {
+    current = monthlyStateSnapshotJson;
+    const go = cli(monthlyStateSnapshot);
+    expect(stateWord(go)).toBe("Behind pace");
+    expect(forecastText(go, FIXED_NOW)).toBe("5% of month left");
+    expect(forecastLine(web(monthlyStateSnapshotJson))).toBe("5% of month left");
+    expect(paceBadge(web(monthlyStateSnapshotJson))).toBe(stateWord(go));
+    expect(strip(renderWide(monthlyStateSnapshot, { now: FIXED_NOW }))).toContain("5% of month left");
+    const f: any = await handleTool("forecast", { provider: "opencode-go" });
+    expect(JSON.parse(f.content[0].text).forecast).toBe("5% of month left");
+  });
+
+  it("reads Monthly exhausted and unused until Tue on every surface when the month is empty", async () => {
+    current = monthlyExhaustedStateSnapshotJson;
+    const go = cli(monthlyExhaustedStateSnapshot);
+    expect(stateWord(go)).toBe("Monthly exhausted");
+    expect(paceBadge(web(monthlyExhaustedStateSnapshotJson))).toBe("Monthly exhausted");
+    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue");
+    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue");
+    expect(renderMarkdownTable(monthlyExhaustedStateSnapshot, FIXED_NOW)).toContain("| Monthly exhausted |");
+    expect(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW, color: true })).toContain("\x1b[31mMonthly exhausted");
+    const f: any = await handleTool("forecast", { provider: "opencode-go" });
+    const body = JSON.parse(f.content[0].text);
+    expect(body.state).toBe("Monthly exhausted");
+    expect(body.forecast).toBe("unused until Tue");
+  });
+
+  it("keeps FORECAST column-aligned on a Monthly exhausted row", () => {
+    const [header, ...lines] = strip(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW })).split("\n");
+    const row = lines.find((l) => l.includes("Monthly exhausted"))!;
+    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue");
+  });
+
+  it("the month sentence wins over unknown pace and over Watch", () => {
+    for (const patch of [{ paceSource: "unknown", burnRate: null }, { status: "watch", daysToExhaust: 2.1 }]) {
+      const s = JSON.parse(monthlyStateSnapshotJson);
+      const p = s.providers.find((x: any) => x.id === "opencode-go");
+      Object.assign(p.advisory, patch);
+      expect(forecastText(p, FIXED_NOW)).toBe("5% of month left");
+      expect(forecastLine(toViewModel(s).providers.find((x) => x.id === "opencode-go")!)).toBe("5% of month left");
+    }
+  });
+
+  it("Monthly exhausted beats Cap risk and loses to Not reporting", () => {
+    const s = JSON.parse(monthlyExhaustedStateSnapshotJson);
+    const p = s.providers.find((x: any) => x.id === "opencode-go");
+    p.advisory.status = "at risk";
+    expect(stateWord(p)).toBe("Monthly exhausted");
+    expect(paceBadge(p)).toBe("Monthly exhausted");
+    p.exclusionReason = "stale";
+    expect(stateWord(p)).toBe("Not reporting");
+    expect(paceBadge(p)).toBe("Not reporting");
+  });
+
+  it("the badge word matches the CLI state word for every fixture provider", () => {
+    for (const json of [exampleStateSnapshotJson, staleStateSnapshotJson, resetPassedStateSnapshotJson,
+      unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson]) {
+      const raw = JSON.parse(json);
+      const view = toViewModel(JSON.parse(json));
+      for (const p of raw.providers) {
+        expect(paceBadge(view.providers.find((v) => v.id === p.id)!)).toBe(stateWord(p));
+      }
     }
   });
 });

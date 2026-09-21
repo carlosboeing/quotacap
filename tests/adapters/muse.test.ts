@@ -69,8 +69,8 @@ describe("parseMuseTui", () => {
     const q = parseMuseTui(museRawTranscript(), HAPPY_NOW);
     expect(q.provider).toBe("muse");
     expect(q.plan).toBe("High Usage");
-    expect(q.usedPct).toBe(35);
-    expect(q.sessionPct).toBe(11);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.fiveHourPct).toBe(11);
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
     expect(new Date(q.periodStart).getTime()).toBe(new Date(q.resetsAt).getTime() - 7 * 86400000);
     expect(q.source).toBe("tui");
@@ -86,8 +86,8 @@ describe("parseMuseTui", () => {
     expect(line).not.toContain("\n");
     const q = parseMuseTui(line, HAPPY_NOW);
     expect(q.plan).toBe("High Usage");
-    expect(q.usedPct).toBe(35);
-    expect(q.sessionPct).toBe(11);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.fiveHourPct).toBe(11);
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
   });
 
@@ -95,8 +95,8 @@ describe("parseMuseTui", () => {
     const raw = `${museRawTranscript()}\x1b[H${museRawTranscript()}`;
     const q = parseMuseTui(raw, HAPPY_NOW);
     expect(q.plan).toBe("High Usage");
-    expect(q.usedPct).toBe(35);
-    expect(q.sessionPct).toBe(11);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.fiveHourPct).toBe(11);
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
   });
 
@@ -104,8 +104,8 @@ describe("parseMuseTui", () => {
     const raw = `Muse Code updated 1.1.0 -> 1.1.1\n${museRawTranscript()}`;
     const q = parseMuseTui(raw, HAPPY_NOW);
     expect(q.plan).toBe("High Usage");
-    expect(q.usedPct).toBe(35);
-    expect(q.sessionPct).toBe(11);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.fiveHourPct).toBe(11);
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
   });
 
@@ -169,8 +169,8 @@ describe("museAdapter.poll invocation contract", () => {
     try {
       const q = await museAdapter.poll();
       expect(q.provider).toBe("muse");
-      expect(q.usedPct).toBe(35);
-      expect(q.sessionPct).toBe(11);
+      expect(q.weeklyPct).toBe(35);
+      expect(q.fiveHourPct).toBe(11);
       // Created on demand, under the (mocked) state dir — never $HOME itself.
       probeExisted = fs.statSync(probeDir).isDirectory();
     } finally {
@@ -245,7 +245,7 @@ describe("museAdapter.poll recovery", () => {
       await vi.advanceTimersByTimeAsync(2 * 3000 + 1000);
       const q = await pending;
       expect(q.provider).toBe("muse");
-      expect(q.usedPct).toBe(35);
+      expect(q.weeklyPct).toBe(35);
       expect(ptySpy).toHaveBeenCalledTimes(2);
       expect(execSpy).toHaveBeenCalledTimes(1);
       expect(execSpy.mock.calls[0][0]).toBe("muse");

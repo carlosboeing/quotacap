@@ -39,10 +39,10 @@ describe("current-cycle pace", () => {
   });
 
   it("keeps the six-hour minimum on the window average", () => {
-    expect(averagePace({ provider: "kimi", usedPct: 1, periodStart: "2026-09-07T05:30:00+10:00" } as any, NOW)).toBeNull();
-    expect(averagePace({ provider: "kimi", usedPct: 12, periodStart: "2026-09-07T00:01:00+10:00" } as any, NOW)).toBeNull();
-    expect(averagePace({ provider: "kimi", usedPct: 12, periodStart: "2026-09-07T00:00:00+10:00" } as any, NOW)).toBeCloseTo(48, 5);
-    expect(averagePace({ provider: "kimi", usedPct: 60, periodStart: "2026-09-04T06:00:00+10:00" } as any, NOW)).toBeCloseTo(20, 5);
+    expect(averagePace({ provider: "kimi", weeklyPct: 1, periodStart: "2026-09-07T05:30:00+10:00" } as any, NOW)).toBeNull();
+    expect(averagePace({ provider: "kimi", weeklyPct: 12, periodStart: "2026-09-07T00:01:00+10:00" } as any, NOW)).toBeNull();
+    expect(averagePace({ provider: "kimi", weeklyPct: 12, periodStart: "2026-09-07T00:00:00+10:00" } as any, NOW)).toBeCloseTo(48, 5);
+    expect(averagePace({ provider: "kimi", weeklyPct: 60, periodStart: "2026-09-04T06:00:00+10:00" } as any, NOW)).toBeCloseTo(20, 5);
   });
 
   it("withholds the recent rate until six hours of readings exist", () => {

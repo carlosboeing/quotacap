@@ -2,15 +2,19 @@ import { MIN_PACE_SPAN_DAYS } from "../advisory/types.js";
 
 function mapRow(row:any){
   if(!row) return row;
+  const weeklyPct = row.used_pct ?? row.weeklyPct ?? row.usedPct;
+  const fiveHourPct = row.session_pct ?? row.fiveHourPct ?? row.sessionPct ?? undefined;
   const out:any = {
     ...row,
-    usedPct: row.used_pct ?? row.usedPct,
+    weeklyPct,
+    usedPct: weeklyPct,
     resetsAt: row.resets_at ?? row.resetsAt,
     periodStart: row.period_start ?? row.periodStart,
     fetchedAt: row.fetched_at ?? row.fetchedAt,
     creditsUsd: row.credits_usd ?? row.creditsUsd,
     resetsAtEstimated: !!(row.resets_at_estimated ?? row.resetsAtEstimated),
-    sessionPct: row.session_pct ?? row.sessionPct ?? undefined,
+    fiveHourPct,
+    sessionPct: fiveHourPct,
   };
   delete out.used_pct;
   delete out.resets_at;
@@ -21,7 +25,25 @@ function mapRow(row:any){
   delete out.session_pct;
   delete out.raw;
   if (!out.resetsAtEstimated) delete out.resetsAtEstimated;
-  if (out.sessionPct == null) delete out.sessionPct;
+  if (out.fiveHourPct == null) {
+    delete out.fiveHourPct;
+    delete out.sessionPct;
+  }
+  // A junk monthly percent means no usable monthly reading. It never
+  // invalidates the provider; only a bad weekly percent does (snapshot.ts).
+  const m = row.monthly_pct;
+  const monthlyValid = typeof m === "number" && Number.isFinite(m) && m >= 0 && m <= 100;
+  out.monthlyPct = monthlyValid ? m : undefined;
+  out.monthlyResetsAt = row.monthly_resets_at ?? undefined;
+  out.monthlyStatus = row.monthly_status ?? undefined;
+  out.monthlyKind = row.monthly_kind ?? undefined;
+  delete out.monthly_pct;
+  delete out.monthly_resets_at;
+  delete out.monthly_status;
+  delete out.monthly_kind;
+  for (const k of ["monthlyPct", "monthlyResetsAt", "monthlyStatus", "monthlyKind"]) {
+    if (!monthlyValid || out[k] == null) delete out[k];
+  }
   return out;
 }
 
@@ -55,23 +77,26 @@ export function upsertQuota(db:any, q:any){
   }
   const credits = q.creditsUsd ?? q.credits_usd ?? null;
   const estimated = q.resetsAtEstimated ? 1 : null;
-  const sessionPct = q.sessionPct ?? q.session_pct ?? null;
+  // Either spelling binds; an explicit null stays null (SQLite binds it),
+  // while a missing field stays undefined and fails the bind as before.
+  const weeklyPct = q.weeklyPct !== undefined ? q.weeklyPct : q.usedPct;
+  const fiveHourPct = q.fiveHourPct ?? q.sessionPct ?? q.session_pct ?? null;
   db.exec("BEGIN");
   try {
     const prev = getLatestByProvider(db, q.provider);
     if (prev) {
       const reason = cycleBreakReason(
-        { usedPct: prev.usedPct, t: Date.parse(prev.fetchedAt), resetsAt: prev.resetsAt ?? null },
-        { usedPct: q.usedPct, t: Date.parse(q.fetchedAt), resetsAt: q.resetsAt ?? null },
+        { usedPct: prev.weeklyPct, t: Date.parse(prev.fetchedAt), resetsAt: prev.resetsAt ?? null },
+        { usedPct: weeklyPct, t: Date.parse(q.fetchedAt), resetsAt: q.resetsAt ?? null },
       );
       if (reason) {
         db.prepare(`INSERT OR IGNORE INTO window_closes(provider, plan, used_pct, leftover_pct, sampled_at, sampled_quota_id, period_start, resets_at, resets_at_estimated, detected_at, reason) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(prev.provider, prev.plan ?? null, prev.usedPct, Math.max(0, 100 - prev.usedPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
+          .run(prev.provider, prev.plan ?? null, prev.weeklyPct, Math.max(0, 100 - prev.weeklyPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
       }
     }
-    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, q.usedPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, sessionPct);
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null);
     const day = new Date().toISOString().slice(0,10);
-    db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, q.usedPct);
+    db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, weeklyPct);
     db.exec("COMMIT");
   } catch (e) {
     try { db.exec("ROLLBACK"); } catch {}

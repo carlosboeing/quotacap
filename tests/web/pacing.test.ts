@@ -4,11 +4,13 @@ import {
   staleStateSnapshotJson,
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
+  monthlyStateSnapshotJson,
+  monthlyExhaustedStateSnapshotJson,
 } from "../fixtures/stable-state.js";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { Badge, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -150,7 +152,7 @@ describe("pace figures", () => {
   it("names exhausted windows in the forecast line", () => {
     const capped = {
       exclusionReason: null,
-      quota: { usedPct: 100 },
+      quota: { weeklyPct: 100 },
       advisory: {
         remaining: 0,
         paceSource: "recent",
@@ -167,7 +169,7 @@ describe("pace figures", () => {
   it("renders watch with the finite exhaustion clock and without one otherwise", () => {
     const watch = (over: any = {}) => ({
       exclusionReason: null,
-      quota: { usedPct: 88 },
+      quota: { weeklyPct: 88 },
       advisory: {
         remaining: 12,
         paceSource: "recent",
@@ -188,18 +190,18 @@ describe("pace figures", () => {
     expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
   });
   it("explains red and amber badges, confessing the estimated reset", () => {
-    const rendered = (advisory: any, quota: any = { usedPct: 90 }) =>
+    const rendered = (advisory: any, quota: any = { weeklyPct: 90 }) =>
       renderToString(
         React.createElement(Badge, { provider: { exclusionReason: null, quota, advisory } as any }),
       );
     const red = "Burning faster than the window allows and ahead of elapsed time";
     const amber = "Pace points at the cap, but position or the reset clock is uncertain";
     expect(rendered({ status: "at risk", urgency: "burn now" })).toContain(`title="${red}"`);
-    expect(rendered({ status: "at risk", urgency: "burn now" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+    expect(rendered({ status: "at risk", urgency: "burn now" }, { weeklyPct: 90, resetsAtEstimated: true })).toContain(
       `title="${red} (estimated reset)"`,
     );
     expect(rendered({ status: "watch", urgency: "save" })).toContain(`title="${amber}"`);
-    expect(rendered({ status: "watch", urgency: "save" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+    expect(rendered({ status: "watch", urgency: "save" }, { weeklyPct: 90, resetsAtEstimated: true })).toContain(
       `title="${amber} (estimated reset)"`,
     );
     expect(rendered({ status: "on track", urgency: "on track" })).not.toContain("title=");
@@ -303,5 +305,30 @@ describe("recommended sort", () => {
     expect(byReset.indexOf("grok")).toBeGreaterThan(byReset.indexOf("kimi"));
     const byUsed = sortProviders(s.providers, "used-desc", s.recommendation).map((p: any) => p.id);
     expect(byUsed[0]).toBe("agy:3p"); // 60% used
+  });
+});
+
+describe("monthly headline", () => {
+  const go = (json: string) => toViewModel(JSON.parse(json)).providers.find((p) => p.id === "opencode-go")!;
+  const bar = (json: string) => renderToString(
+    React.createElement(PaceBar, { provider: go(json), asOf: JSON.parse(json).asOf }),
+  ).replace(/<!-- -->/g, "");
+
+  it("binds with leftover: → 5% of month left, behind colour, no hatch", () => {
+    const html = bar(monthlyStateSnapshotJson);
+    expect(html).toContain("out-behind");
+    expect(html).toContain("→ 5% of month left");
+    expect(html).not.toContain("pace-hatch");
+    expect(html).not.toContain("expires unused");
+  });
+
+  it("empty month: → unused until Tue, cap colour, no hatch, red badge", () => {
+    const html = bar(monthlyExhaustedStateSnapshotJson);
+    expect(html).toContain("out-cap");
+    expect(html).toContain("→ unused until Tue");
+    expect(html).not.toContain("pace-hatch");
+    const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
+    expect(badge).toContain("pace-cap");
+    expect(badge).toContain("Monthly exhausted");
   });
 });

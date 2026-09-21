@@ -6,6 +6,7 @@ import {
   buildRow,
   compactSuffix,
   sortProviders,
+  weeklyPctOf,
   type RailCell,
   type SortKey,
   type StateWord,
@@ -64,6 +65,7 @@ const STATE_COLORS: Record<StateWord, string> = {
   "Cap risk": "\x1b[31m",
   "Measuring": "\x1b[90m",
   "Not reporting": "\x1b[90m",
+  "Monthly exhausted": "\x1b[31m",
 };
 
 // provWidth covers the 2-char prefix plus name, measured before ANSI.
@@ -131,7 +133,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     "PACE (%/DAY)".padEnd(paceWidth),
     "USED VS TIME".padEnd(20),
     "RESETS".padEnd(9),
-    "STATE".padEnd(15),
+    "STATE".padEnd(19),
     "FORECAST",
   ].join(GAP);
   const lines = rows.map(({ p, row }) => {
@@ -142,7 +144,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     const pace = (opts.ascii ? asciiText(row.pace) : row.pace).padEnd(paceWidth);
     const rail = renderRail(row.railCells, g, row.state, color);
     const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
-    const state = row.state.padEnd(15);
+    const state = row.state.padEnd(19);
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
     const main = [
       color ? colorProviderField(name, recommended, row.state) : name,
@@ -202,7 +204,7 @@ export function renderCompact(snapshot: StateSnapshot, _now?: Date): string {
   const entries = sorted
     .filter((p) => p.quota !== null)
     .map((p) => {
-      const u = p.quota?.usedPct;
+      const u = weeklyPctOf(p.quota);
       const used = typeof u === "number" && Number.isFinite(u) ? String(Math.round(u)) : "?";
       return `[${p.id}:${used}%${compactSuffix(p)}]`;
     });

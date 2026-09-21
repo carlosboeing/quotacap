@@ -4,7 +4,7 @@ describe("manual", () => {
   it("parses pasted text for kimi", () => {
     const q = parseManualUsage("kimi", `Current week: 22% used · resets Aug 29 at 11am`, new Date("2026-08-28T06:00:00+10:00"));
     expect(q.provider).toBe("kimi");
-    expect(q.usedPct).toBe(22);
+    expect(q.weeklyPct).toBe(22);
     expect(q.source).toBe("manual");
   });
 
@@ -23,8 +23,8 @@ describe("manual", () => {
       "5h limit      ░░░░░░░░░░░░░░░░░░░░  0% used   resets in 3h 24m",
     ].join("\n");
     const q = parseManualUsage("kimi", text, now);
-    expect(q.usedPct).toBe(16);
-    expect(q.sessionPct).toBe(0);
+    expect(q.weeklyPct).toBe(16);
+    expect(q.fiveHourPct).toBe(0);
     const expected = now.getTime() + ((3 * 24 + 1) * 3600 + 24 * 60) * 1000;
     expect(new Date(q.resetsAt).getTime()).toBe(expected);
   });

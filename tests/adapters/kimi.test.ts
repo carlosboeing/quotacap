@@ -29,8 +29,8 @@ describe("parseKimiTui", () => {
     const txt = kimiFixture();
     const q = parseKimiTui(txt, now);
     expect(q.provider).toBe("kimi");
-    expect(q.usedPct).toBe(7);
-    expect(q.sessionPct).toBe(33);
+    expect(q.weeklyPct).toBe(7);
+    expect(q.fiveHourPct).toBe(33);
     expect(q.plan).toBe("unknown");
     // source is tui (cast)
     expect((q as unknown as { source: string }).source).toBe("tui");
@@ -48,8 +48,8 @@ describe("parseKimiTui", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     const txt = `\x1b[31mWelcome to Kimi Code\x1b[0m\ncontext: 0% (0/1M)\nWeekly limit  \x1b[38;5;244m█\x1b[0m 12% used   resets in 2d 1h 5m\n5h limit      45% used  resets in 1h 10m\n`;
     const q = parseKimiTui(txt, now);
-    expect(q.usedPct).toBe(12);
-    expect(q.sessionPct).toBe(45);
+    expect(q.weeklyPct).toBe(12);
+    expect(q.fiveHourPct).toBe(45);
   });
 
   it("parses with bar characters and unicode box drawing", () => {
@@ -57,15 +57,15 @@ describe("parseKimiTui", () => {
     const raw = stripAnsi(kimiFixture({ weeklyPct: 7, fivePct: 33 }));
     expect(raw).toMatch(/Weekly limit/);
     const q = parseKimiTui(kimiFixture({ weeklyPct: 7, fivePct: 33 }), now);
-    expect(q.usedPct).toBe(7);
+    expect(q.weeklyPct).toBe(7);
   });
 
   it("parses 5h limit via fallback when reset duration is omitted", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     const txt = `Weekly limit  10% used   resets in 5d 1h\n5h limit      0% used\n`;
     const q = parseKimiTui(txt, now);
-    expect(q.usedPct).toBe(10);
-    expect(q.sessionPct).toBe(0);
+    expect(q.weeklyPct).toBe(10);
+    expect(q.fiveHourPct).toBe(0);
   });
 
   it("throws when weekly limit is absent (fail-closed)", () => {
@@ -136,8 +136,8 @@ setInterval(()=>{},1000);
       maxBytes: 64 * 1024,
     });
     const q = parseKimiTui(transcript, new Date("2026-09-01T00:00:00Z"));
-    expect(q.usedPct).toBe(7);
-    expect(q.sessionPct).toBe(33);
+    expect(q.weeklyPct).toBe(7);
+    expect(q.fiveHourPct).toBe(33);
     expect(q.provider).toBe("kimi");
   });
 
@@ -244,11 +244,11 @@ describe("kimiAdapter live poll", () => {
     const q = await kimiAdapter.poll();
     expect(q.provider).toBe("kimi");
     expect((q as unknown as { source: string }).source).toBe("tui");
-    expect(q.usedPct).toBeGreaterThanOrEqual(0);
-    expect(q.usedPct).toBeLessThanOrEqual(100);
-    if (q.sessionPct !== undefined) {
-      expect(q.sessionPct).toBeGreaterThanOrEqual(0);
-      expect(q.sessionPct).toBeLessThanOrEqual(100);
+    expect(q.weeklyPct).toBeGreaterThanOrEqual(0);
+    expect(q.weeklyPct).toBeLessThanOrEqual(100);
+    if (q.fiveHourPct !== undefined) {
+      expect(q.fiveHourPct).toBeGreaterThanOrEqual(0);
+      expect(q.fiveHourPct).toBeLessThanOrEqual(100);
     }
     expect(Number.isNaN(new Date(q.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(q.periodStart).getTime())).toBe(false);

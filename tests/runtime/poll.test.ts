@@ -47,11 +47,11 @@ const T0 = Date.UTC(2026, 8, 9, 12, 0, 0);
 const iso = (ms: number) => new Date(ms).toISOString();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function fakeQuota(provider: string, usedPct: number, nowMs: number): any {
+function fakeQuota(provider: string, weeklyPct: number, nowMs: number): any {
   return {
     provider,
     plan: "test",
-    usedPct,
+    weeklyPct,
     resetsAt: iso(nowMs + 7 * 86400000),
     periodStart: iso(nowMs - 7 * 86400000),
     source: "cli",
@@ -600,17 +600,17 @@ describe("poll coordinator", () => {
           {
             provider: "p-finite",
             status: "fulfilled",
-            value: { provider: "p-finite", plan: "p", usedPct: 42, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
+            value: { provider: "p-finite", plan: "p", weeklyPct: 42, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
           },
           {
             provider: "p-null",
             status: "fulfilled",
-            value: { provider: "p-null", plan: "p", usedPct: null, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
+            value: { provider: "p-null", plan: "p", weeklyPct: null, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) },
           },
           {
             provider: "p-array",
             status: "fulfilled",
-            value: [{ provider: "p-array", plan: "p", usedPct: 10, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) }],
+            value: [{ provider: "p-array", plan: "p", weeklyPct: 10, resetsAt: iso(T0 + 1000), periodStart: iso(T0), source: "cli", fetchedAt: iso(T0) }],
           },
         ],
       }),

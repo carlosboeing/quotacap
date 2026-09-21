@@ -53,6 +53,34 @@ function readBearerToken(env: NodeJS.Dict<string> = process.env): string {
   return entry.key;
 }
 
+type MonthlyFields = Pick<ParsedQuota, "monthlyPct" | "monthlyResetsAt" | "monthlyStatus" | "monthlyKind">;
+
+// `rate-limited` is the binding state, not a failure: it is exactly the
+// reading issue 109 needed. Anything unreadable fails closed.
+function parseMonthly(usage: Record<string, unknown>): MonthlyFields {
+  const monthly = usage.monthly;
+  if (typeof monthly !== "object" || monthly === null) return {};
+  const m = monthly as Record<string, unknown>;
+  if (m.status !== "ok" && m.status !== "rate-limited") {
+    throw new Error("opencode-go: unknown monthly status");
+  }
+  const percent = m.percent;
+  if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0) {
+    throw new Error("opencode-go: bad monthly pct");
+  }
+  const resetsMs = Date.parse(String(m.resetsAt ?? ""));
+  if (!Number.isFinite(resetsMs)) {
+    throw new Error("opencode-go: bad monthly reset");
+  }
+  const exhausted = m.status === "rate-limited" || percent > 100;
+  return {
+    monthlyKind: "included",
+    monthlyStatus: exhausted ? "exhausted" : "ok",
+    monthlyPct: exhausted ? 100 : percent,
+    monthlyResetsAt: new Date(resetsMs).toISOString(),
+  };
+}
+
 export function parseOpencodeGoUsage(body: unknown, now = new Date()): ParsedQuota {
   const usage = (body as { usage?: unknown } | null)?.usage;
   if (typeof usage !== "object" || usage === null) {
@@ -84,15 +112,17 @@ export function parseOpencodeGoUsage(body: unknown, now = new Date()): ParsedQuo
   if (typeof sessionPct !== "number" || !Number.isFinite(sessionPct) || sessionPct < 0 || sessionPct > 100) {
     throw new Error("opencode-go: bad rolling pct");
   }
+  const monthly = parseMonthly(usage as Record<string, unknown>);
   return {
     provider: "opencode-go",
     plan: "unknown",
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt: new Date(resetsMs).toISOString(),
     periodStart: new Date(resetsMs - 7 * 86400000).toISOString(),
     source: "api",
     fetchedAt: now.toISOString(),
+    ...monthly,
   };
 }
 

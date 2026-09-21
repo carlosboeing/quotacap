@@ -46,7 +46,11 @@ export interface DrawerModel {
   evidence: string[];
   exclusionReason: ExclusionReason;
   exclusionWords: string | null;
-  sessionPct?: number;
+  fiveHourPct?: number;
+  monthlyPct?: number;
+  monthlyResetsAt?: string;
+  monthlyStatus?: "ok" | "exhausted";
+  monthlyKind?: "included";
   /** Type-level guard: a session reset is never synthesized, so this stays absent. */
   sessionReset?: undefined;
 }
@@ -118,8 +122,15 @@ export function drawerModel(provider: ProviderView): DrawerModel {
     exclusionReason: provider.exclusionReason,
     exclusionWords: exclusionWords(provider.exclusionReason),
   };
-  if (provider.quota?.sessionPct !== undefined && provider.quota.sessionPct !== null) {
-    model.sessionPct = provider.quota.sessionPct;
+  if (provider.quota?.fiveHourPct !== undefined && provider.quota.fiveHourPct !== null) {
+    model.fiveHourPct = provider.quota.fiveHourPct;
+  }
+  const q = provider.quota;
+  if (q?.monthlyKind === "included") {
+    model.monthlyKind = q.monthlyKind;
+    if (q.monthlyPct !== undefined) model.monthlyPct = q.monthlyPct;
+    if (q.monthlyResetsAt !== undefined) model.monthlyResetsAt = q.monthlyResetsAt;
+    if (q.monthlyStatus !== undefined) model.monthlyStatus = q.monthlyStatus;
   }
   return model;
 }
@@ -175,6 +186,8 @@ export function pacingStatusToken(provider: ProviderView): string {
       return "ahead";
     case "Watch":
       return "watch";
+    case "Monthly exhausted":
+      return "monthly-exhausted";
     case "Cap risk":
       return "cap";
     case "Measuring":
@@ -198,6 +211,22 @@ export function resetUnderline(provider: ProviderView, asOfMs: number): string |
   return left ? `Resets ${stamp} · in ${left}` : `Resets ${stamp}`;
 }
 
+/** Monthly section meta line. Null when the provider has no included monthly window. */
+export function monthlyMeta(provider: ProviderView): string | null {
+  const q = provider.quota;
+  if (q?.monthlyKind !== "included" || !q.monthlyResetsAt) return null;
+  const clock = resetClock(q.monthlyResetsAt);
+  const base = clock ? `Resets ${clock}` : "Reset unknown";
+  const adv = provider.advisory;
+  if (q.monthlyStatus === "exhausted" || (adv?.bindingWindow === "monthly" && adv.bindingRemaining === 0)) {
+    return `${base} · weekly leftover unused until then`;
+  }
+  if (adv?.bindingWindow === "monthly") {
+    return `${base} · ${Math.round(adv.bindingRemaining)}% of month left`;
+  }
+  return base;
+}
+
 export function rankingCopy(
   provider: ProviderView,
   recommendation: RecommendationView | null
@@ -207,13 +236,13 @@ export function rankingCopy(
   const advisory = provider.advisory;
   const stamp = resetStamp(provider);
   const known = quota
-    ? `${name} reports ${quota.usedPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
+    ? `${name} reports ${quota.weeklyPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
     : "No reading yet.";
   let pace: string;
   if (!advisory || advisory.paceSource === "unknown" || advisory.burnRate === null) {
     pace = modelFailure(provider) ?? "No current pace.";
   } else if (advisory.remaining <= 0) {
-    pace = `Exhausted at ${quota?.usedPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
+    pace = `Exhausted at ${quota?.weeklyPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
   } else {
     const { avg, recent } = paceFigures(advisory);
     const figures =
@@ -258,9 +287,13 @@ export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<
   return {
     provider: provider.id,
     plan: quota?.plan ? quota.plan.split(" · ")[0] : null,
-    usedPct: quota?.usedPct ?? null,
+    usedPct: quota?.weeklyPct ?? null,
     elapsedPct: elapsedPct !== null ? Math.round(elapsedPct) : null,
     resetsAt: quota?.resetsAt ?? null,
+    monthlyPct: quota?.monthlyPct ?? null,
+    monthlyResetsAt: quota?.monthlyResetsAt ?? null,
+    monthlyStatus: quota?.monthlyStatus ?? null,
+    bindingWindow: provider.advisory?.bindingWindow ?? null,
     source: quota?.source ?? null,
     pacingStatus: pacingStatusToken(provider),
     reporting: provider.reporting,
@@ -390,6 +423,7 @@ export function ProviderDrawer({
     (b) => b && b !== "unknown"
   );
   const sub = planBits.join(" · ");
+  const monthlyLine = monthlyMeta(provider);
 
   return (
     <>
@@ -555,6 +589,8 @@ export function ProviderDrawer({
             <span className="sub">{providerSubtitle(provider) ?? sub}</span>
           </div>
 
+          <Badge provider={provider} />
+
           <button
             className="drawer-close"
             type="button"
@@ -590,9 +626,6 @@ export function ProviderDrawer({
 
         <section className="dsec" aria-label="Weekly limit">
           <h3>Weekly limit</h3>
-          <div className="pcard-topline">
-            <Badge provider={provider} />
-          </div>
           {provider.quota ? (
             <>
               <PaceBar provider={provider} asOf={asOf} />
@@ -603,22 +636,42 @@ export function ProviderDrawer({
           )}
         </section>
 
-        {model.sessionPct !== undefined && model.sessionPct !== null && Number.isFinite(model.sessionPct) && (
+        {model.fiveHourPct !== undefined && model.fiveHourPct !== null && Number.isFinite(model.fiveHourPct) && (
           <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "5h Limit"}>
             <h3>{shortWindowLabel(provider.id) ?? "5h Limit"}</h3>
             <div className="pcard-topline">
-              <span className="used">{model.sessionPct}% used</span>
+              <span className="used">{model.fiveHourPct}% used</span>
             </div>
-            <div className="track" role="img" aria-label={`${model.sessionPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
+            <div className="track" role="img" aria-label={`${model.fiveHourPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
               <div
                 className="fill"
                 style={{
-                  width: `${Math.min(100, Math.max(0, model.sessionPct))}%`,
+                  width: `${Math.min(100, Math.max(0, model.fiveHourPct))}%`,
                   background: "var(--fill-ontrack)",
                   ["--fill-edge" as string]: "var(--edge-ontrack)",
                 }}
               />
             </div>
+          </section>
+        )}
+
+        {model.monthlyKind === "included" && model.monthlyPct !== undefined && Number.isFinite(model.monthlyPct) && (
+          <section className="dsec" aria-label="Monthly limit" data-testid="drawer-monthly">
+            <h3>Monthly limit</h3>
+            <div className="pcard-topline">
+              <span className="used">{model.monthlyPct}% used</span>
+            </div>
+            <div className="track" role="img" aria-label={`${model.monthlyPct} percent of monthly limit used`}>
+              <div
+                className="fill"
+                style={{
+                  width: `${Math.min(100, Math.max(0, model.monthlyPct))}%`,
+                  background: model.monthlyPct >= 80 ? "var(--fill-cap)" : "var(--fill-ontrack)",
+                  ["--fill-edge" as string]: model.monthlyPct >= 80 ? "var(--edge-cap)" : "var(--edge-ontrack)",
+                }}
+              />
+            </div>
+            {monthlyLine && <div className="pcard-underline">{monthlyLine}</div>}
           </section>
         )}
 

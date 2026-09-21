@@ -2,7 +2,7 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect } from "vitest";
-import { exampleStateSnapshotJson } from "../fixtures/stable-state.js";
+import { exampleStateSnapshotJson, monthlyStateSnapshotJson } from "../fixtures/stable-state.js";
 import { AdviceDrawer } from "../../web/src/components/AdviceDrawer.js";
 import { toViewModel } from "../../web/src/state.js";
 
@@ -47,5 +47,16 @@ describe("advice drawer", () => {
       })
     );
     expect(html).toBe("");
+  });
+
+  it("a monthly-bound pick reads its reason, never the weekly expiry", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const html = renderToString(
+      React.createElement(AdviceDrawer, {
+        open: true, recommendation: s.recommendation, providers: s.providers, asOf: s.asOf, onClose: () => {},
+      })
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("5% of month left in 8.7d");
+    expect(html).not.toContain("unused quota expires in");
   });
 });

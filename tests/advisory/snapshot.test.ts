@@ -205,7 +205,7 @@ describe("snapshot", () => {
     const db = openDb(":memory:");
     // Do NOT call migrate(db). Create only the pre-catalog tables (no model_catalogs).
     db.exec(`
-      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL);
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT);
       CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
       CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
       CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);
@@ -267,5 +267,32 @@ describe("snapshot", () => {
     expect(r.advisories[0]).toHaveProperty("recentRate", null);
     expect(r.advisories[0]).toHaveProperty("baselineRate", null);
     expect(r.advisories[0]).toHaveProperty("aheadOfElapsed", null);
+  });
+
+  it("a junk stored monthly percent never invalidates the provider", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const now = new Date("2026-09-21T08:00:00.000Z");
+    upsertQuota(db, { provider: "opencode-go", plan: "unknown", source: "api", weeklyPct: 44,
+      resetsAt: "2026-09-28T00:00:00.000Z", periodStart: "2026-09-21T00:00:00.000Z", fetchedAt: now.toISOString(),
+      monthlyKind: "included", monthlyStatus: "ok", monthlyPct: 50, monthlyResetsAt: "2026-09-22T13:05:15.904Z" });
+    db.exec(`UPDATE quotas SET monthly_pct = 'NaN'`);
+    const s = buildSnapshot(db, { enabledProviders: ["opencode-go"], now,
+      runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "test" } });
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    expect(go.exclusionReason).toBeNull();
+    expect(go.quota?.monthlyPct).toBeUndefined();
+  });
+
+  it("advisories carry bindingWindow weekly for providers with no monthly", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const now = new Date("2026-09-21T08:00:00.000Z");
+    upsertQuota(db, { provider: "kimi", plan: "p", source: "cli", weeklyPct: 20,
+      resetsAt: "2026-09-25T00:00:00.000Z", periodStart: "2026-09-18T00:00:00.000Z", fetchedAt: now.toISOString() });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now,
+      runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "test" } });
+    const adv = s.providers[0].advisory!;
+    expect(adv.bindingWindow).toBe("weekly");
+    expect(adv.bindingRemaining).toBe(adv.remaining);
+    expect(adv.bindingDaysLeft).toBe(adv.daysLeft);
   });
 });

@@ -75,3 +75,59 @@ describe("adapter_attempts migration", () => {
     }
   });
 });
+
+const MONTHLY_COLS = ["monthly_pct", "monthly_resets_at", "monthly_status", "monthly_kind"];
+const colsOf = (db: any) => (db.prepare(`PRAGMA table_info(quotas)`).all() as any[]).map((c: any) => c.name);
+const GO = {
+  provider: "opencode-go", plan: "unknown", source: "api" as const,
+  weeklyPct: 44, fiveHourPct: 0,
+  resetsAt: "2026-09-28T00:00:00.000Z", periodStart: "2026-09-21T00:00:00.000Z",
+  fetchedAt: "2026-09-21T08:00:00.000Z",
+};
+
+describe("monthly columns", () => {
+  it("a fresh database has them", () => {
+    const db = openDb(":memory:"); migrate(db);
+    for (const c of MONTHLY_COLS) expect(colsOf(db)).toContain(c);
+  });
+
+  it("a database created before this release gains them, and a second migrate is a no-op", () => {
+    const db = openDb(":memory:");
+    db.exec(`CREATE TABLE quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL)`);
+    migrate(db); migrate(db);
+    for (const c of MONTHLY_COLS) expect(colsOf(db)).toContain(c);
+  });
+
+  it("a legacy database carrying raw gains them through the rebuild path", () => {
+    const db = openDb(":memory:");
+    db.exec(`CREATE TABLE quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, raw TEXT, source TEXT, fetched_at TEXT)`);
+    migrate(db);
+    const cols = colsOf(db);
+    expect(cols).not.toContain("raw");
+    for (const c of MONTHLY_COLS) expect(cols).toContain(c);
+  });
+
+  it("round-trips all four", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, { ...GO, monthlyKind: "included", monthlyStatus: "exhausted", monthlyPct: 100, monthlyResetsAt: "2026-09-22T13:05:15.904Z" });
+    const got: any = getLatestByProvider(db, "opencode-go");
+    expect(got).toMatchObject({ monthlyKind: "included", monthlyStatus: "exhausted", monthlyPct: 100, monthlyResetsAt: "2026-09-22T13:05:15.904Z" });
+    for (const k of MONTHLY_COLS) expect(k in got).toBe(false);
+  });
+
+  it("a NULL monthly reads as absent, never 0", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, GO);
+    const got: any = getLatestByProvider(db, "opencode-go");
+    for (const k of ["monthlyPct", "monthlyResetsAt", "monthlyStatus", "monthlyKind"]) expect(k in got).toBe(false);
+  });
+
+  it("an out-of-range stored monthly_pct drops the whole monthly reading", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, { ...GO, monthlyKind: "included", monthlyStatus: "ok", monthlyPct: 50, monthlyResetsAt: "2026-09-22T13:05:15.904Z" });
+    db.exec(`UPDATE quotas SET monthly_pct = 150`);
+    const got: any = getLatestByProvider(db, "opencode-go");
+    for (const k of ["monthlyPct", "monthlyResetsAt", "monthlyStatus", "monthlyKind"]) expect(k in got).toBe(false);
+    expect(got.weeklyPct).toBe(44);
+  });
+});

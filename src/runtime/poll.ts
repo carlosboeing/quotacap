@@ -222,7 +222,7 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
           success: true,
           failureCategory: null,
         });
-        const usedPct = row.value?.usedPct;
+        const usedPct = row.value?.weeklyPct;
         const pctSuffix =
           typeof usedPct === "number" && Number.isFinite(usedPct)
             ? ` (${usedPct}% used)`

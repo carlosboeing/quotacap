@@ -1,5 +1,5 @@
 import React from "react";
-import { displayPlan, shortWindowLabel, type ProviderView } from "../state.js";
+import { displayPlan, type ProviderView } from "../state.js";
 import {
   Badge,
   PaceBar,
@@ -8,6 +8,7 @@ import {
   resetCellLines,
 } from "./PaceBar.js";
 import { lastClose } from "./ClosedWeeks.js";
+import { WindowsRow } from "./WindowsRow.js";
 
 export function ProviderRow({
   provider,
@@ -26,7 +27,6 @@ export function ProviderRow({
   const lines = paceLines(advisory);
   const name = provider.displayName;
   const plan = displayPlan(quota?.plan);
-  const shortWindow = shortWindowLabel(provider.id);
   const reset = resetCellLines(provider, asOfMs);
   const last = lastClose(provider);
   return (
@@ -53,13 +53,15 @@ export function ProviderRow({
             )}
           </span>
           {plan && <span className="pl">{plan}</span>}
-          {quota?.sessionPct !== undefined && quota.sessionPct !== null && (
-            <span className="src">{shortWindow ?? "5h Limit"} · {quota.sessionPct}% used</span>
-          )}
         </span>
       </div>
       <div data-label="Used vs elapsed">
-        {quota ? <PaceBar provider={provider} asOf={asOf} /> : "—"}
+        {quota ? (
+          <>
+            <PaceBar provider={provider} asOf={asOf} />
+            <WindowsRow provider={provider} asOf={asOf} variant="row" />
+          </>
+        ) : "—"}
       </div>
       <div data-label="Reset" className="reset-cell">
         <span className="cell-b">{reset.top}</span>

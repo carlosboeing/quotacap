@@ -16,8 +16,8 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
   return {
     provider,
     plan: "unknown",
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt,
     periodStart,
     source: "manual",

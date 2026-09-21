@@ -153,6 +153,9 @@
 
 ## Next
 
+* Nested included monthly windows — bottleneck headroom ranking, monthly fields on the OpenCode Go adapter, and one windows row under the weekly bar; approved design and plan in the workbench; implementation in PR #113 (#109)
+* Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
+* Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)
 * `forecast` input validation (enum, error shape)
 * Forecast constants fixture-locked only — re-run `scripts/forecast-backtest.mjs` against the live DB once `window_closes` holds receipts

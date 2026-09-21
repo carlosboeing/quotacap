@@ -13,6 +13,7 @@ import {
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lastClose } from "./ClosedWeeks.js";
+import { WindowsRow } from "./WindowsRow.js";
 
 function resetsDate(provider: ProviderView): string | null {
   if (!provider.quota) return null;
@@ -49,7 +50,8 @@ export function ProviderCard({
       aria-label={`${name} details`}
       onClick={() => onSelect(provider.id)}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        // Space or Enter aimed at the windows chevron must not also open the drawer.
+        if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
           e.preventDefault();
           onSelect(provider.id);
         }
@@ -79,6 +81,7 @@ export function ProviderCard({
 
       <div className="pcard-body">
         <PaceBar provider={provider} asOf={asOf} />
+        <WindowsRow provider={provider} asOf={asOf} variant="card" />
 
         <div className="pstats">
           <div title={PACE_TIPS.avg}>

@@ -38,6 +38,9 @@ export interface AdvisoryView {
   status: BurnStatus;
   wastePct: number | null;
   urgency: Urgency;
+  bindingWindow: "weekly" | "monthly";
+  bindingRemaining: number;
+  bindingDaysLeft: number;
 }
 
 export interface RecommendationView {
@@ -46,6 +49,7 @@ export interface RecommendationView {
   wastePct: number | null;
   idealRate: number;
   recommendationBasis: RecommendationBasis;
+  bindingWindow: "weekly" | "monthly";
   alternatives: unknown[];
   advisories: AdvisoryView[];
 }
@@ -66,7 +70,15 @@ export interface WindowCloseView {
 export interface QuotaView {
   provider: string;
   plan: string;
+  weeklyPct: number;
+  fiveHourPct?: number;
+  monthlyPct?: number;
+  monthlyResetsAt?: string;
+  monthlyStatus?: "ok" | "exhausted";
+  monthlyKind?: "included";
+  /** @deprecated wire alias for weeklyPct. */
   usedPct: number;
+  /** @deprecated wire alias for fiveHourPct. */
   sessionPct?: number;
   resetsAt: string;
   periodStart: string;

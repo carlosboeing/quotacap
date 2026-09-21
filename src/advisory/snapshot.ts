@@ -1,4 +1,4 @@
-import type { Quota } from "../adapters/types.js";
+import type { Quota, QuotaWire } from "../adapters/types.js";
 import { getAllLatest, getBurnRates, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { getCatalogs } from "../store/catalogs.js";
@@ -49,6 +49,13 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,
+    bindingWindow: adv.bindingWindow === "monthly" ? "monthly" : "weekly",
+    bindingRemaining: Number.isFinite(adv.bindingRemaining)
+      ? adv.bindingRemaining
+      : Number.isFinite(adv.remaining) ? adv.remaining : 0,
+    bindingDaysLeft: Number.isFinite(adv.bindingDaysLeft)
+      ? adv.bindingDaysLeft
+      : Number.isFinite(adv.daysLeft) ? adv.daysLeft : 0,
   };
 }
 
@@ -58,8 +65,8 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
   const asOfMs = now.getTime();
 
   // 1. Read latest quotas and attempts
-  const allQuotas = getAllLatest(db) as Quota[];
-  const quotaMap = new Map<string, Quota>();
+  const allQuotas = getAllLatest(db) as QuotaWire[];
+  const quotaMap = new Map<string, QuotaWire>();
   const storedIds = new Set<string>();
   for (const q of allQuotas) {
     quotaMap.set(q.provider, q);
@@ -112,9 +119,9 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       const fetchedMs = new Date(quota.fetchedAt).getTime();
 
       if (
-        !Number.isFinite(quota.usedPct) ||
-        quota.usedPct < 0 ||
-        quota.usedPct > 100 ||
+        !Number.isFinite(quota.weeklyPct) ||
+        quota.weeklyPct < 0 ||
+        quota.weeklyPct > 100 ||
         Number.isNaN(resetsMs) ||
         Number.isNaN(fetchedMs)
       ) {
@@ -223,6 +230,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      bindingWindow: "weekly",
       models: [],
       catalogStatus: "unfetched",
       catalogFetchedAt: null,

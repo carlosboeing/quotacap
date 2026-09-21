@@ -38,6 +38,13 @@ describe("http", () => {
     const app = buildApp(testCtx(db));
     const res = await app.inject({method:"GET",url:"/api/quotas"});
     expect(res.statusCode).toBe(200);
+    const [row] = JSON.parse(res.body);
+    expect(row.weeklyPct).toBe(25);
+    expect(row.usedPct).toBe(25);
+    const state = JSON.parse((await app.inject({ method: "GET", url: "/api/state" })).body);
+    const claude = state.providers.find((p: any) => p.id === "claude");
+    expect(claude.quota.weeklyPct).toBe(25);
+    expect(claude.quota.usedPct).toBe(25);
   });
 
   it("GET /api/quotas does not expose raw and round-trips creditsUsd", async () => {

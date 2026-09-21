@@ -19,8 +19,8 @@ describe("parseCodexTui", () => {
     const txt = codexFixture({ weeklyLeft: 73, weeklyReset: "16:36 on 7 Sep", fiveLeft: 9, fiveReset: "14:12" });
     const q = parseCodexTui(txt, now);
     expect(q.provider).toBe("codex");
-    expect(q.usedPct).toBe(27);
-    expect(q.sessionPct).toBe(91);
+    expect(q.weeklyPct).toBe(27);
+    expect(q.fiveHourPct).toBe(91);
     expect(q.source).toBe("tui");
     expect(new Date(q.resetsAt).getTime()).toBeGreaterThan(now.getTime());
     expect(new Date(q.periodStart).getTime()).toBe(new Date(q.resetsAt).getTime() - 7 * 86400000);
@@ -30,16 +30,16 @@ describe("parseCodexTui", () => {
     const now = new Date("2026-09-01T10:00:00");
     const txt = codexFixture({ weeklyLeft: 0, fiveLeft: 100 });
     const q = parseCodexTui(txt, now);
-    expect(q.usedPct).toBe(100);
-    expect(q.sessionPct).toBe(0);
+    expect(q.weeklyPct).toBe(100);
+    expect(q.fiveHourPct).toBe(0);
   });
 
   it("strips ANSI before parsing", () => {
     const now = new Date("2026-09-01T10:00:00");
     const txt = `\x1b[31m5h limit: 9% left (resets 14:12)\x1b[0m\n\x1b[32mWeekly limit: 73% left (resets 16:36 on 7 Sep)\x1b[0m\n`;
     const q = parseCodexTui(txt, now);
-    expect(q.usedPct).toBe(27);
-    expect(q.sessionPct).toBe(91);
+    expect(q.weeklyPct).toBe(27);
+    expect(q.fiveHourPct).toBe(91);
   });
 
   it("parses weekly reset with locale-aware month (case-insensitive)", () => {
@@ -65,9 +65,9 @@ describe("parseCodexTui", () => {
     const txt = codexFixture({ fiveReset: "14:12" });
     const q = parseCodexTui(txt, now);
     // weeklyIso is still 7 Sep, but 5h session reset should be tomorrow 14:12
-    // we check session reset via parsing indirectly: usedPct still correct, and resetsAt is weekly
+    // we check session reset via parsing indirectly: weeklyPct still correct, and resetsAt is weekly
     // For 5h we can't directly check via Quota (only weekly is stored), but parse should not throw
-    expect(q.sessionPct).toBeDefined();
+    expect(q.fiveHourPct).toBeDefined();
   });
 
   it("parses the v0.154.0 /status panel with progress bars, ignoring the startup footer", () => {
@@ -78,8 +78,8 @@ describe("parseCodexTui", () => {
       "│  Weekly limit:         [███████████████░░░░░] 77% left (resets 23:04 on 19 Sep) │",
     ].join("\n");
     const q = parseCodexTui(txt, now);
-    expect(q.usedPct).toBe(23);
-    expect(q.sessionPct).toBe(77);
+    expect(q.weeklyPct).toBe(23);
+    expect(q.fiveHourPct).toBe(77);
     expect(q.resetsAtEstimated).toBeUndefined();
     expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
   });
@@ -92,8 +92,8 @@ describe("parseCodexTui", () => {
       "│  Weekly limit:         [███████████████░░░░░] 73% left (resets 23:04 on 19 Sep)  │",
     ].join("\n");
     const q = parseCodexTui(txt, now);
-    expect(q.usedPct).toBe(27);
-    expect(q.sessionPct).toBe(0);
+    expect(q.weeklyPct).toBe(27);
+    expect(q.fiveHourPct).toBe(0);
     expect(q.resetsAtEstimated).toBeUndefined();
     expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 19, 23, 4).getTime());
   });
@@ -178,8 +178,8 @@ setInterval(()=>{},1000);
       maxBytes: 64 * 1024,
     });
     const q = parseCodexTui(transcript, new Date("2026-09-01T10:00:00"));
-    expect(q.usedPct).toBe(27);
-    expect(q.sessionPct).toBe(91);
+    expect(q.weeklyPct).toBe(27);
+    expect(q.fiveHourPct).toBe(91);
     expect(q.provider).toBe("codex");
   });
 
@@ -302,11 +302,11 @@ describe("codexAdapter live poll", () => {
     const q = await codexAdapter.poll();
     expect(q.provider).toBe("codex");
     expect(q.source).toBe("tui");
-    expect(q.usedPct).toBeGreaterThanOrEqual(0);
-    expect(q.usedPct).toBeLessThanOrEqual(100);
-    if ((q as any).sessionPct !== undefined) {
-      expect((q as any).sessionPct).toBeGreaterThanOrEqual(0);
-      expect((q as any).sessionPct).toBeLessThanOrEqual(100);
+    expect(q.weeklyPct).toBeGreaterThanOrEqual(0);
+    expect(q.weeklyPct).toBeLessThanOrEqual(100);
+    if ((q as any).fiveHourPct !== undefined) {
+      expect((q as any).fiveHourPct).toBeGreaterThanOrEqual(0);
+      expect((q as any).fiveHourPct).toBeLessThanOrEqual(100);
     }
     expect(Number.isNaN(new Date(q.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(q.periodStart).getTime())).toBe(false);

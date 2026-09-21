@@ -20,7 +20,7 @@ function projectModels(
   for (const [id, catalog] of catalogs) {
     const identity = providerIdentity(id, providerNames);
     const quota = quotaMap.get(id);
-    const leftoverPct = quota?.usedPct != null ? Math.round((100 - quota.usedPct) * 10) / 10 : null;
+    const leftoverPct = quota?.weeklyPct != null ? Math.round((100 - quota.weeklyPct) * 10) / 10 : null;
     out.push({
       id,
       displayName: identity.displayName,

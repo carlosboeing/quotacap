@@ -111,7 +111,7 @@ describe("state catalog: mapping over fixtures", () => {
       bottom: null,
     });
   });
-  it("renders the table row with stacked reset, vendor short window, and no unknown plan", () => {
+  it("renders the table row with stacked reset, the 5h windows tag, and no unknown plan", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const claude = {
       ...s.providers.find((p) => p.id === "claude")!,
@@ -126,7 +126,9 @@ describe("state catalog: mapping over fixtures", () => {
       })
     );
     expect(html).toContain("reset-cell");
-    expect(html.replace(/<!-- -->/g, "")).toContain("5h Limit · 22% used");
+    // 5h now lives only in the windows row; the provider-cell line is gone.
+    expect(html.replace(/<!-- -->/g, "")).toContain('<span class="k">5h</span><span class="n">22%</span>');
+    expect(html).not.toContain("5h Limit ·");
     expect(html).not.toContain("unknown");
     expect(html).not.toContain("Session use");
   });

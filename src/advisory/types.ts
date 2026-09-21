@@ -1,4 +1,4 @@
-import type { Quota } from "../adapters/types.js";
+import type { Quota, QuotaWire } from "../adapters/types.js";
 import type { AttemptRecord } from "../store/attempts.js";
 import type { CatalogStatus, CatalogView, ListedModel } from "../catalog/types.js";
 
@@ -18,6 +18,8 @@ export type Urgency = "burn now" | "use soon" | "slow down" | "save" | "on track
 export type BurnStatus = "at risk" | "watch" | "on track" | "unknown";
 export type PaceSource = "recent" | "window-average" | "unknown";
 export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
+
+export type BindingWindow = "weekly" | "monthly";
 
 export type ExclusionReason =
   | "not-reporting"
@@ -51,6 +53,12 @@ export interface Advisory {
   status: BurnStatus;
   wastePct: number | null;
   urgency: Urgency;
+  /** Which included window is scarcer per day left. "weekly" when there is no included monthly. */
+  bindingWindow: BindingWindow;
+  /** Remaining percent of the binding window. Equals `remaining` when weekly binds. */
+  bindingRemaining: number;
+  /** Days until the binding window resets. Equals `daysLeft` when weekly binds. */
+  bindingDaysLeft: number;
 }
 
 export interface Recommendation {
@@ -59,10 +67,11 @@ export interface Recommendation {
   wastePct: number | null;
   idealRate: number;
   recommendationBasis: RecommendationBasis;
+  bindingWindow: BindingWindow;
   models: ListedModel[];
   catalogStatus: CatalogStatus;
   catalogFetchedAt: string | null;
-  alternatives: Array<Quota & { catalog: CatalogView }>;
+  alternatives: Array<QuotaWire & { catalog: CatalogView }>;
   advisories: Advisory[];
 }
 
@@ -87,7 +96,7 @@ export interface ProviderSnapshot {
   harness: string | null;
   description: string | null;
   enabled: boolean;
-  quota: Quota | null;
+  quota: QuotaWire | null;
   lastAttempt: AttemptRecord | null;
   lastSuccessAt: string | null;
   reporting: boolean;

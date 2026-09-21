@@ -9,9 +9,9 @@ import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
 
-function grokFixture(overrides?: { plan?: string; usedPct?: number; credits?: string; reset?: string; extra?: string }): string {
+function grokFixture(overrides?: { plan?: string; weeklyPct?: number; credits?: string; reset?: string; extra?: string }): string {
   const plan = overrides?.plan ?? "SuperGrok";
-  const pct = overrides?.usedPct ?? 26;
+  const pct = overrides?.weeklyPct ?? 26;
   const cred = overrides?.credits ?? "Credits: $4.85";
   const reset = overrides?.reset ?? "Resets: September 7, 10:22";
   const extra = overrides?.extra ?? "";
@@ -29,11 +29,11 @@ function grokFixture(overrides?: { plan?: string; usedPct?: number; credits?: st
 describe("parseGrokTui", () => {
   it("maps weekly percent and credits and reset with plan tier", () => {
     const now = new Date("2026-09-01T00:00:00Z");
-    const txt = grokFixture({ plan: "SuperGrok", usedPct: 26, credits: "Credits: $4.85", reset: "Resets: September 7, 10:22" });
+    const txt = grokFixture({ plan: "SuperGrok", weeklyPct: 26, credits: "Credits: $4.85", reset: "Resets: September 7, 10:22" });
     const q = parseGrokTui(txt, now);
     expect(q.provider).toBe("grok");
     expect(q.plan).toBe("SuperGrok");
-    expect(q.usedPct).toBe(26);
+    expect(q.weeklyPct).toBe(26);
     expect(q.creditsUsd).toBe(4.85);
     expect(q.source).toBe("tui");
     const dt = new Date(q.resetsAt);
@@ -46,17 +46,17 @@ describe("parseGrokTui", () => {
 
   it("parses SuperGrok Heavy tier with parens", () => {
     const now = new Date("2026-09-01T00:00:00Z");
-    const txt = grokFixture({ plan: "SuperGrok Heavy", usedPct: 100 });
+    const txt = grokFixture({ plan: "SuperGrok Heavy", weeklyPct: 100 });
     const q = parseGrokTui(txt, now);
     expect(q.plan).toBe("SuperGrok Heavy");
-    expect(q.usedPct).toBe(100);
+    expect(q.weeklyPct).toBe(100);
   });
 
   it("strips ANSI before parsing", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     const txt = `\x1b[31mWeekly limit (SuperGrok)\x1b[0m  \x1b[38;5;244m█\x1b[0m 42% \nCredits: $1.23\nResets: September 7, 10:22\n`;
     const q = parseGrokTui(txt, now);
-    expect(q.usedPct).toBe(42);
+    expect(q.weeklyPct).toBe(42);
     expect(q.creditsUsd).toBe(1.23);
   });
 
@@ -67,7 +67,7 @@ describe("parseGrokTui", () => {
       Resets: September 7, 10:22
     `;
     const q = parseGrokTui(txt, now);
-    expect(q.usedPct).toBe(50);
+    expect(q.weeklyPct).toBe(50);
     expect(q.creditsUsd).toBeUndefined();
   });
 
@@ -154,7 +154,7 @@ describe("parseGrokTui", () => {
   it("prefers the dialog used percent over the 'left' status line", () => {
     const now = new Date("2026-09-13T00:00:00Z");
     const q = parseGrokTui(liveFixture(), now);
-    expect(q.usedPct).toBe(100);
+    expect(q.weeklyPct).toBe(100);
     expect(q.plan).toBe("SuperGrok");
     const dt = new Date(q.resetsAt);
     expect(dt.getMonth()).toBe(8);
@@ -165,14 +165,14 @@ describe("parseGrokTui", () => {
     const now = new Date("2026-09-13T00:00:00Z");
     const txt = liveFixture({ left: "Weekly limit left: 74%", header: "Weekly limit (SuperGrok)", pct: 26 });
     const q = parseGrokTui(txt, now);
-    expect(q.usedPct).toBe(26);
+    expect(q.weeklyPct).toBe(26);
   });
 
   it("converts a lone 'left' line from remaining to used", () => {
     const now = new Date("2026-09-13T00:00:00Z");
     const txt = `Welcome. Weekly limit left: 30% · quota\nResets: September 14, 10:22\n`;
     const q = parseGrokTui(txt, now);
-    expect(q.usedPct).toBe(70);
+    expect(q.weeklyPct).toBe(70);
     expect(q.plan).toBe("unknown");
   });
 
@@ -181,7 +181,7 @@ describe("parseGrokTui", () => {
     const txt = liveFixture({ header: "Weekly limt (SuperGrok Heavy)", pct: 55 });
     const q = parseGrokTui(txt, now);
     expect(q.plan).toBe("SuperGrok Heavy");
-    expect(q.usedPct).toBe(55);
+    expect(q.weeklyPct).toBe(55);
   });
 
   it("parses the raw cursor-repositioned header after ANSI stripping", () => {
@@ -189,7 +189,7 @@ describe("parseGrokTui", () => {
     const txt = "Weekly limit left: 0%\nWeekly lim\x1b[14;39Ht (SuperGrok)\n████████████  100%\nResets:September 14, 10:22\n";
     const q = parseGrokTui(txt, now);
     expect(q.plan).toBe("SuperGrok");
-    expect(q.usedPct).toBe(100);
+    expect(q.weeklyPct).toBe(100);
   });
 
   it("later renders supersede earlier ones", () => {
@@ -197,7 +197,7 @@ describe("parseGrokTui", () => {
     const txt = liveFixture({ pct: 26, reset: "Resets: September 7, 10:22" }) +
       liveFixture({ pct: 100, reset: "Resets: September 14, 10:22" });
     const q = parseGrokTui(txt, now);
-    expect(q.usedPct).toBe(100);
+    expect(q.weeklyPct).toBe(100);
     expect(new Date(q.resetsAt).getDate()).toBe(14);
   });
 });
@@ -238,7 +238,7 @@ setInterval(()=>{},1000);
       maxBytes: 64 * 1024,
     });
     const q = parseGrokTui(transcript, new Date("2026-09-01T00:00:00Z"));
-    expect(q.usedPct).toBe(26);
+    expect(q.weeklyPct).toBe(26);
     expect(q.creditsUsd).toBe(4.85);
     expect(q.plan).toBe("SuperGrok");
     expect(q.provider).toBe("grok");
@@ -335,7 +335,7 @@ setInterval(()=>{},1000);
   it("creditsUsd round-trips through store and /api/quotas", async () => {
     const db = openDb(":memory:"); migrate(db);
     const now = new Date("2026-09-01T00:00:00Z");
-    const txt = grokFixture({ usedPct: 26, reset: "Resets: September 7, 10:22" });
+    const txt = grokFixture({ weeklyPct: 26, reset: "Resets: September 7, 10:22" });
     const q = parseGrokTui(txt, now);
     upsertQuota(db, q);
     const app = buildApp(testCtx(db));
@@ -343,7 +343,7 @@ setInterval(()=>{},1000);
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body[0].creditsUsd).toBe(4.85);
-    expect(body[0].usedPct).toBe(26);
+    expect(body[0].weeklyPct).toBe(26);
     expect(body[0].raw).toBeUndefined();
   });
 });
@@ -360,8 +360,8 @@ describe("grokAdapter live poll", () => {
     const q = await grokAdapter.poll();
     expect(q.provider).toBe("grok");
     expect(q.source).toBe("tui");
-    expect(q.usedPct).toBeGreaterThanOrEqual(0);
-    expect(q.usedPct).toBeLessThanOrEqual(100);
+    expect(q.weeklyPct).toBeGreaterThanOrEqual(0);
+    expect(q.weeklyPct).toBeLessThanOrEqual(100);
     expect(Number.isNaN(new Date(q.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(q.periodStart).getTime())).toBe(false);
     expect((q as any).raw.length).toBeGreaterThan(0);

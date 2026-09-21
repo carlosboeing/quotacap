@@ -2,18 +2,19 @@ import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring";
+export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring" | "Monthly exhausted";
 
 /**
- * Pace-state badge from the mapping table. Exclusion always wins; otherwise
- * status "at risk" wins, then "watch", then "unknown"; on-track rows ahead of
- * cumulative elapsed time read Ahead of pace; otherwise urgency decides. No
- * client thresholds.
+ * Pace-state badge from the mapping table. Exclusion always wins; a blocked
+ * month next; otherwise status "at risk" wins, then "watch", then "unknown";
+ * on-track rows ahead of cumulative elapsed time read Ahead of pace;
+ * otherwise urgency decides. No client thresholds.
  */
 export function paceBadge(provider: ProviderView): PaceBadge {
   if (provider.exclusionReason !== null) return "Not reporting";
   const advisory = provider.advisory;
   if (!advisory) return "Not reporting";
+  if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return "Monthly exhausted";
   if (advisory.status === "at risk") return "Cap risk";
   if (advisory.status === "watch") return "Watch";
   if (advisory.status === "unknown") return "Measuring";
@@ -132,6 +133,13 @@ export function resetClock(resetsAt: string, locale?: string): string | null {
   return `${day} ${time}`;
 }
 
+/** Short weekday in the locked English copy, e.g. "Tue". Mirrors weekdayOf in
+ *  src/format/rows.ts, including its pinned en-US locale, so the CLI and the
+ *  dashboard word the same sentence identically on any machine. */
+export function resetWeekday(iso: string | undefined): string {
+  return new Date(iso ?? "").toLocaleDateString("en-US", { weekday: "short" });
+}
+
 /** "6d 12h" style time left from server timestamps. Null when unparseable. */
 export function timeLeft(resetsAt: string, asOfMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -207,7 +215,7 @@ export interface BarGeometry {
 
 /** Bar geometry from server timestamps and percents. Presentation only. */
 export function barGeometry(provider: ProviderView, asOfMs: number): BarGeometry {
-  const usedPct = provider.quota ? Math.min(100, Math.max(0, provider.quota.usedPct)) : 0;
+  const usedPct = provider.quota ? Math.min(100, Math.max(0, provider.quota.weeklyPct)) : 0;
   let elapsedPct: number | null = null;
   if (provider.quota) {
     const startMs = Date.parse(provider.quota.periodStart);
@@ -229,6 +237,7 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--ahead)";
     case "Watch":
       return "var(--watch)";
+    case "Monthly exhausted":
     case "Cap risk":
       return "var(--danger)";
     case "Measuring":
@@ -248,6 +257,7 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-ahead)";
     case "Watch":
       return "var(--fill-watch)";
+    case "Monthly exhausted":
     case "Cap risk":
       return "var(--fill-cap)";
     case "Measuring":
@@ -267,6 +277,7 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-ahead)";
     case "Watch":
       return "var(--edge-watch)";
+    case "Monthly exhausted":
     case "Cap risk":
       return "var(--edge-cap)";
     case "Measuring":
@@ -282,6 +293,7 @@ export function outKind(badge: PaceBadge): "behind" | "watch" | "cap" | "ontrack
       return "behind";
     case "Watch":
       return "watch";
+    case "Monthly exhausted":
     case "Cap risk":
       return "cap";
     case "On track":
@@ -326,7 +338,7 @@ export function Badge({ provider }: { provider: ProviderView }) {
       ? "pace-ahead"
       : badge === "Watch"
       ? "pace-watch"
-      : badge === "Cap risk"
+      : badge === "Cap risk" || badge === "Monthly exhausted"
       ? "pace-cap"
       : "pace-out"; // Not reporting and Measuring share the neutral style
   return (
@@ -357,20 +369,24 @@ export function PaceBar({
   const badge = paceBadge(provider);
   const asOfMs = Date.parse(asOf);
   const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
+  const monthlyBinds = provider.advisory?.bindingWindow === "monthly";
   const wastePct = provider.advisory?.wastePct;
+  // A weekly-sized hatch under a month-bound card restates issue 109.
   const showHatch =
-    wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
+    !monthlyBinds && wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
   const label = provider.quota
-    ? `${provider.id}: ${provider.quota.usedPct}% used, ${badge}`
+    ? `${provider.id}: ${provider.quota.weeklyPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
   const forecast =
     showHatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
-  const kind = outKind(badge);
+  const kind = monthlyBinds
+    ? provider.advisory!.bindingRemaining === 0 ? "cap" : "behind"
+    : outKind(badge);
   return (
     <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
       {showHeadline && provider.quota && (
         <div className="tline">
-          <span className="used">{provider.quota.usedPct}% used</span>
+          <span className="used">{provider.quota.weeklyPct}% used</span>
           {forecast && kind !== "none" ? (
             <span className={`out out-${kind}`}>→ {forecast}</span>
           ) : forecast ? (
@@ -436,6 +452,12 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   const advisory = provider.advisory;
   if (!advisory) return null;
+  if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining <= 0) {
+    return `unused until ${resetWeekday(provider.quota.monthlyResetsAt)}`;
+  }
+  if (advisory.bindingWindow === "monthly") {
+    return `${Math.round(advisory.bindingRemaining)}% of month left`;
+  }
   if (advisory.remaining <= 0) {
     return "Exhausted · quota fully used";
   }

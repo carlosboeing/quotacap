@@ -179,7 +179,7 @@ function ClusterPopover({
               >
                 <b>{name}</b>
                 <span>
-                  {provider?.quota ? `${provider.quota.usedPct}% · ` : ""}
+                  {provider?.quota ? `${provider.quota.weeklyPct}% · ` : ""}
                   {provider ? resetCountdown(provider, asOfMs) : ""}
                 </span>
               </button>
@@ -219,6 +219,7 @@ function pinPace(provider: ProviderView | undefined): { cls: string; color: stri
       return { cls: "pace-ahead", color: "var(--ahead)" };
     case "Watch":
       return { cls: "pace-watch", color: "var(--watch)" };
+    case "Monthly exhausted":
     case "Cap risk":
       return { cls: "pace-cap", color: "var(--danger)" };
     default:
@@ -343,7 +344,7 @@ export function ResetRail({
                 <span className="pin-tooltip" role="tooltip">
                   <b>{name}</b>
                   <span className="pt-sep">·</span>
-                  {provider?.quota ? `${provider.quota.usedPct}% used` : "no readings"}
+                  {provider?.quota ? `${provider.quota.weeklyPct}% used` : "no readings"}
                   <span className="pt-sep">·</span>
                   {left ? `${left} left` : when}
                   {pin.estimated ? " (est.)" : ""}

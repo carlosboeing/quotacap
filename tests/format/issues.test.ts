@@ -36,6 +36,7 @@ function makeSnapshot(providers: Partial<ProviderSnapshot>[]): StateSnapshot {
       wastePct: null,
       idealRate: 0,
       recommendationBasis: "none",
+      bindingWindow: "weekly",
       models: [],
       catalogStatus: "unfetched",
       catalogFetchedAt: null,

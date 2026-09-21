@@ -9,12 +9,12 @@ const BOARD_NOW = new Date("2026-09-16T06:00:00+10:00");
 // A weekly window whose elapsed fraction is `elapsedPct` at BOARD_NOW, so the
 // 16 Sept board cases keep their real position-in-window while the forecast
 // inputs stay explicit. `over` carries extras such as resetsAtEstimated.
-function boardQuota(provider: string, usedPct: number, elapsedPct: number, over: Record<string, unknown> = {}): Quota {
+function boardQuota(provider: string, weeklyPct: number, elapsedPct: number, over: Record<string, unknown> = {}): Quota {
   const start = BOARD_NOW.getTime() - (WEEK_MS * elapsedPct) / 100;
   return {
     provider,
     plan: "p",
-    usedPct,
+    weeklyPct,
     periodStart: new Date(start).toISOString(),
     resetsAt: new Date(start + WEEK_MS).toISOString(),
     source: "cli",
@@ -30,7 +30,7 @@ function boardAdv(q: Quota, recent: number | null, baseline: number | null) {
 describe("advisory", () => {
   it("computes ideal and waste", () => {
     const now = new Date("2026-08-28T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:22, resetsAt:"2026-08-29T11:00:00+10:00" } as any;
+    const q = { provider:"kimi", weeklyPct:22, resetsAt:"2026-08-29T11:00:00+10:00" } as any;
     const adv = computeAdvisory(q, 6, null, now);
     expect(adv.wastePct).toBeGreaterThan(0);
     expect(adv.urgency).toBe("burn now");
@@ -38,7 +38,7 @@ describe("advisory", () => {
 
   it("flags at risk when measured burn exhausts the quota before reset", () => {
     const now = new Date("2026-08-28T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:16, periodStart:"2026-08-27T18:00:00+10:00", resetsAt:"2026-08-31T11:00:00+10:00" } as any;
+    const q = { provider:"kimi", weeklyPct:16, periodStart:"2026-08-27T18:00:00+10:00", resetsAt:"2026-08-31T11:00:00+10:00" } as any;
     const adv = computeAdvisory(q, 40, null, now);
     expect(adv.burnMeasured).toBe(true);
     expect(adv.recentRate).toBe(40);
@@ -50,7 +50,7 @@ describe("advisory", () => {
 
   it("marks on track when burn stays under the ideal rate", () => {
     const now = new Date("2026-08-28T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:16, resetsAt:"2026-08-31T11:00:00+10:00" } as any;
+    const q = { provider:"kimi", weeklyPct:16, resetsAt:"2026-08-31T11:00:00+10:00" } as any;
     const adv = computeAdvisory(q, 20, null, now);
     expect(adv.daysToExhaust).toBeCloseTo(4.2, 1);
     expect(adv.status).toBe("on track");
@@ -59,19 +59,19 @@ describe("advisory", () => {
 
   it("derives pace from one reading: 60% over 3 days is 20%/day", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:60, periodStart:"2026-08-28T06:00:00+10:00" } as any;
+    const q = { provider:"kimi", weeklyPct:60, periodStart:"2026-08-28T06:00:00+10:00" } as any;
     expect(averagePace(q, now)).toBeCloseTo(20, 5);
   });
 
   it("returns no pace when the window start is unknown", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    expect(averagePace({ provider:"kimi", usedPct:60 } as any, now)).toBeNull();
-    expect(averagePace({ provider:"kimi", usedPct:60, periodStart:"nonsense" } as any, now)).toBeNull();
+    expect(averagePace({ provider:"kimi", weeklyPct:60 } as any, now)).toBeNull();
+    expect(averagePace({ provider:"kimi", weeklyPct:60, periodStart:"nonsense" } as any, now)).toBeNull();
   });
 
   it("treats a baseline-only entry as window-average pace, never a constant", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:60, periodStart:"2026-08-28T06:00:00+10:00",
+    const q = { provider:"kimi", weeklyPct:60, periodStart:"2026-08-28T06:00:00+10:00",
                 resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     const rec = recommend([q], "any", new Map([["kimi", { recent: null, baseline: 20 }]]), now);
     const adv = rec.advisories[0];
@@ -87,7 +87,7 @@ describe("advisory", () => {
 
   it("blends the recent rate with the baseline and keeps both visible", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:60, periodStart:"2026-08-28T06:00:00+10:00",
+    const q = { provider:"kimi", weeklyPct:60, periodStart:"2026-08-28T06:00:00+10:00",
                 resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     const rec = recommend([q], "any", new Map([["kimi", { recent: 3, baseline: 20 }]]), now);
     const adv = rec.advisories[0];
@@ -102,7 +102,7 @@ describe("advisory", () => {
     // 3% used over 1 day is 3%/day. The old code assumed 2%/day for every
     // provider it had no history for, so the waste it reported was invented.
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"codex", usedPct:3, periodStart:"2026-08-30T06:00:00+10:00",
+    const q = { provider:"codex", weeklyPct:3, periodStart:"2026-08-30T06:00:00+10:00",
                 resetsAt:"2026-09-05T06:00:00+10:00" } as any;
     const adv = recommend([q], "any", new Map([["codex", { recent: null, baseline: 3 }]]), now).advisories[0];
     expect(adv.burnRate).toBeCloseTo(3, 5);
@@ -114,7 +114,7 @@ describe("advisory", () => {
     const now = new Date("2026-08-28T06:30:00+10:00");
     const q = {
       provider: "kimi",
-      usedPct: 1,
+      weeklyPct: 1,
       periodStart: "2026-08-28T06:00:00+10:00",
       resetsAt: "2026-09-04T06:00:00+10:00",
     } as any;
@@ -136,13 +136,13 @@ describe("advisory", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     const freshKimi = {
       provider: "kimi",
-      usedPct: 1,
+      weeklyPct: 1,
       periodStart: "2026-08-31T05:30:00+10:00", // 30 min in
       resetsAt: "2026-09-04T06:00:00+10:00",
     } as any;
     const measuredClaude = {
       provider: "claude",
-      usedPct: 10,
+      weeklyPct: 10,
       periodStart: "2026-08-28T06:00:00+10:00", // 3 days in, 10/3 = 3.33%/day
       resetsAt: "2026-09-04T06:00:00+10:00", // 4 days left, waste = 90 - 3.33*4 = 76.67%
     } as any;
@@ -158,14 +158,14 @@ describe("advisory", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     const atRiskClaude = {
       provider: "claude",
-      usedPct: 80,
+      weeklyPct: 80,
       periodStart: "2026-08-28T06:00:00+10:00", // 3 days in
       resetsAt: "2026-09-04T06:00:00+10:00", // 4 days left
     } as any;
     // measured burn: 25%/day -> exhausts 20% in 0.8 days (< 4 days) -> at risk, wastePct = 0
     const freshKimi = {
       provider: "kimi",
-      usedPct: 2,
+      weeklyPct: 2,
       periodStart: "2026-08-31T05:30:00+10:00", // 30 min in (<1h, unknown)
       resetsAt: "2026-09-02T06:00:00+10:00", // 2 days left -> 98% / 2d = 49%/day headroom
     } as any;
@@ -186,13 +186,13 @@ describe("advisory", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     const freshKimi = {
       provider: "kimi",
-      usedPct: 10, // 90% left, 3 days left -> 30%/day
+      weeklyPct: 10, // 90% left, 3 days left -> 30%/day
       periodStart: "2026-08-31T05:30:00+10:00",
       resetsAt: "2026-09-03T06:00:00+10:00",
     } as any;
     const freshClaude = {
       provider: "claude",
-      usedPct: 20, // 80% left, 4 days left -> 20%/day
+      weeklyPct: 20, // 80% left, 4 days left -> 20%/day
       periodStart: "2026-08-31T05:30:00+10:00",
       resetsAt: "2026-09-04T06:00:00+10:00",
     } as any;
@@ -205,9 +205,9 @@ describe("advisory", () => {
 
   it("retains all providers in advisories and alternatives output", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q1 = { provider: "kimi", usedPct: 1, periodStart: "2026-08-31T05:30:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
-    const q2 = { provider: "claude", usedPct: 80, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
-    const q3 = { provider: "codex", usedPct: 10, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
+    const q1 = { provider: "kimi", weeklyPct: 1, periodStart: "2026-08-31T05:30:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
+    const q2 = { provider: "claude", weeklyPct: 80, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
+    const q3 = { provider: "codex", weeklyPct: 10, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
     const rec = recommend([q1, q2, q3], "any", new Map([["claude", { recent: 25, baseline: null }]]), now);
     expect(rec.advisories.map(a => a.provider)).toEqual(["kimi", "claude", "codex"]);
     expect(rec.alternatives.map(a => a.provider)).toEqual(["kimi", "claude", "codex"]);
@@ -215,7 +215,7 @@ describe("advisory", () => {
 
   it("leaves normal measured recommendations unchanged", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"codex", usedPct:3, periodStart:"2026-08-30T06:00:00+10:00", resetsAt:"2026-09-05T06:00:00+10:00" } as any;
+    const q = { provider:"codex", weeklyPct:3, periodStart:"2026-08-30T06:00:00+10:00", resetsAt:"2026-09-05T06:00:00+10:00" } as any;
     const rec = recommend([q], "any", new Map([["codex", { recent: null, baseline: 3 }]]), now);
     expect(rec.use).toBe("codex");
     expect(rec.recommendationBasis).toBe("known-waste");
@@ -227,13 +227,13 @@ describe("advisory", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     const recentProvider = {
       provider: "claude",
-      usedPct: 10,
+      weeklyPct: 10,
       periodStart: "2026-08-28T06:00:00+10:00",
       resetsAt: "2026-09-04T06:00:00+10:00",
     } as any;
     const windowAvgProvider = {
       provider: "kimi",
-      usedPct: 10,
+      weeklyPct: 10,
       periodStart: "2026-08-28T06:00:00+10:00",
       resetsAt: "2026-09-04T06:00:00+10:00",
     } as any;
@@ -252,7 +252,7 @@ describe("advisory", () => {
     // the ideal sits inside the deadband (Watch) and leaves no avoidable waste.
     const boundaryClaude = {
       provider: "claude",
-      usedPct: 50,
+      weeklyPct: 50,
       periodStart: "2026-08-26T06:00:00+10:00",
       resetsAt: "2026-09-05T06:00:00+10:00",
     } as any;
@@ -268,8 +268,8 @@ describe("advisory", () => {
 
   it("returns no recommendation when all quotas are at risk and no unknown headroom exists", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const atRisk1 = { provider: "claude", usedPct: 80, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
-    const atRisk2 = { provider: "kimi", usedPct: 90, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
+    const atRisk1 = { provider: "claude", weeklyPct: 80, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
+    const atRisk2 = { provider: "kimi", weeklyPct: 90, periodStart: "2026-08-28T06:00:00+10:00", resetsAt: "2026-09-04T06:00:00+10:00" } as any;
     const rec = recommend([atRisk1, atRisk2], "any", new Map([
       ["claude", { recent: 25, baseline: null }],
       ["kimi", { recent: 30, baseline: null }],
@@ -281,7 +281,7 @@ describe("advisory", () => {
 
   it("carries the window average alongside the forecast pace", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:60, periodStart:"2026-08-28T06:00:00+10:00",
+    const q = { provider:"kimi", weeklyPct:60, periodStart:"2026-08-28T06:00:00+10:00",
                 resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     const adv = computeAdvisory(q, 3, null, now);
     expect(adv.burnRate).toBe(3);
@@ -293,7 +293,7 @@ describe("advisory", () => {
     // Live Muse case: 2% used ~2h into a new window. Annualizing would
     // fabricate ~24%/day and a Cap risk; the 6h gate keeps it unknown.
     const now = new Date("2026-09-14T02:00:00+10:00");
-    const q = { provider:"muse", usedPct:2, periodStart:"2026-09-14T00:00:00+10:00",
+    const q = { provider:"muse", weeklyPct:2, periodStart:"2026-09-14T00:00:00+10:00",
                 resetsAt:"2026-09-21T06:00:00+10:00" } as any;
     const adv = computeAdvisory(q, null, null, now);
     expect(adv.avgPace).toBeNull();
@@ -304,13 +304,13 @@ describe("advisory", () => {
 
   it("reports a null average before the window start is known", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"kimi", usedPct:60, resetsAt:"2026-09-04T06:00:00+10:00" } as any;
+    const q = { provider:"kimi", weeklyPct:60, resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     expect(computeAdvisory(q, 3, null, now).avgPace).toBeNull();
   });
 
   it("forces the capped verdict when nothing remains, even with flat burn", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
-    const q = { provider:"grok", usedPct:100, periodStart:"2026-08-28T06:00:00+10:00",
+    const q = { provider:"grok", weeklyPct:100, periodStart:"2026-08-28T06:00:00+10:00",
                 resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     for (const burn of [0, 100.3]) {
       const adv = computeAdvisory(q, burn, null, now);
@@ -327,7 +327,7 @@ describe("advisory", () => {
 
   it("forces the capped verdict when nothing remains and pace is unknown", () => {
     const now = new Date("2026-08-28T06:30:00+10:00");
-    const q = { provider:"grok", usedPct:100, periodStart:"2026-08-28T06:00:00+10:00",
+    const q = { provider:"grok", weeklyPct:100, periodStart:"2026-08-28T06:00:00+10:00",
                 resetsAt:"2026-09-04T06:00:00+10:00" } as any;
     const adv = computeAdvisory(q, null, null, now);
     expect(adv.status).toBe("at risk");

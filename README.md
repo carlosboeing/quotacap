@@ -24,7 +24,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 | Kimi Code | `pty` — `kimi` then `/usage`, parse `Weekly/5h limit: Y% used` | Live |
 | Grok | `pty` — `grok` then `/usage`, parse `Weekly limit (plan)` + `Credits: $X` | Live |
 | Muse Code | `pty` — `muse --trust-workspace` then `/usage`, parse `Subscription · Muse Code <plan>` + `Weekly/Current N% used`; on `Currently unavailable`, up to three headless `muse exec` warm turns and re-reads inside the poll | Live |
-| OpenCode Go | `api` — `GET https://opencode.ai/zen/go/v1/usage` with the OpenCode auth key; opt-in via `quotacap providers enable opencode-go` (consent recorded, disable revokes it) | Live (opt-in) |
+| OpenCode Go | `api` — `GET https://opencode.ai/zen/go/v1/usage` with the OpenCode auth key; reports 5h, weekly and monthly windows; opt-in via `quotacap providers enable opencode-go` (consent recorded, disable revokes it) | Live (opt-in) |
 
 Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion); `muse` can reach about 75 s when it has to warm an unavailable subscription. It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
 

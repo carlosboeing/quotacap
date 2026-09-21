@@ -9,6 +9,7 @@ import {
   staleStateSnapshotJson,
   resetPassedStateSnapshotJson,
   unknownPaceStateSnapshotJson,
+  boardMonthlyStateSnapshotJson,
 } from "../fixtures/stable-state.js";
 
 /**
@@ -783,4 +784,63 @@ test("error states render from server fields", async ({ browser }) => {
       await context.close();
     }
   }
+});
+
+test("windows row: one line, per-card chevron, never opens the drawer", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const stub = await stubFor(JSON.parse(boardMonthlyStateSnapshotJson));
+  await page.goto(stub.url);
+  const go = page.getByTestId("provider-card-opencode-go");
+  const line = go.getByTestId("wline-opencode-go");
+  await expect(line).toBeVisible();
+  // one line: both units share a top edge
+  const tops = await line.locator(".unit").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(tops).toHaveLength(2);
+  expect(new Set(tops).size).toBe(1);
+  await expect(line).toContainText("Mth");
+  await expect(page.getByTestId("provider-card-grok").locator(".wline")).toHaveCount(0);
+  await expect(page.getByTestId("provider-card-claude").locator('[data-win="month"]')).toHaveCount(0);
+  await expect(go).toContainText("→ 5% of month left");
+  await expect(go.getByTestId("pace-hatch")).toHaveCount(0);
+
+  await line.click();
+  await expect(line).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("windows-opencode-go")).toBeVisible();
+  await expect(page.getByTestId("provider-drawer")).toBeHidden();
+  await expect(page.getByTestId("windows-claude")).toHaveCount(0); // per card
+
+  await line.focus();
+  await page.keyboard.press("Enter");
+  await expect(line).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press(" ");
+  await expect(line).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("provider-drawer")).toBeHidden();
+  await shot(page, "windows-row-card.png");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  const rowLine = page.getByTestId("provider-row-opencode-go").getByTestId("wline-opencode-go");
+  await expect(rowLine).toBeVisible();
+  await rowLine.click();
+  await expect(page.getByTestId("provider-drawer")).toBeHidden();
+  await shot(page, "windows-row-table.png");
+});
+
+test("Monthly exhausted pill stays on one line inside the table badge column", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const s = JSON.parse(boardMonthlyStateSnapshotJson);
+  const go = s.providers.find((p: any) => p.id === "opencode-go");
+  go.quota.monthlyStatus = "exhausted";
+  go.quota.monthlyPct = 100;
+  go.advisory.bindingWindow = "monthly";
+  go.advisory.bindingRemaining = 0;
+  const stub = await stubFor(s);
+  await page.goto(stub.url);
+  await page.getByRole("button", { name: "Table" }).click();
+  const pill = page.getByTestId("provider-row-opencode-go").getByTestId("pace-badge");
+  await expect(pill).toHaveText("Monthly exhausted");
+  const box = await pill.boundingBox();
+  const lineHeight = await pill.evaluate((e) => parseFloat(getComputedStyle(e).lineHeight) || 16);
+  expect(box!.height).toBeLessThan(lineHeight * 2);
+  const cell = await pill.evaluate((e) => (e.closest("[data-label]") as HTMLElement).getBoundingClientRect().right);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(cell);
 });
