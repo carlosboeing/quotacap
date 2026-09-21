@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.40 — unreleased
+
+- Nested included monthly windows (#109): OpenCode Go's monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind: "included"`), and ranking uses bottleneck headroom. A provider whose included month is exhausted leaves both recommendation pools and reads **Monthly exhausted**. When the month is the scarcer window, the forecast reads `5% of month left` instead of the weekly waste, and the known-waste pool ranks on the smaller of weekly waste and the month's headroom priced over the weekly days left. The board adds one collapsed windows row under the weekly bar (`5h` and `Mth` tags, per-card chevron), the drawer stacks Weekly, 5h and Monthly with the badge in its header, and the CLI STATE column widens to fit the new word.
+- Rename: `Quota.usedPct` → `weeklyPct`, `sessionPct` → `fiveHourPct`. `/api/quotas`, `/api/state` and MCP `get_quotas` carry both spellings for one release; `usedPct` and `sessionPct` are deprecated and will be removed.
+
 ## 0.0.39
 
 - Claude polls start no MCP servers: `claude -p /usage` and the `claude -p /model` catalog fetch now pass `--strict-mcp-config`. Before, every poll booted the user's MCP servers under the daemon's PATH, which lacks `node` and `npx` under launchd. Claude Code cached each failure for 15 minutes, and each poll renewed it, so those servers were skipped at the start of the user's own sessions.
