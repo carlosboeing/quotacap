@@ -29,6 +29,21 @@ function mapRow(row:any){
     delete out.fiveHourPct;
     delete out.sessionPct;
   }
+  // A junk monthly percent means no usable monthly reading. It never
+  // invalidates the provider; only a bad weekly percent does (snapshot.ts).
+  const m = row.monthly_pct;
+  const monthlyValid = typeof m === "number" && Number.isFinite(m) && m >= 0 && m <= 100;
+  out.monthlyPct = monthlyValid ? m : undefined;
+  out.monthlyResetsAt = row.monthly_resets_at ?? undefined;
+  out.monthlyStatus = row.monthly_status ?? undefined;
+  out.monthlyKind = row.monthly_kind ?? undefined;
+  delete out.monthly_pct;
+  delete out.monthly_resets_at;
+  delete out.monthly_status;
+  delete out.monthly_kind;
+  for (const k of ["monthlyPct", "monthlyResetsAt", "monthlyStatus", "monthlyKind"]) {
+    if (!monthlyValid || out[k] == null) delete out[k];
+  }
   return out;
 }
 
@@ -79,7 +94,7 @@ export function upsertQuota(db:any, q:any){
           .run(prev.provider, prev.plan ?? null, prev.weeklyPct, Math.max(0, 100 - prev.weeklyPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
       }
     }
-    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct);
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null);
     const day = new Date().toISOString().slice(0,10);
     db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, weeklyPct);
     db.exec("COMMIT");
