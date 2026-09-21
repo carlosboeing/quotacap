@@ -240,9 +240,13 @@ describe("diagnostic boundary and failure classification", () => {
         "opencode-go: rolling usage not found",
         "opencode-go: bad rolling pct",
         "opencode-go: usage status not ok",
+        "opencode-go: bad monthly pct",
+        "opencode-go: bad monthly reset",
+        "opencode-go: unknown monthly status",
       ]) {
         const f = classifyFailure("opencode-go", new Error(msg));
         expect(f.diagnosticCode).toBe("parse_error");
+        expect(f.category).toBe("parse");
       }
     });
 

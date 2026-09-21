@@ -51,6 +51,62 @@ describe("parseOpencodeGoUsage", () => {
     expect(() => parseOpencodeGoUsage({ usage: { weekly: { status: "ok", percent: 8, resetsAt: "2026-09-21T00:00:00Z" }, rolling: { status: "ok", percent: -1, resetsAt: "2026-09-17T10:00:00Z" } } }, now))
       .toThrow("opencode-go: bad rolling pct");
   });
+
+  const W = { status: "ok", percent: 8, resetsAt: "2026-09-21T00:00:00.662Z" };
+  const R = { status: "ok", percent: 5, resetsAt: "2026-09-17T10:54:52.662Z" };
+  const withMonthly = (monthly: unknown) => ({ usage: { weekly: W, rolling: R, monthly } });
+
+  it("maps an ok monthly to included/ok with its percent and reset", () => {
+    const q = parseOpencodeGoUsage(LIVE_BODY, now);
+    expect(q.monthlyKind).toBe("included");
+    expect(q.monthlyStatus).toBe("ok");
+    expect(q.monthlyPct).toBe(82);
+    expect(q.monthlyResetsAt).toBe("2026-09-22T13:05:15.662Z");
+  });
+
+  it("maps rate-limited to exhausted at 100 without requiring the percent to read 100", () => {
+    const q = parseOpencodeGoUsage(withMonthly({ status: "rate-limited", percent: 97, resetsAt: "2026-09-22T13:05:15Z" }), now);
+    expect(q.monthlyStatus).toBe("exhausted");
+    expect(q.monthlyPct).toBe(100);
+  });
+
+  it("omits all four fields when monthly is absent or not an object, and the poll succeeds", () => {
+    for (const body of [{ usage: { weekly: W, rolling: R } }, withMonthly(null), withMonthly("x")]) {
+      const q = parseOpencodeGoUsage(body, now);
+      for (const k of ["monthlyPct", "monthlyResetsAt", "monthlyStatus", "monthlyKind"]) expect(k in q).toBe(false);
+      expect(q.weeklyPct).toBe(8);
+    }
+  });
+
+  it("clamps a percent over 100 to 100 and marks it exhausted", () => {
+    const q = parseOpencodeGoUsage(withMonthly({ status: "ok", percent: 100.3, resetsAt: "2026-09-22T13:05:15Z" }), now);
+    expect(q.monthlyPct).toBe(100);
+    expect(q.monthlyStatus).toBe("exhausted");
+  });
+
+  it("throws fixed subjects on a bad monthly percent, reset, or status", () => {
+    for (const percent of [-1, "82", null]) {
+      expect(() => parseOpencodeGoUsage(withMonthly({ status: "ok", percent, resetsAt: "2026-09-22T13:05:15Z" }), now))
+        .toThrow("opencode-go: bad monthly pct");
+    }
+    expect(() => parseOpencodeGoUsage(withMonthly({ status: "ok", percent: 50 }), now))
+      .toThrow("opencode-go: bad monthly reset");
+    expect(() => parseOpencodeGoUsage(withMonthly({ status: "rate-limited", percent: 100 }), now))
+      .toThrow("opencode-go: bad monthly reset");
+    expect(() => parseOpencodeGoUsage(withMonthly({ status: "queued", percent: 50, resetsAt: "2026-09-22T13:05:15Z" }), now))
+      .toThrow("opencode-go: unknown monthly status");
+  });
+
+  it("parses the live 2026-09-19 issue-109 body to weekly 44 beside an exhausted month", () => {
+    const q = parseOpencodeGoUsage({ usage: {
+      rolling: { status: "ok", percent: 0, resetsAt: "2026-09-19T12:00:00Z" },
+      weekly: { status: "ok", percent: 44, resetsAt: "2026-09-21T00:00:00.904Z" },
+      monthly: { status: "rate-limited", percent: 100, resetsAt: "2026-09-22T13:05:15.904Z" },
+    } }, now);
+    expect(q.weeklyPct).toBe(44);
+    expect(q.monthlyStatus).toBe("exhausted");
+    expect(q.monthlyPct).toBe(100);
+  });
 });
 
 describe("opencodeGoAdapter.poll", () => {

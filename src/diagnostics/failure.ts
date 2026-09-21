@@ -308,6 +308,15 @@ function matchPrecedence(
   if (/\bbad rolling pct\b/i.test(text)) {
     return { code: "parse_error", phrase: "bad rolling pct" };
   }
+  if (/\bbad monthly pct\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad monthly pct" };
+  }
+  if (/\bbad monthly reset\b/i.test(text)) {
+    return { code: "parse_error", phrase: "bad monthly reset" };
+  }
+  if (/\bunknown monthly status\b/i.test(text)) {
+    return { code: "parse_error", phrase: "unknown monthly status" };
+  }
   if (/\busage status not ok\b/i.test(text)) {
     return { code: "parse_error", phrase: "usage status not ok" };
   }
