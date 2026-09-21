@@ -49,6 +49,13 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,
+    bindingWindow: adv.bindingWindow === "monthly" ? "monthly" : "weekly",
+    bindingRemaining: Number.isFinite(adv.bindingRemaining)
+      ? adv.bindingRemaining
+      : Number.isFinite(adv.remaining) ? adv.remaining : 0,
+    bindingDaysLeft: Number.isFinite(adv.bindingDaysLeft)
+      ? adv.bindingDaysLeft
+      : Number.isFinite(adv.daysLeft) ? adv.daysLeft : 0,
   };
 }
 

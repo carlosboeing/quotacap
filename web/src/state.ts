@@ -38,6 +38,9 @@ export interface AdvisoryView {
   status: BurnStatus;
   wastePct: number | null;
   urgency: Urgency;
+  bindingWindow: "weekly" | "monthly";
+  bindingRemaining: number;
+  bindingDaysLeft: number;
 }
 
 export interface RecommendationView {

@@ -1,5 +1,5 @@
 import type { Quota } from "../adapters/types.js";
-import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis } from "./types.js";
+import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis, BindingWindow } from "./types.js";
 import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL } from "./types.js";
 
 const DAY_MS = 86400000;
@@ -65,6 +65,28 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   const exhausted = remaining <= 0;
   const burnRate = blendForecast(recent, baseline);
 
+  // Above every return: the unknown-pace path below is exactly what pool 2
+  // ranks, so a binding computed later would leave it on weekly numbers.
+  const weeklyHeadroom = remaining / daysLeft;
+  let bindingWindow: BindingWindow = "weekly";
+  let bindingRemaining = remaining;
+  let bindingDaysLeft = daysLeft;
+
+  if (q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
+    const monthlyRemaining =
+      q.monthlyStatus === "exhausted" ? 0 : Math.max(0, 100 - q.monthlyPct);
+    const monthlyDaysLeft = Math.max(
+      0.1,
+      (new Date(q.monthlyResetsAt).getTime() - now.getTime()) / DAY_MS
+    );
+    const monthlyHeadroom = monthlyRemaining / monthlyDaysLeft;
+    if (monthlyHeadroom < weeklyHeadroom || monthlyRemaining === 0) {
+      bindingWindow = "monthly";
+      bindingRemaining = monthlyRemaining;
+      bindingDaysLeft = monthlyDaysLeft;
+    }
+  }
+
   // paceSource describes recent availability; the blend's composition is
   // carried by recentRate and baselineRate.
   const paceSource: PaceSource = recent !== null ? "recent" : burnRate !== null ? "window-average" : "unknown";
@@ -87,6 +109,9 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       status: exhausted ? "at risk" : "unknown",
       wastePct: exhausted ? 0 : null,
       urgency: exhausted ? "slow down" : "on track",
+      bindingWindow,
+      bindingRemaining,
+      bindingDaysLeft,
     };
   }
   if (exhausted) {
@@ -106,6 +131,9 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       status: "at risk",
       wastePct: 0,
       urgency: "slow down",
+      bindingWindow,
+      bindingRemaining,
+      bindingDaysLeft,
     };
   }
 
@@ -132,7 +160,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   else if(wastePct>10) urgency="save";
   if (estimated && urgency === "burn now") urgency = "use soon";
 
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft };
 }
 
 export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<string,{ recent: number | null; baseline: number | null }>(), now=new Date()){

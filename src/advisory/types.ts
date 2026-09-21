@@ -19,6 +19,8 @@ export type BurnStatus = "at risk" | "watch" | "on track" | "unknown";
 export type PaceSource = "recent" | "window-average" | "unknown";
 export type RecommendationBasis = "known-waste" | "unknown-headroom" | "none";
 
+export type BindingWindow = "weekly" | "monthly";
+
 export type ExclusionReason =
   | "not-reporting"
   | "stale"
@@ -51,6 +53,12 @@ export interface Advisory {
   status: BurnStatus;
   wastePct: number | null;
   urgency: Urgency;
+  /** Which included window is scarcer per day left. "weekly" when there is no included monthly. */
+  bindingWindow: BindingWindow;
+  /** Remaining percent of the binding window. Equals `remaining` when weekly binds. */
+  bindingRemaining: number;
+  /** Days until the binding window resets. Equals `daysLeft` when weekly binds. */
+  bindingDaysLeft: number;
 }
 
 export interface Recommendation {

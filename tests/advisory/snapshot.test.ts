@@ -282,4 +282,17 @@ describe("snapshot", () => {
     expect(go.exclusionReason).toBeNull();
     expect(go.quota?.monthlyPct).toBeUndefined();
   });
+
+  it("advisories carry bindingWindow weekly for providers with no monthly", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const now = new Date("2026-09-21T08:00:00.000Z");
+    upsertQuota(db, { provider: "kimi", plan: "p", source: "cli", weeklyPct: 20,
+      resetsAt: "2026-09-25T00:00:00.000Z", periodStart: "2026-09-18T00:00:00.000Z", fetchedAt: now.toISOString() });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now,
+      runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "test" } });
+    const adv = s.providers[0].advisory!;
+    expect(adv.bindingWindow).toBe("weekly");
+    expect(adv.bindingRemaining).toBe(adv.remaining);
+    expect(adv.bindingDaysLeft).toBe(adv.daysLeft);
+  });
 });
