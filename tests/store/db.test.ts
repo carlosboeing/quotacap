@@ -93,4 +93,33 @@ describe("store", () => {
     expect(latest?.usedPct).toBe(25);
     expect((latest as any).raw).toBeUndefined();
   });
+
+  it("mapRow emits weeklyPct/fiveHourPct and their one-release aliases with equal values", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, { provider:"claude", plan:"max", usedPct:25, sessionPct:9, resetsAt:"2026-09-03T21:00:00+10:00", periodStart:"2026-08-26T00:00:00Z", source:"cli" as const, fetchedAt:new Date().toISOString() });
+    const got: any = getLatestByProvider(db, "claude");
+    expect(got.weeklyPct).toBe(25);
+    expect(got.usedPct).toBe(25);
+    expect(got.fiveHourPct).toBe(9);
+    expect(got.sessionPct).toBe(9);
+    expect(got.used_pct).toBeUndefined();
+    expect(got.session_pct).toBeUndefined();
+  });
+
+  it("upsertQuota accepts either spelling", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, { provider:"kimi", plan:"p", weeklyPct:31, fiveHourPct:4, resetsAt:"2026-09-03T21:00:00+10:00", periodStart:"2026-08-26T00:00:00Z", source:"cli" as const, fetchedAt:new Date().toISOString() });
+    const got: any = getLatestByProvider(db, "kimi");
+    expect(got.weeklyPct).toBe(31);
+    expect(got.usedPct).toBe(31);
+    expect(got.fiveHourPct).toBe(4);
+  });
+
+  it("omits both 5h spellings when no 5h reading exists", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, { provider:"grok", plan:"p", weeklyPct:10, resetsAt:"2026-09-03T21:00:00+10:00", periodStart:"2026-08-26T00:00:00Z", source:"tui" as const, fetchedAt:new Date().toISOString() });
+    const got: any = getLatestByProvider(db, "grok");
+    expect("fiveHourPct" in got).toBe(false);
+    expect("sessionPct" in got).toBe(false);
+  });
 });

@@ -6,6 +6,7 @@ import {
   buildRow,
   compactSuffix,
   sortProviders,
+  weeklyPctOf,
   type RailCell,
   type SortKey,
   type StateWord,
@@ -202,7 +203,7 @@ export function renderCompact(snapshot: StateSnapshot, _now?: Date): string {
   const entries = sorted
     .filter((p) => p.quota !== null)
     .map((p) => {
-      const u = p.quota?.usedPct;
+      const u = weeklyPctOf(p.quota);
       const used = typeof u === "number" && Number.isFinite(u) ? String(Math.round(u)) : "?";
       return `[${p.id}:${used}%${compactSuffix(p)}]`;
     });

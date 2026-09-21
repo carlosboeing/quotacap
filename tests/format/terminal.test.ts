@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Quota } from "../../src/adapters/types.js";
+import type { QuotaWire } from "../../src/adapters/types.js";
 import type {
   Advisory,
   AttemptRecord,
@@ -37,17 +37,18 @@ const DAY = 24 * HOUR;
 const RESETS = "2026-09-14T06:00:00+10:00"; // FIXED_NOW + 7d
 const START = "2026-08-31T06:00:00+10:00"; // FIXED_NOW - 7d
 
-function quota(over: Partial<Quota> = {}): Quota {
-  return {
+function quota(over: Partial<QuotaWire> = {}): QuotaWire {
+  const q = {
     provider: "x",
     plan: "p",
-    usedPct: 10,
+    weeklyPct: 10,
     resetsAt: RESETS,
     periodStart: START,
-    source: "cli",
+    source: "cli" as const,
     fetchedAt: FIXED_NOW.toISOString(),
     ...over,
   };
+  return { ...q, usedPct: q.weeklyPct };
 }
 
 function advisory(over: Partial<Advisory> = {}): Advisory {
@@ -198,7 +199,7 @@ describe("rail geometry (D9)", () => {
   });
   it("tick overwrites fill when elapsed trails usage", () => {
     const cells = railCells(
-      ps({ id: "x", quota: quota({ usedPct: 50 }), reporting: true, advisory: advisory() }),
+      ps({ id: "x", quota: quota({ weeklyPct: 50 }), reporting: true, advisory: advisory() }),
       new Date(START), // elapsed 0 -> tick at 0
     );
     expect(cells[0]).toBe("tick");
@@ -215,7 +216,7 @@ describe("rail geometry (D9)", () => {
   it("reporting rows with unknown elapsed have fill but no tick", () => {
     const p = ps({
       id: "x",
-      quota: quota({ usedPct: 40, periodStart: "not-a-date" }),
+      quota: quota({ weeklyPct: 40, periodStart: "not-a-date" }),
       reporting: true,
       advisory: advisory(),
     });
@@ -311,7 +312,7 @@ describe("forecast sentences (D7)", () => {
   it("zero-waste rows forecast exhaustion without inventing a rate", () => {
     const p = ps({
       id: "x",
-      quota: quota({ usedPct: 90 }),
+      quota: quota({ weeklyPct: 90 }),
       reporting: true,
       advisory: advisory({ status: "at risk", wastePct: 0, urgency: "slow down" }),
     });
@@ -320,7 +321,7 @@ describe("forecast sentences (D7)", () => {
   it("names exhausted windows without a rate", () => {
     const p = ps({
       id: "x",
-      quota: quota({ usedPct: 100 }),
+      quota: quota({ weeklyPct: 100 }),
       reporting: true,
       advisory: advisory({
         remaining: 0,

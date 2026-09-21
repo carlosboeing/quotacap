@@ -119,7 +119,7 @@ export function parseGrokTui(text: string, now = new Date()): ParsedQuota {
   return {
     provider: "grok",
     plan,
-    usedPct,
+    weeklyPct: usedPct,
     resetsAt,
     periodStart,
     source: "tui",

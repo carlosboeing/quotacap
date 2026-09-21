@@ -7,7 +7,7 @@ const DAY_MS = 86400000;
 /**
  * Pace from a single reading.
  *
- * `usedPct` is a running total since the window opened, and `periodStart` is
+ * `weeklyPct` is a running total since the window opened, and `periodStart` is
  * a required field every adapter sets, so a pace is always computable from
  * one poll. Returns null when `periodStart` is missing or unparseable, or
  * when less than MIN_PACE_SPAN_DAYS has elapsed (annualizing a smaller
@@ -19,7 +19,7 @@ export function averagePace(q: Quota, now = new Date()): number | null {
   if (Number.isNaN(start)) return null;
   const elapsedDays = (now.getTime() - start) / DAY_MS;
   if (elapsedDays < MIN_PACE_SPAN_DAYS) return null;
-  const pace = q.usedPct / elapsedDays;
+  const pace = q.weeklyPct / elapsedDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
 }
@@ -57,7 +57,7 @@ function elapsedPctOf(q: Quota, now: Date): number | null {
 export function computeAdvisory(q: Quota, recent: number | null, baseline: number | null, now = new Date()): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
-  const remaining = 100 - q.usedPct;
+  const remaining = 100 - q.weeklyPct;
   const idealRate = remaining / daysLeft;
   const avgPace = averagePace(q, now);
   // Nothing left to burn: force the capped verdict even when the recent
@@ -113,8 +113,8 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   // verified clock; a missing or estimated clock caps at Watch.
   const elapsed = elapsedPctOf(q, now);
   const estimated = q.resetsAtEstimated === true;
-  const gate = elapsed !== null && !estimated && q.usedPct >= elapsed * (1 - GATE_TOL);
-  const aheadOfElapsed = elapsed !== null && !estimated && q.usedPct > elapsed * (1 + GATE_TOL);
+  const gate = elapsed !== null && !estimated && q.weeklyPct >= elapsed * (1 - GATE_TOL);
+  const aheadOfElapsed = elapsed !== null && !estimated && q.weeklyPct > elapsed * (1 + GATE_TOL);
 
   const wastePct = Math.max(0, remaining - burnRate*daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;

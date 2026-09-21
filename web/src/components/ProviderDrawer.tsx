@@ -46,7 +46,7 @@ export interface DrawerModel {
   evidence: string[];
   exclusionReason: ExclusionReason;
   exclusionWords: string | null;
-  sessionPct?: number;
+  fiveHourPct?: number;
   /** Type-level guard: a session reset is never synthesized, so this stays absent. */
   sessionReset?: undefined;
 }
@@ -118,8 +118,8 @@ export function drawerModel(provider: ProviderView): DrawerModel {
     exclusionReason: provider.exclusionReason,
     exclusionWords: exclusionWords(provider.exclusionReason),
   };
-  if (provider.quota?.sessionPct !== undefined && provider.quota.sessionPct !== null) {
-    model.sessionPct = provider.quota.sessionPct;
+  if (provider.quota?.fiveHourPct !== undefined && provider.quota.fiveHourPct !== null) {
+    model.fiveHourPct = provider.quota.fiveHourPct;
   }
   return model;
 }
@@ -207,13 +207,13 @@ export function rankingCopy(
   const advisory = provider.advisory;
   const stamp = resetStamp(provider);
   const known = quota
-    ? `${name} reports ${quota.usedPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
+    ? `${name} reports ${quota.weeklyPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
     : "No reading yet.";
   let pace: string;
   if (!advisory || advisory.paceSource === "unknown" || advisory.burnRate === null) {
     pace = modelFailure(provider) ?? "No current pace.";
   } else if (advisory.remaining <= 0) {
-    pace = `Exhausted at ${quota?.usedPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
+    pace = `Exhausted at ${quota?.weeklyPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
   } else {
     const { avg, recent } = paceFigures(advisory);
     const figures =
@@ -258,7 +258,7 @@ export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<
   return {
     provider: provider.id,
     plan: quota?.plan ? quota.plan.split(" · ")[0] : null,
-    usedPct: quota?.usedPct ?? null,
+    usedPct: quota?.weeklyPct ?? null,
     elapsedPct: elapsedPct !== null ? Math.round(elapsedPct) : null,
     resetsAt: quota?.resetsAt ?? null,
     source: quota?.source ?? null,
@@ -603,17 +603,17 @@ export function ProviderDrawer({
           )}
         </section>
 
-        {model.sessionPct !== undefined && model.sessionPct !== null && Number.isFinite(model.sessionPct) && (
+        {model.fiveHourPct !== undefined && model.fiveHourPct !== null && Number.isFinite(model.fiveHourPct) && (
           <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "5h Limit"}>
             <h3>{shortWindowLabel(provider.id) ?? "5h Limit"}</h3>
             <div className="pcard-topline">
-              <span className="used">{model.sessionPct}% used</span>
+              <span className="used">{model.fiveHourPct}% used</span>
             </div>
-            <div className="track" role="img" aria-label={`${model.sessionPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
+            <div className="track" role="img" aria-label={`${model.fiveHourPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
               <div
                 className="fill"
                 style={{
-                  width: `${Math.min(100, Math.max(0, model.sessionPct))}%`,
+                  width: `${Math.min(100, Math.max(0, model.fiveHourPct))}%`,
                   background: "var(--fill-ontrack)",
                   ["--fill-edge" as string]: "var(--edge-ontrack)",
                 }}

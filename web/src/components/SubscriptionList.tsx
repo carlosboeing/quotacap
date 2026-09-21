@@ -35,7 +35,7 @@ export function sortProviders(
     return [...ranked, ...rest, ...excluded];
   }
   const resetMs = (p: ProviderView): number => (p.quota ? Date.parse(p.quota.resetsAt) : NaN);
-  const used = (p: ProviderView): number => (p.quota ? p.quota.usedPct : NaN);
+  const used = (p: ProviderView): number => (p.quota ? p.quota.weeklyPct : NaN);
   const withInvalidLast = (cmp: (a: number, b: number) => number, value: (p: ProviderView) => number) =>
     list.sort((a, b) => {
       const va = value(a);

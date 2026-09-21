@@ -150,7 +150,7 @@ describe("pace figures", () => {
   it("names exhausted windows in the forecast line", () => {
     const capped = {
       exclusionReason: null,
-      quota: { usedPct: 100 },
+      quota: { weeklyPct: 100 },
       advisory: {
         remaining: 0,
         paceSource: "recent",
@@ -167,7 +167,7 @@ describe("pace figures", () => {
   it("renders watch with the finite exhaustion clock and without one otherwise", () => {
     const watch = (over: any = {}) => ({
       exclusionReason: null,
-      quota: { usedPct: 88 },
+      quota: { weeklyPct: 88 },
       advisory: {
         remaining: 12,
         paceSource: "recent",
@@ -188,18 +188,18 @@ describe("pace figures", () => {
     expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
   });
   it("explains red and amber badges, confessing the estimated reset", () => {
-    const rendered = (advisory: any, quota: any = { usedPct: 90 }) =>
+    const rendered = (advisory: any, quota: any = { weeklyPct: 90 }) =>
       renderToString(
         React.createElement(Badge, { provider: { exclusionReason: null, quota, advisory } as any }),
       );
     const red = "Burning faster than the window allows and ahead of elapsed time";
     const amber = "Pace points at the cap, but position or the reset clock is uncertain";
     expect(rendered({ status: "at risk", urgency: "burn now" })).toContain(`title="${red}"`);
-    expect(rendered({ status: "at risk", urgency: "burn now" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+    expect(rendered({ status: "at risk", urgency: "burn now" }, { weeklyPct: 90, resetsAtEstimated: true })).toContain(
       `title="${red} (estimated reset)"`,
     );
     expect(rendered({ status: "watch", urgency: "save" })).toContain(`title="${amber}"`);
-    expect(rendered({ status: "watch", urgency: "save" }, { usedPct: 90, resetsAtEstimated: true })).toContain(
+    expect(rendered({ status: "watch", urgency: "save" }, { weeklyPct: 90, resetsAtEstimated: true })).toContain(
       `title="${amber} (estimated reset)"`,
     );
     expect(rendered({ status: "on track", urgency: "on track" })).not.toContain("title=");

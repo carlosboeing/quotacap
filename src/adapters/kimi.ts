@@ -47,8 +47,8 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   return {
     provider: "kimi",
     plan,
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt: weeklyIso,
     periodStart,
     source: "tui",

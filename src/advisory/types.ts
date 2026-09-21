@@ -1,4 +1,4 @@
-import type { Quota } from "../adapters/types.js";
+import type { Quota, QuotaWire } from "../adapters/types.js";
 import type { AttemptRecord } from "../store/attempts.js";
 import type { CatalogStatus, CatalogView, ListedModel } from "../catalog/types.js";
 
@@ -62,7 +62,7 @@ export interface Recommendation {
   models: ListedModel[];
   catalogStatus: CatalogStatus;
   catalogFetchedAt: string | null;
-  alternatives: Array<Quota & { catalog: CatalogView }>;
+  alternatives: Array<QuotaWire & { catalog: CatalogView }>;
   advisories: Advisory[];
 }
 
@@ -87,7 +87,7 @@ export interface ProviderSnapshot {
   harness: string | null;
   description: string | null;
   enabled: boolean;
-  quota: Quota | null;
+  quota: QuotaWire | null;
   lastAttempt: AttemptRecord | null;
   lastSuccessAt: string | null;
   reporting: boolean;

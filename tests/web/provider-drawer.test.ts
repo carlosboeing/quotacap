@@ -96,7 +96,7 @@ describe("provider drawer", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const zeroSession = {
       ...s.providers.find((p) => p.id === "claude")!,
-      quota: { ...s.providers.find((p) => p.id === "claude")!.quota!, sessionPct: 0 },
+      quota: { ...s.providers.find((p) => p.id === "claude")!.quota!, fiveHourPct: 0 },
     };
     const htmlZero = renderToString(
       React.createElement(ProviderDrawer, {
@@ -159,7 +159,7 @@ describe("provider drawer", () => {
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     const capped = {
       ...kimi,
-      quota: { ...kimi.quota!, usedPct: 100 },
+      quota: { ...kimi.quota!, weeklyPct: 100 },
       advisory: {
         ...kimi.advisory!,
         remaining: 0,

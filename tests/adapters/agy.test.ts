@@ -88,7 +88,7 @@ function agyOnPath(): boolean {
 }
 
 describe("parseAgyUsage", () => {
-  it("maps Gemini weekly remaining_fraction to usedPct and 5h to sessionPct for agy row, and 3p for agy:3p row", () => {
+  it("maps Gemini weekly remaining_fraction to weeklyPct and 5h to fiveHourPct for agy row, and 3p for agy:3p row", () => {
     const now = new Date("2026-08-31T00:00:00Z");
     const rows = parseAgyUsage(fixture, now);
     expect(rows).toHaveLength(2);
@@ -96,8 +96,8 @@ describe("parseAgyUsage", () => {
     const [gemini, threeP] = rows;
     expect(gemini.provider).toBe("agy");
     expect(gemini.plan).toBe("unknown");
-    expect(gemini.usedPct).toBe(25);
-    expect(gemini.sessionPct).toBe(0);
+    expect(gemini.weeklyPct).toBe(25);
+    expect(gemini.fiveHourPct).toBe(0);
     expect(gemini.resetsAt).toBe(new Date("2026-09-01T13:42:08Z").toISOString());
     expect(gemini.periodStart).toBe(new Date(Date.parse("2026-09-01T13:42:08Z") - 7 * 86400000).toISOString());
     expect(gemini.source).toBe("cli");
@@ -106,8 +106,8 @@ describe("parseAgyUsage", () => {
 
     expect(threeP.provider).toBe("agy:3p");
     expect(threeP.plan).toBe("unknown");
-    expect(threeP.usedPct).toBe(0);
-    expect(threeP.sessionPct).toBe(0);
+    expect(threeP.weeklyPct).toBe(0);
+    expect(threeP.fiveHourPct).toBe(0);
     expect(threeP.resetsAt).toBe(new Date("2026-09-06T15:15:19Z").toISOString());
     expect(threeP.periodStart).toBe(new Date(Date.parse("2026-09-06T15:15:19Z") - 7 * 86400000).toISOString());
     expect(threeP.source).toBe("cli");
@@ -122,15 +122,15 @@ describe("parseAgyUsage", () => {
 
     const [gemini, threeP] = rows;
     expect(gemini.provider).toBe("agy");
-    expect(gemini.usedPct).toBe(43);
-    expect(gemini.sessionPct).toBe(8);
+    expect(gemini.weeklyPct).toBe(43);
+    expect(gemini.fiveHourPct).toBe(8);
     expect(gemini.resetsAt).toBe("2026-09-01T13:42:08.000Z");
     expect(gemini.periodStart).toBe(new Date(Date.parse("2026-09-01T13:42:08Z") - 7 * 86400000).toISOString());
     expect(gemini.source).toBe("cli");
 
     expect(threeP.provider).toBe("agy:3p");
-    expect(threeP.usedPct).toBe(39);
-    expect(threeP.sessionPct).toBe(18);
+    expect(threeP.weeklyPct).toBe(39);
+    expect(threeP.fiveHourPct).toBe(18);
     expect(threeP.resetsAt).toBe("2026-09-07T07:04:27.000Z");
     expect(threeP.periodStart).toBe(new Date(Date.parse("2026-09-07T07:04:27Z") - 7 * 86400000).toISOString());
     expect(threeP.source).toBe("cli");
@@ -164,13 +164,13 @@ describe("parseAgyUsage", () => {
     const rows = parseAgyUsage(parsed, new Date("2026-08-31T00:00:00Z"));
     expect(rows).toHaveLength(1);
     expect(rows[0].provider).toBe("agy:3p");
-    expect(rows[0].usedPct).toBe(60);
+    expect(rows[0].weeklyPct).toBe(60);
     expect(rows[0].resetsAt).toBe(new Date("2026-09-06T15:15:19Z").toISOString());
-    expect(rows[0].sessionPct).toBeUndefined();
+    expect(rows[0].fiveHourPct).toBeUndefined();
     expect((rows[0] as any).raw).toBe(JSON.stringify(parsed));
   });
 
-  it("omits sessionPct when 5h bucket is absent", () => {
+  it("omits fiveHourPct when 5h bucket is absent", () => {
     const parsed = {
       status: "SUCCESS",
       command: {
@@ -189,8 +189,8 @@ describe("parseAgyUsage", () => {
     const rows = parseAgyUsage(parsed, new Date("2026-08-31T00:00:00Z"));
     expect(rows).toHaveLength(1);
     expect(rows[0].provider).toBe("agy");
-    expect(rows[0].usedPct).toBe(50);
-    expect(rows[0].sessionPct).toBeUndefined();
+    expect(rows[0].weeklyPct).toBe(50);
+    expect(rows[0].fiveHourPct).toBeUndefined();
   });
 
   it("throws when status is not SUCCESS (fail-closed)", () => {
@@ -247,7 +247,7 @@ describe("advisory handling for agy:3p", () => {
     const agyQuota = {
       provider: "agy",
       plan: "unknown",
-      usedPct: 80,
+      weeklyPct: 80,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
       source: "cli" as const,
@@ -257,7 +257,7 @@ describe("advisory handling for agy:3p", () => {
     const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
-      usedPct: 14,
+      weeklyPct: 14,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
       source: "cli" as const,
@@ -278,7 +278,7 @@ describe("advisory handling for agy:3p", () => {
     const agyQuota = {
       provider: "agy",
       plan: "unknown",
-      usedPct: 14,
+      weeklyPct: 14,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
       source: "cli" as const,
@@ -288,7 +288,7 @@ describe("advisory handling for agy:3p", () => {
     const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
-      usedPct: 80,
+      weeklyPct: 80,
       periodStart: "2026-08-25T00:00:00Z",
       resetsAt: "2026-09-03T00:00:00Z",
       source: "cli" as const,
@@ -308,7 +308,7 @@ describe("advisory handling for agy:3p", () => {
     const threePQuota = {
       provider: "agy:3p",
       plan: "unknown",
-      usedPct: 50,
+      weeklyPct: 50,
       periodStart: "2026-08-31T00:00:00Z",
       resetsAt: "2026-09-07T00:00:00Z",
       source: "cli" as const,
@@ -342,13 +342,13 @@ describe("agyAdapter live poll", () => {
     expect(gemini.source).toBe("cli");
     expect((gemini as any).raw).not.toBe("");
     expect(JSON.parse((gemini as any).raw).status).toBe("SUCCESS");
-    expect(gemini.usedPct).toBeGreaterThanOrEqual(0);
-    expect(gemini.usedPct).toBeLessThanOrEqual(100);
+    expect(gemini.weeklyPct).toBeGreaterThanOrEqual(0);
+    expect(gemini.weeklyPct).toBeLessThanOrEqual(100);
     expect(Number.isNaN(new Date(gemini.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(gemini.periodStart).getTime())).toBe(false);
-    if (gemini.sessionPct !== undefined) {
-      expect(gemini.sessionPct).toBeGreaterThanOrEqual(0);
-      expect(gemini.sessionPct).toBeLessThanOrEqual(100);
+    if (gemini.fiveHourPct !== undefined) {
+      expect(gemini.fiveHourPct).toBeGreaterThanOrEqual(0);
+      expect(gemini.fiveHourPct).toBeLessThanOrEqual(100);
     }
 
     expect(threeP.provider).toBe("agy:3p");
@@ -356,13 +356,13 @@ describe("agyAdapter live poll", () => {
     expect(threeP.source).toBe("cli");
     expect((threeP as any).raw).not.toBe("");
     expect(JSON.parse((threeP as any).raw).status).toBe("SUCCESS");
-    expect(threeP.usedPct).toBeGreaterThanOrEqual(0);
-    expect(threeP.usedPct).toBeLessThanOrEqual(100);
+    expect(threeP.weeklyPct).toBeGreaterThanOrEqual(0);
+    expect(threeP.weeklyPct).toBeLessThanOrEqual(100);
     expect(Number.isNaN(new Date(threeP.resetsAt).getTime())).toBe(false);
     expect(Number.isNaN(new Date(threeP.periodStart).getTime())).toBe(false);
-    if (threeP.sessionPct !== undefined) {
-      expect(threeP.sessionPct).toBeGreaterThanOrEqual(0);
-      expect(threeP.sessionPct).toBeLessThanOrEqual(100);
+    if (threeP.fiveHourPct !== undefined) {
+      expect(threeP.fiveHourPct).toBeGreaterThanOrEqual(0);
+      expect(threeP.fiveHourPct).toBeLessThanOrEqual(100);
     }
   }, 30000);
 });

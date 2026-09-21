@@ -24,6 +24,8 @@ describe("mcp get_quotas", () => {
       const rows = JSON.parse(res.content[1].text);
       expect(rows).toHaveLength(1);
       expect(rows[0].provider).toBe("claude");
+      expect(rows[0].weeklyPct).toBe(40);
+      expect(rows[0].usedPct).toBe(40);
       expect(rows[0].exclusionReason).toBe("reset-passed");
       expect(rows[0].displayName).toBe("Claude");
       for (const k of ["displayName", "vendor", "harness", "description"]) {

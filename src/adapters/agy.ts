@@ -48,8 +48,8 @@ function parseGroup(
   return {
     provider,
     plan: "unknown",
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt,
     periodStart,
     source: "cli",

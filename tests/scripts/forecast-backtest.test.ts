@@ -31,17 +31,20 @@ const result = runBacktest(dataset);
 
 const NOW = new Date("2026-09-16T00:00:00.000Z");
 
-function quota(over: Partial<Quota> = {}): Quota {
-  return {
+function quota(over: Partial<Quota> = {}): Quota & { usedPct: number } {
+  const q = {
     provider: "probe",
     plan: "p",
-    usedPct: 50,
+    weeklyPct: 50,
     periodStart: "2026-09-12T00:00:00.000Z",
     resetsAt: "2026-09-19T00:00:00.000Z",
-    source: "cli",
+    source: "cli" as const,
     fetchedAt: NOW.toISOString(),
     ...over,
-  } as Quota;
+  };
+  // The backtest replica reads usedPct while computeAdvisory reads weeklyPct;
+  // carry both spellings so the mirror compares the same reading.
+  return { ...q, usedPct: q.weeklyPct };
 }
 
 function closeOrNull(actual: number | null, expected: number | null) {
@@ -129,17 +132,17 @@ describe("forecast backtest — shipped constants", () => {
 });
 
 describe("forecast backtest — verdict mirrors", () => {
-  const cases: Array<[string, Quota, number | null, number | null]> = [
-    ["over and gated -> at risk", quota({ usedPct: 65 }), 40, 20],
-    ["over behind elapsed -> gate fails", quota({ usedPct: 30 }), 40, 20],
-    ["marginal band", quota({ usedPct: 50 }), 16, 16],
-    ["on track", quota({ usedPct: 50 }), 10, 10],
-    ["estimated ceiling", quota({ usedPct: 65, resetsAtEstimated: true }), 40, 20],
-    ["estimated exhausted stays red", quota({ usedPct: 100, resetsAtEstimated: true }), 0, 0],
-    ["verified exhausted", quota({ usedPct: 100 }), 0, 0],
-    ["no forecast inputs", quota({ usedPct: 50 }), null, null],
-    ["no forecast inputs, exhausted", quota({ usedPct: 100 }), null, null],
-    ["missing window start", quota({ usedPct: 50, periodStart: "" as any }), 20, 10],
+  const cases: Array<[string, Quota & { usedPct: number }, number | null, number | null]> = [
+    ["over and gated -> at risk", quota({ weeklyPct: 65 }), 40, 20],
+    ["over behind elapsed -> gate fails", quota({ weeklyPct: 30 }), 40, 20],
+    ["marginal band", quota({ weeklyPct: 50 }), 16, 16],
+    ["on track", quota({ weeklyPct: 50 }), 10, 10],
+    ["estimated ceiling", quota({ weeklyPct: 65, resetsAtEstimated: true }), 40, 20],
+    ["estimated exhausted stays red", quota({ weeklyPct: 100, resetsAtEstimated: true }), 0, 0],
+    ["verified exhausted", quota({ weeklyPct: 100 }), 0, 0],
+    ["no forecast inputs", quota({ weeklyPct: 50 }), null, null],
+    ["no forecast inputs, exhausted", quota({ weeklyPct: 100 }), null, null],
+    ["missing window start", quota({ weeklyPct: 50, periodStart: "" as any }), 20, 10],
   ];
 
   it("candidateVerdict matches computeAdvisory field for field", () => {
@@ -153,7 +156,7 @@ describe("forecast backtest — verdict mirrors", () => {
   });
 
   it("candidateVerdict honors a moved margin and tolerance", () => {
-    const q = quota({ usedPct: 65 });
+    const q = quota({ weeklyPct: 65 });
     const shipped = candidateVerdict(q, 40, 20, NOW, DEFAULT_CONSTANTS);
     expect(shipped.status).toBe("at risk");
     // A larger margin loosens `over` until the same inputs read watch.
@@ -162,14 +165,14 @@ describe("forecast backtest — verdict mirrors", () => {
   });
 
   it("currentVerdict reproduces the pre-blend formula: red iff dte < daysLeft, no margin, no gate", () => {
-    const gated = currentVerdict(quota({ usedPct: 65 }), 40, 20, NOW);
+    const gated = currentVerdict(quota({ weeklyPct: 65 }), 40, 20, NOW);
     expect(gated.status).toBe("at risk");
-    const behind = currentVerdict(quota({ usedPct: 30 }), 40, 20, NOW);
+    const behind = currentVerdict(quota({ weeklyPct: 30 }), 40, 20, NOW);
     expect(behind.status).toBe("at risk"); // no gate: cumulative position ignored
     expect(behind.daysToExhaust).toBeCloseTo(70 / 40, 9);
-    const marginal = currentVerdict(quota({ usedPct: 50 }), 16, 16, NOW);
+    const marginal = currentVerdict(quota({ weeklyPct: 50 }), 16, 16, NOW);
     expect(marginal.status).toBe("on track"); // no deadband
-    const exhausted = currentVerdict(quota({ usedPct: 100, resetsAtEstimated: true }), 0, 0, NOW);
+    const exhausted = currentVerdict(quota({ weeklyPct: 100, resetsAtEstimated: true }), 0, 0, NOW);
     expect(exhausted.status).toBe("at risk");
     expect(exhausted.daysToExhaust).toBe(0);
     const unknown = currentVerdict(quota(), null, null, NOW);

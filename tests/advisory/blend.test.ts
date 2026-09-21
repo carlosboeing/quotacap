@@ -9,7 +9,7 @@ function quota(over: Partial<Quota> = {}): Quota {
   return {
     provider: "claude",
     plan: "max",
-    usedPct: 20,
+    weeklyPct: 20,
     resetsAt: "2026-09-14T06:00:00Z",
     periodStart: "2026-09-05T06:00:00Z",
     source: "cli",

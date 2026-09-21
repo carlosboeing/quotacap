@@ -20,12 +20,12 @@ const LIVE_BODY = {
 describe("parseOpencodeGoUsage", () => {
   const now = new Date("2026-09-17T06:00:00Z");
 
-  it("maps weekly to usedPct and resetsAt, rolling to sessionPct", () => {
+  it("maps weekly to weeklyPct and resetsAt, rolling to fiveHourPct", () => {
     const q = parseOpencodeGoUsage(LIVE_BODY, now);
     expect(q.provider).toBe("opencode-go");
     expect(q.plan).toBe("unknown");
-    expect(q.usedPct).toBe(8);
-    expect(q.sessionPct).toBe(5);
+    expect(q.weeklyPct).toBe(8);
+    expect(q.fiveHourPct).toBe(5);
     expect(q.resetsAt).toBe("2026-09-21T00:00:00.662Z");
     expect(q.periodStart).toBe("2026-09-14T00:00:00.662Z");
     expect(q.source).toBe("api");
@@ -92,8 +92,8 @@ describe("opencodeGoAdapter.poll", () => {
     });
     stubFetch(200, LIVE_BODY);
     const q = await opencodeGoAdapter.poll();
-    expect(q.usedPct).toBe(8);
-    expect(q.sessionPct).toBe(5);
+    expect(q.weeklyPct).toBe(8);
+    expect(q.fiveHourPct).toBe(5);
     expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-go-entry");
     expect(fetchSpy.mock.calls[0][0]).toBe("https://opencode.ai/zen/go/v1/usage");
   });
@@ -102,7 +102,7 @@ describe("opencodeGoAdapter.poll", () => {
     authHome({ "opencode": { type: "api", key: "sk-shared" } });
     stubFetch(200, LIVE_BODY);
     const q = await opencodeGoAdapter.poll();
-    expect(q.usedPct).toBe(8);
+    expect(q.weeklyPct).toBe(8);
     expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-shared");
   });
 

@@ -207,7 +207,7 @@ export interface BarGeometry {
 
 /** Bar geometry from server timestamps and percents. Presentation only. */
 export function barGeometry(provider: ProviderView, asOfMs: number): BarGeometry {
-  const usedPct = provider.quota ? Math.min(100, Math.max(0, provider.quota.usedPct)) : 0;
+  const usedPct = provider.quota ? Math.min(100, Math.max(0, provider.quota.weeklyPct)) : 0;
   let elapsedPct: number | null = null;
   if (provider.quota) {
     const startMs = Date.parse(provider.quota.periodStart);
@@ -361,7 +361,7 @@ export function PaceBar({
   const showHatch =
     wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
   const label = provider.quota
-    ? `${provider.id}: ${provider.quota.usedPct}% used, ${badge}`
+    ? `${provider.id}: ${provider.quota.weeklyPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
   const forecast =
     showHatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
@@ -370,7 +370,7 @@ export function PaceBar({
     <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
       {showHeadline && provider.quota && (
         <div className="tline">
-          <span className="used">{provider.quota.usedPct}% used</span>
+          <span className="used">{provider.quota.weeklyPct}% used</span>
           {forecast && kind !== "none" ? (
             <span className={`out out-${kind}`}>→ {forecast}</span>
           ) : forecast ? (

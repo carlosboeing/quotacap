@@ -108,7 +108,7 @@ function LaneSection({
               <span className="rnum">
                 {quota ? (
                   <>
-                    <b>{quota.usedPct}%</b> used
+                    <b>{quota.weeklyPct}%</b> used
                     {left ? (
                       <>
                         {" · "}

@@ -179,7 +179,7 @@ function ClusterPopover({
               >
                 <b>{name}</b>
                 <span>
-                  {provider?.quota ? `${provider.quota.usedPct}% · ` : ""}
+                  {provider?.quota ? `${provider.quota.weeklyPct}% · ` : ""}
                   {provider ? resetCountdown(provider, asOfMs) : ""}
                 </span>
               </button>
@@ -343,7 +343,7 @@ export function ResetRail({
                 <span className="pin-tooltip" role="tooltip">
                   <b>{name}</b>
                   <span className="pt-sep">·</span>
-                  {provider?.quota ? `${provider.quota.usedPct}% used` : "no readings"}
+                  {provider?.quota ? `${provider.quota.weeklyPct}% used` : "no readings"}
                   <span className="pt-sep">·</span>
                   {left ? `${left} left` : when}
                   {pin.estimated ? " (est.)" : ""}

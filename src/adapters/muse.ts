@@ -128,8 +128,8 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
   return {
     provider: "muse",
     plan,
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt,
     periodStart,
     source: "tui",

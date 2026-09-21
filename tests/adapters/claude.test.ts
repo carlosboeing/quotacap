@@ -13,8 +13,8 @@ Current week (all models): 25% used · resets Sep 3 at 9pm (Australia/Brisbane)
 describe("parseClaudeUsage", () => {
   it("parses 46% session and 25% weekly with Brisbane tz", () => {
     const q = parseClaudeUsage(sample, new Date("2026-08-28T06:00:00+10:00"));
-    expect(q.usedPct).toBe(25);
-    expect(q.sessionPct).toBe(46);
+    expect(q.weeklyPct).toBe(25);
+    expect(q.fiveHourPct).toBe(46);
     expect(q.provider).toBe("claude");
     expect(q.resetsAt).toMatch(/2026-09-03/);
     expect(q.periodStart).toMatch(/^2026-08-27/);
@@ -31,8 +31,8 @@ describe("parseClaudeUsage", () => {
   it("parses 0% session usage and handles missing timezone in resets", () => {
     const txt = `Current session: 0% used · resets 1:30pm\nCurrent week (all models): 10% used · resets Sep 17 at 9pm (Australia/Brisbane)\n`;
     const q = parseClaudeUsage(txt, new Date("2026-09-15T00:00:00Z"));
-    expect(q.usedPct).toBe(10);
-    expect(q.sessionPct).toBe(0);
+    expect(q.weeklyPct).toBe(10);
+    expect(q.fiveHourPct).toBe(0);
   });
 });
 
@@ -73,8 +73,8 @@ describe("claudeAdapter execPath", () => {
       claudeAdapter.execPath = scriptPath;
       const q = await claudeAdapter.poll();
       expect(q.provider).toBe("claude");
-      expect(q.usedPct).toBe(25);
-      expect(q.sessionPct).toBe(46);
+      expect(q.weeklyPct).toBe(25);
+      expect(q.fiveHourPct).toBe(46);
     } finally {
       claudeAdapter.execPath = originalExecPath;
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -110,7 +110,7 @@ describe("claudeAdapter execPath", () => {
     try {
       const q = await claudeAdapter.poll(scriptPath);
       expect(q.provider).toBe("claude");
-      expect(q.usedPct).toBe(25);
+      expect(q.weeklyPct).toBe(25);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

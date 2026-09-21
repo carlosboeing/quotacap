@@ -240,19 +240,19 @@ describe("Credential-free adapters regression", () => {
         // 1. Exercise codexAdapter.poll()
         const codexQuota = await codexAdapter.poll();
         expect(codexQuota.provider).toBe("codex");
-        expect(codexQuota.usedPct).toBe(27);
+        expect(codexQuota.weeklyPct).toBe(27);
         expect(codexQuota.source).toBe("tui");
 
         // 2. Exercise kimiAdapter.poll()
         const kimiQuota = await kimiAdapter.poll();
         expect(kimiQuota.provider).toBe("kimi");
-        expect(kimiQuota.usedPct).toBe(7);
+        expect(kimiQuota.weeklyPct).toBe(7);
         expect(kimiQuota.source).toBe("tui");
 
         // 3. Exercise grokAdapter.poll()
         const grokQuota = await grokAdapter.poll();
         expect(grokQuota.provider).toBe("grok");
-        expect(grokQuota.usedPct).toBe(26);
+        expect(grokQuota.weeklyPct).toBe(26);
         expect(grokQuota.creditsUsd).toBe(4.85);
         expect(grokQuota.source).toBe("tui");
 
@@ -260,14 +260,14 @@ describe("Credential-free adapters regression", () => {
         const museQuota = await museAdapter.poll();
         expect(museQuota.provider).toBe("muse");
         expect(museQuota.plan).toBe("High Usage");
-        expect(museQuota.usedPct).toBe(35);
-        expect(museQuota.sessionPct).toBe(11);
+        expect(museQuota.weeklyPct).toBe(35);
+        expect(museQuota.fiveHourPct).toBe(11);
         expect(museQuota.source).toBe("tui");
 
         // 5. Exercise claudeAdapter.poll()
         const claudeQuota = await claudeAdapter.poll();
         expect(claudeQuota.provider).toBe("claude");
-        expect(claudeQuota.usedPct).toBe(25);
+        expect(claudeQuota.weeklyPct).toBe(25);
         expect(claudeQuota.source).toBe("cli");
 
         // 6. Exercise pollAll across all providers
@@ -366,7 +366,7 @@ describe("Credential-free adapters regression", () => {
         const statBefore = await fsp.stat(opencodeAuth);
         const quota = await opencodeGoAdapter.poll();
         expect(quota.provider).toBe("opencode-go");
-        expect(quota.usedPct).toBe(8);
+        expect(quota.weeklyPct).toBe(8);
         expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-dummy-go");
 
         // Reads land on the consented path only; everything else stays clean.

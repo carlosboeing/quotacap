@@ -87,8 +87,8 @@ export function parseOpencodeGoUsage(body: unknown, now = new Date()): ParsedQuo
   return {
     provider: "opencode-go",
     plan: "unknown",
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt: new Date(resetsMs).toISOString(),
     periodStart: new Date(resetsMs - 7 * 86400000).toISOString(),
     source: "api",

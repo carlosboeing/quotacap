@@ -66,7 +66,15 @@ export interface WindowCloseView {
 export interface QuotaView {
   provider: string;
   plan: string;
+  weeklyPct: number;
+  fiveHourPct?: number;
+  monthlyPct?: number;
+  monthlyResetsAt?: string;
+  monthlyStatus?: "ok" | "exhausted";
+  monthlyKind?: "included";
+  /** @deprecated wire alias for weeklyPct. */
   usedPct: number;
+  /** @deprecated wire alias for fiveHourPct. */
   sessionPct?: number;
   resetsAt: string;
   periodStart: string;

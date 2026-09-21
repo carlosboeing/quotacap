@@ -109,8 +109,8 @@ export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   return {
     provider: "codex",
     plan,
-    usedPct,
-    sessionPct,
+    weeklyPct: usedPct,
+    fiveHourPct: sessionPct,
     resetsAt: weeklyIso,
     periodStart,
     source: "tui",

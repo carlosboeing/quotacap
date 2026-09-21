@@ -34,6 +34,12 @@ function msOf(iso: string | null | undefined): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+// The CLI talks HTTP to a daemon that may predate the rename, which sent only
+// `usedPct`. Read both for one release; drop the fallback with the aliases.
+export function weeklyPctOf(q: { weeklyPct?: number; usedPct?: number } | null | undefined): number | undefined {
+  return q?.weeklyPct ?? q?.usedPct;
+}
+
 // Compact duration: 7d / 12h / 45m. Countdown convention floors; sub-minute
 // spans read 1m so a live window never prints 0m.
 export function fmtDuration(ms: number): string {
@@ -61,14 +67,14 @@ export function elapsedPct(ps: ProviderSnapshot, now: Date): number | null {
 }
 
 export function usedPctOf(ps: ProviderSnapshot): number | null {
-  const u = ps.quota?.usedPct;
+  const u = weeklyPctOf(ps.quota);
   return typeof u === "number" && Number.isFinite(u) ? Math.round(u) : null;
 }
 
 export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
   const cells: RailCell[] = new Array<RailCell>(RAIL_CELLS).fill("unused");
   if (ps.exclusionReason !== null) return cells;
-  const u = ps.quota?.usedPct;
+  const u = weeklyPctOf(ps.quota);
   const used =
     typeof u === "number" && Number.isFinite(u)
       ? Math.min(RAIL_CELLS, Math.max(0, Math.round((u / 100) * RAIL_CELLS)))
@@ -185,7 +191,7 @@ function wasteOf(p: ProviderSnapshot): number | null {
 }
 
 function finiteUsed(p: ProviderSnapshot): number | null {
-  const u = p.quota?.usedPct;
+  const u = weeklyPctOf(p.quota);
   return typeof u === "number" && Number.isFinite(u) ? u : null;
 }
 
