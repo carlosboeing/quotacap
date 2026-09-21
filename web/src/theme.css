@@ -1392,6 +1392,58 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   gap: var(--s2);
 }
 
+/* Windows row: 5h and monthly tags under the weekly bar (treatment E). */
+.wline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  margin-top: 18px;
+  padding: 0;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wline .unit { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.wline .seg {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  width: max-content;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+}
+.wline .k,
+.wline .n,
+.wline .t { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; line-height: 1; }
+.wline .k { color: var(--ink-soft); }
+.wline .n { font-family: var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.wline .t { color: var(--ink-faint); }
+.wline .seg.hot .n { color: color-mix(in oklch, var(--edge-cap) 70%, var(--ink)); font-weight: 600; }
+.wline .seg.full .n { color: var(--edge-cap); font-weight: 600; }
+.wline .chev { display: inline-flex; margin-left: 2px; color: var(--ink-faint); flex: none; }
+.wline .chev svg { width: 12px; height: 12px; transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1); }
+.wline[aria-expanded="true"] .chev svg { transform: rotate(180deg); }
+.windows { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; padding: 10px 0 0; }
+.win { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: center; }
+.win .lab { font-size: var(--t-1); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; color: var(--ink-soft); }
+.win .pct { font-size: var(--t-2); font-weight: 600; font-family: var(--font-mono); }
+.win .track { height: 6px; }
+.win .fill { box-shadow: none; }
+.win .reset { font-size: 11px; color: var(--ink-soft); grid-column: 2 / 4; margin-top: -4px; }
+.lrow .wline { margin-top: 14px; }
+.lrow .windows { margin-top: 8px; }
+
 /* Pace Badges */
 .pace {
   display: inline-flex;
