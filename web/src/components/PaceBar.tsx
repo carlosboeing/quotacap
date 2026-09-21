@@ -133,9 +133,11 @@ export function resetClock(resetsAt: string, locale?: string): string | null {
   return `${day} ${time}`;
 }
 
-/** Short weekday, e.g. "Tue". Mirrors weekdayOf in src/format/rows.ts. */
+/** Short weekday in the locked English copy, e.g. "Tue". Mirrors weekdayOf in
+ *  src/format/rows.ts, including its pinned en-US locale, so the CLI and the
+ *  dashboard word the same sentence identically on any machine. */
 export function resetWeekday(iso: string | undefined): string {
-  return new Date(iso ?? "").toLocaleDateString(undefined, { weekday: "short" });
+  return new Date(iso ?? "").toLocaleDateString("en-US", { weekday: "short" });
 }
 
 /** "6d 12h" style time left from server timestamps. Null when unparseable. */

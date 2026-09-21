@@ -423,6 +423,7 @@ export function ProviderDrawer({
     (b) => b && b !== "unknown"
   );
   const sub = planBits.join(" · ");
+  const monthlyLine = monthlyMeta(provider);
 
   return (
     <>
@@ -670,7 +671,7 @@ export function ProviderDrawer({
                 }}
               />
             </div>
-            {monthlyMeta(provider) && <div className="pcard-underline">{monthlyMeta(provider)}</div>}
+            {monthlyLine && <div className="pcard-underline">{monthlyLine}</div>}
           </section>
         )}
 

@@ -48,9 +48,11 @@ export function fmtDuration(ms: number): string {
   return `${Math.max(1, Math.floor(ms / MIN_MS))}m`;
 }
 
-// Short weekday of an ISO instant in the local zone, e.g. "Tue".
+// Short weekday of an ISO instant in the locked English copy, e.g. "Tue".
+// Pinned to en-US: the sentence it feeds ("unused until Tue") is English, so
+// a non-English machine must not print a localized weekday inside it.
 export function weekdayOf(iso: string | undefined): string {
-  return new Date(iso ?? "").toLocaleDateString(undefined, { weekday: "short" });
+  return new Date(iso ?? "").toLocaleDateString("en-US", { weekday: "short" });
 }
 
 export function countdownText(ps: ProviderSnapshot, now: Date): string {
