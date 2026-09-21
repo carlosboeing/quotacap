@@ -425,7 +425,7 @@ describe("Credential-free adapters regression", () => {
               stderr: "",
             };
           case "claude":
-            expect(args).toEqual(["-p", "/model", "--output-format", "json"]);
+            expect(args).toEqual(["-p", "/model", "--output-format", "json", "--strict-mcp-config"]);
             return {
               stdout: JSON.stringify({
                 num_turns: 0,

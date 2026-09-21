@@ -32,7 +32,10 @@ export const claudeAdapter: ClaudeAdapter = {
   execPath: "claude",
   async poll(execPath?: string): Promise<ParsedQuota> {
     const bin = execPath ?? claudeAdapter.execPath ?? "claude";
-    const { stdout } = await trackedExecFile("claude", bin, ["-p","/usage","--output-format","json"], { timeout: 8000 });
+    // --strict-mcp-config: a usage read needs no MCP servers. Without it every
+    // poll boots the user's servers under the daemon's PATH, and their failures
+    // are cached and hide those servers from the user's own sessions.
+    const { stdout } = await trackedExecFile("claude", bin, ["-p","/usage","--output-format","json","--strict-mcp-config"], { timeout: 8000 });
     const parsed = JSON.parse(stdout);
     const result: string = parsed.result ?? stdout;
     return parseClaudeUsage(result);

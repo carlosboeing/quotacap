@@ -57,7 +57,8 @@ export const claudeCatalogFetcher: CatalogFetcher = {
     // Reuse the pinned claude path the daemon resolves (claudeAdapter.execPath).
     const bin = claudeAdapter.execPath ?? "claude";
     // Per-fetch catalog-owned signal: never the usage poll's shared controller.
-    const { stdout } = await trackedExecFile("claude", bin, ["-p", "/model", "--output-format", "json"], {
+    // No MCP servers for a model listing; see the usage adapter for why.
+    const { stdout } = await trackedExecFile("claude", bin, ["-p", "/model", "--output-format", "json", "--strict-mcp-config"], {
       timeout: EXEC_TIMEOUT_MS,
       signal: new AbortController().signal,
     });
