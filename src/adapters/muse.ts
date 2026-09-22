@@ -190,7 +190,7 @@ export const museAdapter = {
         unavailable: e as Error,
         usagePass: (timeoutMs) => usagePass(timeoutMs),
         warmTurn: async (timeoutMs) => {
-          await trackedExecFile("muse", "muse", ["exec", "hi"], {
+          await trackedExecFile("muse", "muse", ["exec", "1+1"], {
             cwd: museProbeDir(),
             env: { ...(process.env as Record<string, string>), MUSE_NO_AUTO_UPDATE: "1" },
             timeout: timeoutMs,

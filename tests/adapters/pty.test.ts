@@ -6,7 +6,7 @@ import { runPty, stripAnsi, createTerminalQueryResponder } from "../../src/adapt
 import * as ptyMod from "../../src/adapters/pty.js";
 import { liveChildCount } from "../../src/runtime/spawn.js";
 import { codexAdapter } from "../../src/adapters/codex.js";
-import { kimiAdapter } from "../../src/adapters/kimi.js";
+import { kimiAdapter, pollKimiPty } from "../../src/adapters/kimi.js";
 import { grokAdapter } from "../../src/adapters/grok.js";
 
 function tmpFile(suffix = ".mjs"): Promise<string> {
@@ -506,7 +506,7 @@ describe("runPty two-phase write", () => {
     });
     try {
       await codexAdapter.poll();
-      await kimiAdapter.poll();
+      await pollKimiPty();
       await grokAdapter.poll();
     } finally {
       spy.mockRestore();
@@ -525,5 +525,39 @@ describe("runPty two-phase write", () => {
     }
     expect(seen.find((s) => s.file === "grok")!.opts["settleDelayMs"]).toBe(5000);
     expect(seen.find((s) => s.file === "kimi")!.opts["settleDelayMs"]).toBeUndefined();
+  });
+
+  it("preReadyResponse dismisses startup prompt and reaches readiness", async () => {
+    const script = `
+process.stdout.write('Trust this folder?\\n');
+let buf = '';
+process.stdin.on('data', d => {
+  buf += d.toString();
+  if ((buf.includes('\\r') || buf.includes('\\n')) && !buf.includes('/usage')) {
+    process.stdout.write('Welcome to Kimi Code\\n');
+  }
+  if (buf.includes('/usage')) {
+    setTimeout(() => {
+      process.stdout.write('Weekly limit 10% used\\n');
+    }, 30);
+  }
+});
+setInterval(() => {}, 1000);
+`;
+    const fake = await writeFake(script);
+    const transcript = await runPty({
+      file: process.execPath,
+      args: [fake],
+      readyRegex: /Welcome to Kimi Code/,
+      readyTimeoutMs: 2000,
+      preReadyResponse: {
+        match: /Trust this folder\?/i,
+        reply: "\r",
+      },
+      input: "/usage\r",
+      completionRegex: /Weekly limit/,
+      timeoutMs: 2000,
+    });
+    expect(stripAnsi(transcript)).toMatch(/Weekly limit/);
   });
 });

@@ -4,6 +4,9 @@
 
 - Nested included monthly windows (#109): OpenCode Go's monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind: "included"`), and ranking uses bottleneck headroom. A provider whose included month is exhausted leaves both recommendation pools and reads **Monthly exhausted**. When the month is the scarcer window, the forecast reads `5% of month left` instead of the weekly waste, and the known-waste pool ranks on the smaller of weekly waste and the month's headroom priced over the weekly days left. The board adds one collapsed windows row under the weekly bar (`5h` and `Mth` tags, per-card chevron), the drawer stacks Weekly, 5h and Monthly with the badge in its header, and the CLI STATE column widens to fit the new word.
 - Rename: `Quota.usedPct` → `weeklyPct`, `sessionPct` → `fiveHourPct`. `/api/quotas`, `/api/state` and MCP `get_quotas` carry both spellings for one release; `usedPct` and `sessionPct` are deprecated and will be removed.
+- Kimi API polling & auto-refresh: Kimi adapter now polls `https://api.kimi.ai/coding/v1/usages` directly using local credentials from `~/.kimi-code/credentials/` or `KIMI_CODE_API_KEY`, automatically refreshing and rotating expired tokens with `auth.kimi.ai`. This bypasses a Kimi CLI v2.0.2 bug where `/usage` displays 0% used by reading the server's live `limits` and `usage` fields. Seamlessly falls back to PTY probing in `~/.quotacap/kimi-probe` with pre-ready prompt dismissal.
+- Muse warm recovery prompt: Switched warm turn prompt from `muse exec "hi"` to `muse exec "1+1"` to bypass Muse CLI's local greeting short-circuit regex (`(?i)^[\s\p{P}]*(hi|hello)[\s\p{P}]*$`), ensuring warm turns trigger an inference request that refreshes cold subscription usage state.
+- PTY pre-ready response: Added `preReadyResponse` option to `runPty` across Bun and Node runtimes to dismiss interactive prompts (such as workspace trust prompts) before `readyRegex` triggers.
 
 ## 0.0.39
 

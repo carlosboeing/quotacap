@@ -44,6 +44,15 @@ export interface PtyRunOptions {
    */
   respondToQueries?: boolean;
   completionRegex?: RegExp;
+  /**
+   * Optional initial prompt responder before readyRegex matches.
+   * If matched against the cleaned transcript during the pre-ready poll loop,
+   * sends `reply` once to dismiss or answer the prompt (e.g. workspace trust in a probe directory).
+   */
+  preReadyResponse?: {
+    match: RegExp;
+    reply: string;
+  };
   /** If matched, abort immediately with a clear error (e.g. trust prompts). */
   abortOn?: RegExp;
   timeoutMs: number;
@@ -381,6 +390,7 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     if (opts.readyRegex) {
       const deadline = Date.now() + readyTimeoutMs;
       let matched = false;
+      let preReadySent = false;
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
@@ -393,6 +403,12 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
           });
         }
         const clean = stripAnsi(transcript);
+        if (opts.preReadyResponse && !preReadySent && regexTest(opts.preReadyResponse.match, clean)) {
+          preReadySent = true;
+          try {
+            proc.terminal.write(opts.preReadyResponse.reply);
+          } catch {}
+        }
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
           matched = true;
@@ -682,6 +698,7 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
     if (opts.readyRegex) {
       const deadline = Date.now() + readyTimeoutMs;
       let matched = false;
+      let preReadySent = false;
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
@@ -694,6 +711,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
           });
         }
         const clean = stripAnsi(transcript);
+        if (opts.preReadyResponse && !preReadySent && regexTest(opts.preReadyResponse.match, clean)) {
+          preReadySent = true;
+          try {
+            ptyProcess.write(opts.preReadyResponse.reply);
+          } catch {}
+        }
         checkAbort(clean);
         if (regexTest(opts.readyRegex, clean)) {
           matched = true;
