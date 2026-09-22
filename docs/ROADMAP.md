@@ -3,6 +3,8 @@
 ## Recently shipped — 0.0.40 — 2026-09-22 (nested included monthly windows)
 
 * Nested included monthly windows — OpenCode Go's included monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind`) and ranking uses bottleneck headroom, so a provider whose month is exhausted leaves both recommendation pools and reads **Monthly exhausted**; the forecast names the binding month (`5% of month left` / `unused until Tue`), the board adds one collapsed windows row under the weekly bar (`5h` · `Mth`), the drawer stacks Weekly / 5h / Monthly with the badge in its header, and `Quota.usedPct`/`sessionPct` are renamed `weeklyPct`/`fiveHourPct` with one-release `QuotaWire` aliases (#109)
+* Kimi API polling & auto-refresh — reads local credentials or `KIMI_CODE_API_KEY` to poll `api.kimi.ai` directly with automatic token refresh on `auth.kimi.ai`, bypassing the Kimi CLI v2.0.2 0% usage bug while falling back to sandboxed PTY with pre-ready prompt dismissal
+* Muse warm recovery fix — switches warm recovery prompt to `1+1` to bypass Muse CLI's local greeting short-circuit, restoring reliable cold subscription recovery
 
 ## Recently shipped — 0.0.39 — 2026-09-21 (MCP-free Claude polls)
 

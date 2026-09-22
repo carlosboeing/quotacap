@@ -250,7 +250,7 @@ describe("museAdapter.poll recovery", () => {
       expect(execSpy).toHaveBeenCalledTimes(1);
       expect(execSpy.mock.calls[0][0]).toBe("muse");
       expect(execSpy.mock.calls[0][1]).toBe("muse");
-      expect(execSpy.mock.calls[0][2]).toEqual(["exec", "hi"]);
+      expect(execSpy.mock.calls[0][2]).toEqual(["exec", "1+1"]);
       expect(execSpy.mock.calls[0][3]).toMatchObject({
         cwd: path.join(home, ".quotacap", "muse-probe"),
         env: { MUSE_NO_AUTO_UPDATE: "1" },

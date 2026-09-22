@@ -80,6 +80,7 @@ describe("Credential-free adapters regression", () => {
       // vocabulary inside those files — still fails.
       const staticAllowlist = new Map<string, string[]>([
         [path.join("adapters", "opencode-go.ts"), ["auth.json"]],
+        [path.join("adapters", "kimi.ts"), ["refresh_token", "grant_type", "17e5f671-d194-4dfb-9706-5516cb48c098"]],
         // Generated, committed dashboard bundle (scripts/build-embed.mjs): it
         // embeds the consent copy verbatim, which names the auth file. String
         // data, not credential-reading code; every other forbidden pattern
@@ -189,12 +190,14 @@ describe("Credential-free adapters regression", () => {
           expect(opts.cwd).toBe(path.join(mockHome, ".quotacap", "muse-probe"));
           return `Subscription · Muse Code High Usage  Current 11% used · Resets at 3:51 PM  Weekly 35% used · Resets ${museReset}  as of 12:34 PM`;
         }
+        if (opts.file === "kimi") {
+          // Kimi probes a QuotaCap-owned dir, never $HOME itself.
+          expect(opts.cwd).toBe(path.join(mockHome, ".quotacap", "kimi-probe"));
+          return "Welcome to Kimi Code\nWeekly limit  7% used   resets in 6d 19h 57m\n5h limit      33% used  resets in 57m\n";
+        }
         expect(opts.cwd).toBe(mockHome);
         if (opts.file === "codex") {
           return "5h limit: 9% left (resets 14:12)\nWeekly limit: 73% left (resets 16:36 on 7 Sep)\n";
-        }
-        if (opts.file === "kimi") {
-          return "Welcome to Kimi Code\nWeekly limit  7% used   resets in 6d 19h 57m\n5h limit      33% used  resets in 57m\n";
         }
         if (opts.file === "grok") {
           return "Weekly limit (SuperGrok)  26%\nCredits: $4.85\nResets: September 7, 10:22\n";
@@ -282,6 +285,7 @@ describe("Credential-free adapters regression", () => {
 
         // Verify none of the accessed paths were sensitive credential files
         for (const p of accessedPaths) {
+          if (p.startsWith(path.join(mockHome, ".kimi-code"))) continue;
           for (const pattern of SENSITIVE_PATTERNS) {
             expect(pattern.test(p), `poll() unexpectedly accessed sensitive path: ${p}`).toBe(false);
           }
