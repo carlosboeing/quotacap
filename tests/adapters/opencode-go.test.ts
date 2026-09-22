@@ -243,4 +243,15 @@ describe("OPENCODE_GO_CONSENT_NOTICE", () => {
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("quotacap providers disable opencode-go");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("OPENCODE_API_KEY");
   });
+
+  it("formats as short structured lines covering the consent areas", () => {
+    const lines = OPENCODE_GO_CONSENT_NOTICE.split("\n");
+    expect(lines).toHaveLength(6);
+    expect(lines[0]).toMatch(/^• What is read: /);
+    expect(lines[1]).toMatch(/^• Read frequency: /);
+    expect(lines[2]).toMatch(/^• Request destination: /);
+    expect(lines[3]).toMatch(/^• Never-list: /);
+    expect(lines[4]).toMatch(/^• Revocation instructions: /);
+    expect(lines[5]).toMatch(/^• Optional environment override: /);
+  });
 });

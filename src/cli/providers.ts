@@ -252,7 +252,8 @@ export function registerProvidersCommand(program: Command, deps: ClientCommandDe
           return;
         }
       }
-      console.log(`enabled ${id} — restart quotacap daemon to apply`);
+      console.log(`enabled ${id}`);
+      console.log("Next: run quotacap service restart to start polling");
     });
 
   providers
