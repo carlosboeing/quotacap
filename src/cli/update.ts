@@ -35,6 +35,7 @@ import {
   WedgedError,
   type SleepFn,
 } from "./takeover.js";
+import { phase, type PhaseFn } from "./progress.js";
 
 export interface UpdateJson {
   channel: string;
@@ -59,9 +60,12 @@ export interface UpdateCommandDeps {
     sleep?: SleepFn;
     timeoutMs?: number;
     readToken?: () => string | undefined;
+    phase?: PhaseFn;
+    json?: boolean;
   };
   spawnNpm?: (args: string[]) => Promise<number>;
   extractTar?: (tarball: string, destDir: string) => void;
+  phase?: PhaseFn;
 }
 
 export function stoppedDaemonMessage(oldVersion: string, newVersion: string): string {
@@ -287,6 +291,10 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
       const pin = typeof o.to === "string" && o.to ? stripV(o.to) : null;
       let latest: ReleaseInfo | null = null;
       let rateLimited: { resetsAtMs: number | null } | null = null;
+      const phaseFn = deps?.phase ?? phase;
+      if (!o.check && !pin) {
+        phaseFn("resolving latest version…", { json: asJson });
+      }
       try {
         const resolved = await resolveLatestVersionDetailed({ fetchFn });
         if (resolved.status === "ok") latest = resolved.release;
@@ -392,10 +400,11 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
         createClient: deps?.createClient,
         isManaged: deps?.isManaged,
         execService: deps?.execService,
-        takeoverOpts: deps?.takeoverOpts,
+        takeoverOpts: { phase: phaseFn, json: asJson, ...deps?.takeoverOpts },
       };
 
       if (channel === "standalone") {
+        phaseFn(`downloading ${target}…`, { json: asJson });
         const swap = await updateStandalone({
           target,
           execPath,
@@ -446,6 +455,7 @@ export function registerUpdateCommand(program: Command, deps?: UpdateCommandDeps
 
       // npm global.
       const npmSpec = pin ?? "latest";
+      phaseFn(`updating npm package…`, { json: asJson });
       const npm = await updateNpm({
         target: npmSpec,
         execPath,

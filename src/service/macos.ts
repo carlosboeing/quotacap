@@ -13,6 +13,7 @@ import {
 } from "../config.js";
 import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
+import { phase, type PhaseFn } from "../cli/progress.js";
 
 export const SERVICE_LABEL = "quotacap";
 export const PROVIDER_BINS = ["claude", "codex", "kimi", "grok", "agy", "muse"];
@@ -47,6 +48,7 @@ export interface ServiceDeps {
   // Silence success-path prints; the caller reports the outcome instead.
   // Errors still throw and stay loud. Only the post-update refresh sets it.
   quiet?: boolean;
+  phase?: PhaseFn;
 }
 
 export function foregroundGuidance(verb: string, platform: string): string {
@@ -538,6 +540,7 @@ export async function start(deps: ServiceDeps = {}): Promise<void> {
     timeoutMs: bootstrapTimeoutMs,
   });
   run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
+  (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet });
   const waitReady = deps.waitReady ?? defaultWaitReady;
   const cfg = await readConfig();
   const ready = await waitReady(cfg.port);
@@ -560,6 +563,7 @@ export async function restart(deps: ServiceDeps = {}): Promise<void> {
   // process for the port and start() fails its readiness check.
   // deps.port keeps tests off the real daemon's port.
   const port = deps.port ?? (await readConfig()).port;
+  (deps.phase ?? phase)("waiting for daemon to stop…", { quiet: deps.quiet });
   const waitReleased = deps.waitReleased ?? defaultWaitReleased;
   if (!(await waitReleased(port))) {
     (deps.print ?? console.log)(

@@ -14,6 +14,7 @@ import {
 import { readToken } from "../runtime/token.js";
 import { readClaim, type ClaimInfo } from "../runtime/owner.js";
 import { runServiceCommand, isServiceManaged } from "../service/index.js";
+import { phase, type PhaseFn } from "./progress.js";
 
 export type SkewKind = "match" | "exec-only" | "cli-newer" | "cli-older";
 
@@ -123,6 +124,8 @@ export interface WaitOpts {
   createClient?: CreateTakeoverClient;
   sleep?: SleepFn;
   timeoutMs?: number;
+  phase?: PhaseFn;
+  json?: boolean;
 }
 
 // Poll /health until it reports the expected version (or the deadline).
@@ -201,6 +204,7 @@ export async function takeoverManaged(
   const execService =
     opts.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
   const verb = opts.refreshRegistration ? "install" : "restart";
+  (opts.phase ?? phase)("waiting for daemon…", { json: opts.json });
   const code = await execService(
     [verb],
     opts.refreshRegistration ? { version: cliVersion, quiet: true } : undefined,
@@ -240,6 +244,7 @@ export async function takeoverUnmanaged(
   if (!token) {
     throw new WedgedError(formatWedged({ claim: readClaim(dataDir), port, managed: false }));
   }
+  (opts.phase ?? phase)("waiting for daemon to stop…", { json: opts.json });
   const createClient = opts.createClient ?? createServiceClient;
   const client = createClient({ port, token, timeoutMs: 5000 });
   try {

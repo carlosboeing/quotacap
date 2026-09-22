@@ -32,6 +32,7 @@ import {
   WedgedError,
   type SleepFn,
 } from "./takeover.js";
+import { phase, type PhaseFn } from "./progress.js";
 
 export type StartServiceFn = (opts?: StartServiceOptions) => ReturnType<
   typeof startService
@@ -53,10 +54,13 @@ export interface RuntimeCommandDeps {
     sleep?: SleepFn;
     timeoutMs?: number;
     readToken?: () => string | undefined;
+    phase?: PhaseFn;
+    json?: boolean;
   };
   checkUpdates?: () => Promise<unknown>;
   isInstalled?: () => Promise<boolean>;
   serviceSupported?: () => boolean;
+  phase?: PhaseFn;
 }
 
 export interface WebLaunchOptions {
@@ -89,7 +93,8 @@ export async function launchWeb(
   const isManaged = deps.isManaged ?? isServiceManaged;
   const isInstalled = deps.isInstalled ?? isServiceInstalled;
   const supported = deps.serviceSupported ?? serviceSupported;
-  const takeoverOpts = deps.takeoverOpts ?? {};
+  const phaseFn = deps.phase ?? phase;
+  const takeoverOpts = { phase: phaseFn, ...deps.takeoverOpts };
   const checkUpdates =
     deps.checkUpdates ??
     (() => refreshUpdateCache({ channel: detectChannel(), current: VERSION }));
@@ -121,7 +126,7 @@ export async function launchWeb(
     const skew = checkSkew(health, VERSION, process.execPath);
     if (skew === "match") {
       if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
-        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
       }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
@@ -129,7 +134,7 @@ export async function launchWeb(
     if (skew === "exec-only") {
       console.error(execSkewWarning(String(health.exec)));
       if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
-        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
       }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
@@ -137,7 +142,7 @@ export async function launchWeb(
     if (skew === "cli-older") {
       console.error(olderCliWarning(String(health.version ?? "unknown")));
       if (health.polling === "in-progress" && !health.lastCompletedPollAt) {
-        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
       }
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
@@ -159,7 +164,7 @@ export async function launchWeb(
         exit(1);
         return;
       }
-      await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+      await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
       await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
       return;
     }
@@ -179,7 +184,7 @@ export async function launchWeb(
     }
     // Unmanaged successor: foreground-start the new daemon and open it.
     const started = await start(o.port ? { port } : undefined);
-    await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+    await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
     await openDashboard(`http://127.0.0.1:${started.port}`, openBrowser);
     return;
   }
@@ -210,15 +215,17 @@ export async function launchWeb(
         detail = (e as Error)?.message ?? String(e);
       }
       if (!detail) {
+        phaseFn("waiting for daemon…");
         const healthy = await waitForHealthy(port, VERSION, {
           createClient,
           sleep,
           timeoutMs: readyTimeoutMs,
+          phase: phaseFn,
         });
         if (!healthy) detail = `not ready within ${Math.round(readyTimeoutMs / 1000)}s`;
       }
       if (!detail) {
-        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+        await waitForInitialPoll(port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
         await openDashboard(`http://127.0.0.1:${port}`, openBrowser);
         return;
       }
@@ -231,7 +238,7 @@ export async function launchWeb(
   if (!foregroundOnly && !attemptedServiceStart && supported()) {
     console.error("for a background service that survives terminal closes, run 'quotacap service install'");
   }
-  await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000) });
+  await waitForInitialPoll(started.port, { createClient, sleep, timeoutMs: Math.min(readyTimeoutMs, 5000), phase: phaseFn });
   await openDashboard(`http://127.0.0.1:${started.port}`, openBrowser);
 }
 
@@ -241,6 +248,7 @@ export async function waitForInitialPoll(
     createClient?: (opts: { port: number; timeoutMs: number }) => any;
     sleep?: SleepFn;
     timeoutMs?: number;
+    phase?: PhaseFn;
   } = {},
 ): Promise<void> {
   const createClient = opts.createClient ?? createServiceClient;
@@ -248,12 +256,17 @@ export async function waitForInitialPoll(
   const timeoutMs = opts.timeoutMs ?? 5000;
   const deadline = Date.now() + timeoutMs;
   const client = createClient({ port, timeoutMs: 1000 });
+  let emitted = false;
   while (Date.now() < deadline) {
     await sleep(250);
     try {
       const h = await client.get("/health");
       if (!h?.ok || h?.polling !== "in-progress" || h?.lastCompletedPollAt) {
         return;
+      }
+      if (!emitted) {
+        (opts.phase ?? phase)("waiting for first readings…");
+        emitted = true;
       }
     } catch {
       return;
@@ -344,6 +357,7 @@ export function registerRuntimeCommands(
         serviceSupported: supported,
         takeoverOpts,
         checkUpdates,
+        phase: deps?.phase,
       }),
     );
 
