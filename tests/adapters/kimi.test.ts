@@ -9,7 +9,9 @@ import {
   resolveKimiAuth,
   ensureFreshKimiToken,
   pollKimiApi,
-  kimiAdapter,
+  pollKimiPty,
+  readKimiProviderConfig,
+  KimiCredentialWriteError,
 } from "../../src/adapters/kimi.js";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
 
@@ -345,6 +347,64 @@ oauth_host = "https://auth.custom.kimi.internal"
     }
   });
 
+  it("reads hosts and key only from the Kimi provider table, ignoring comments and other providers", () => {
+    const cfg = readKimiProviderConfig(`
+# base_url = "https://commented.example/v1"
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-other"
+
+[providers."managed:kimi-code"]
+base_url = "https://api.kimi.ai/coding/v1" # trailing comment
+
+[providers."managed:kimi-code".oauth]
+key = "oauth/kimi-code"
+oauth_host = "https://auth.kimi.ai"
+
+[providers.other.oauth]
+key = "oauth/other"
+oauth_host = "https://auth.other.example"
+`);
+    expect(cfg).toEqual({ baseUrl: "https://api.kimi.ai/coding/v1", oauthHost: "https://auth.kimi.ai", key: "oauth/kimi-code" });
+  });
+
+  it("never pairs a credential with another provider's base_url", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "qc-auth-scope-"));
+    try {
+      await fs.writeFile(path.join(tmp, "config.toml"), `[providers.openai]\nbase_url = "https://api.openai.com/v1"\n`);
+      const credsDir = path.join(tmp, "credentials");
+      await fs.mkdir(credsDir, { recursive: true });
+      await fs.writeFile(path.join(credsDir, "kimi-code.json"), JSON.stringify({ access_token: "tok" }));
+      const ctx = resolveKimiAuth({}, tmp);
+      expect(ctx?.baseUrl).toBe("https://api.kimi.ai/coding/v1");
+      expect(ctx?.oauthHost).toBe("https://auth.kimi.ai");
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("lets environment overrides win over config and refuses a missing referenced credential", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "qc-auth-env-"));
+    try {
+      await fs.writeFile(
+        path.join(tmp, "config.toml"),
+        `[providers."managed:kimi-code"]\nbase_url = "https://cfg.example/v1"\n[providers."managed:kimi-code".oauth]\nkey = "oauth/named"\n`,
+      );
+      const credsDir = path.join(tmp, "credentials");
+      await fs.mkdir(credsDir, { recursive: true });
+      await fs.writeFile(path.join(credsDir, "other.json"), JSON.stringify({ access_token: "other-tok" }));
+      // The named credential is missing: no fallback to an unrelated file.
+      expect(resolveKimiAuth({}, tmp)).toBeNull();
+
+      await fs.writeFile(path.join(credsDir, "named.json"), JSON.stringify({ access_token: "named-tok" }));
+      const ctx = resolveKimiAuth({ KIMI_CODE_BASE_URL: "https://env.example/v1" }, tmp);
+      expect(ctx?.token).toBe("named-tok");
+      expect(ctx?.baseUrl).toBe("https://env.example/v1");
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("returns null if credential files only contain empty strings", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "qc-auth-empty-"));
     try {
@@ -544,8 +604,87 @@ describe("pollKimiApi with mock fetch", () => {
       expect(onDisk.access_token).toBe("new-access-token");
       expect(onDisk.refresh_token).toBe("new-rotated-rf");
       expect(onDisk.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
+      expect((await fs.stat(credPath)).mode & 0o777).toBe(0o600);
+      expect(await fs.readdir(tmpDir)).toEqual(["creds.json"]);
     } finally {
       vi.unstubAllGlobals();
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adopts a token the CLI refreshed on disk instead of refreshing again", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "qc-kimi-adopt-"));
+    const credPath = path.join(tmpDir, "creds.json");
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    await fs.writeFile(credPath, JSON.stringify({ access_token: "cli-access", refresh_token: "cli-rf", expires_at: future }));
+    const ctx = {
+      token: "old-access",
+      credPath,
+      creds: { access_token: "old-access", refresh_token: "old-rf", expires_at: 0 },
+      oauthHost: "https://auth.kimi.ai",
+      baseUrl: "https://api.kimi.ai/coding/v1",
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await ensureFreshKimiToken(ctx)).toBe("cli-access");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(JSON.parse(await fs.readFile(credPath, "utf8")).refresh_token).toBe("cli-rf");
+    } finally {
+      vi.unstubAllGlobals();
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overwrite credentials the CLI changed during the refresh", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "qc-kimi-race-"));
+    const credPath = path.join(tmpDir, "creds.json");
+    await fs.writeFile(credPath, JSON.stringify({ access_token: "old-access", refresh_token: "old-rf", expires_at: 0 }));
+    const ctx = {
+      token: "old-access",
+      credPath,
+      creds: { access_token: "old-access", refresh_token: "old-rf", expires_at: 0 },
+      oauthHost: "https://auth.kimi.ai",
+      baseUrl: "https://api.kimi.ai/coding/v1",
+    };
+    const cliWrite = JSON.stringify({ access_token: "cli-access", refresh_token: "cli-rf", expires_at: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => {
+        await fs.writeFile(credPath, cliWrite);
+        return new Response(JSON.stringify({ access_token: "qc-access", refresh_token: "qc-rf", expires_in: 900 }), { status: 200 });
+      }),
+    );
+    try {
+      expect(await ensureFreshKimiToken(ctx)).toBe("qc-access");
+      expect(await fs.readFile(credPath, "utf8")).toBe(cliWrite);
+    } finally {
+      vi.unstubAllGlobals();
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.getuid?.() === 0)("throws KimiCredentialWriteError when the rotated token cannot be saved", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "qc-kimi-ro-"));
+    const credPath = path.join(tmpDir, "creds.json");
+    await fs.writeFile(credPath, JSON.stringify({ access_token: "old-access", refresh_token: "old-rf", expires_at: 0 }));
+    const ctx = {
+      token: "old-access",
+      credPath,
+      creds: { access_token: "old-access", refresh_token: "old-rf", expires_at: 0 },
+      oauthHost: "https://auth.kimi.ai",
+      baseUrl: "https://api.kimi.ai/coding/v1",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ access_token: "qc-access", refresh_token: "qc-rf" }), { status: 200 })),
+    );
+    await fs.chmod(tmpDir, 0o500);
+    try {
+      await expect(ensureFreshKimiToken(ctx)).rejects.toBeInstanceOf(KimiCredentialWriteError);
+    } finally {
+      vi.unstubAllGlobals();
+      await fs.chmod(tmpDir, 0o700);
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
@@ -560,7 +699,8 @@ describe("kimiAdapter live poll", () => {
       console.warn("live kimi poll skipped: kimi not on PATH");
       return;
     }
-    const q = await kimiAdapter.poll();
+    // Drive the PTY path directly: kimiAdapter.poll() prefers the API when credentials exist.
+    const q = await pollKimiPty();
     expect(q.provider).toBe("kimi");
     expect((q as unknown as { source: string }).source).toBe("tui");
     expect(q.weeklyPct).toBeGreaterThanOrEqual(0);

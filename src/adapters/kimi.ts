@@ -179,6 +179,40 @@ export interface KimiAuthContext {
   baseUrl: string;
 }
 
+const KIMI_PROVIDER_TABLE = 'providers."managed:kimi-code"';
+
+export interface KimiProviderConfig {
+  baseUrl?: string;
+  oauthHost?: string;
+  key?: string;
+}
+
+/**
+ * Reads the Kimi provider's own entries from config.toml. Only keys inside
+ * `[providers."managed:kimi-code"]` and its `.oauth` sub-table count; comments
+ * and every other table are ignored.
+ */
+export function readKimiProviderConfig(content: string): KimiProviderConfig {
+  const out: KimiProviderConfig = {};
+  let table = "";
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[")) {
+      const header = line.match(/^\[\s*([^[\]]+?)\s*\]\s*(?:#.*)?$/);
+      table = header ? header[1] : "";
+      continue;
+    }
+    const kv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*"([^"]*)"\s*(?:#.*)?$/);
+    if (!kv || !kv[2].trim()) continue;
+    const [, k, v] = kv;
+    if (table === KIMI_PROVIDER_TABLE && k === "base_url") out.baseUrl = v.trim();
+    if (table === `${KIMI_PROVIDER_TABLE}.oauth` && k === "oauth_host") out.oauthHost = v.trim();
+    if (table === `${KIMI_PROVIDER_TABLE}.oauth` && k === "key") out.key = v.trim();
+  }
+  return out;
+}
+
 export function resolveKimiAuth(
   env: Record<string, string | undefined> = process.env,
   customKimiDir?: string,
@@ -198,26 +232,24 @@ export function resolveKimiAuth(
     deviceId = fs.readFileSync(path.join(kimiDir, "device_id"), "utf8").trim();
   } catch {}
 
-  let oauthHost = env.KIMI_CODE_OAUTH_HOST ?? DEFAULT_OAUTH_HOST;
-  let baseUrl = env.KIMI_CODE_BASE_URL ?? DEFAULT_BASE_URL;
-  let credPath: string | null = null;
-
-  // Try reading config.toml to find exact oauth key reference
+  let config: KimiProviderConfig = {};
   try {
-    const configContent = fs.readFileSync(path.join(kimiDir, "config.toml"), "utf8");
-    const hostMatch = configContent.match(/oauth_host\s*=\s*"([^"]+)"/);
-    if (hostMatch) oauthHost = hostMatch[1].trim();
-    const baseMatch = configContent.match(/base_url\s*=\s*"([^"]+)"/);
-    if (baseMatch) baseUrl = baseMatch[1].trim();
-    const keyMatch = configContent.match(/key\s*=\s*"([^"]+)"/);
-    if (keyMatch) {
-      const candidate = path.join(kimiDir, "credentials", `${path.basename(keyMatch[1].trim())}.json`);
-      if (fs.existsSync(candidate)) credPath = candidate;
-    }
+    config = readKimiProviderConfig(fs.readFileSync(path.join(kimiDir, "config.toml"), "utf8"));
   } catch {}
 
-  // Fallback: scan credentials directory for newest .json file
-  if (!credPath) {
+  // Explicit environment overrides win; otherwise only the Kimi provider's own
+  // table supplies hosts, so a token is never paired with another provider's URL.
+  const oauthHost = env.KIMI_CODE_OAUTH_HOST ?? config.oauthHost ?? DEFAULT_OAUTH_HOST;
+  const baseUrl = env.KIMI_CODE_BASE_URL ?? config.baseUrl ?? DEFAULT_BASE_URL;
+  let credPath: string | null = null;
+
+  if (config.key) {
+    // The config names its credential: use exactly that file or nothing.
+    const candidate = path.join(kimiDir, "credentials", `${path.basename(config.key)}.json`);
+    if (!fs.existsSync(candidate)) return null;
+    credPath = candidate;
+  } else {
+    // No reference in config: scan credentials directory for newest .json file
     const credsDir = path.join(kimiDir, "credentials");
     try {
       const files = fs.readdirSync(credsDir).filter((f) => f.endsWith(".json"));
@@ -298,16 +330,41 @@ export async function refreshKimiOAuthToken(
   };
 }
 
+/** A refresh rotated the tokens but the result could not be saved for the Kimi CLI. */
+export class KimiCredentialWriteError extends Error {
+  constructor(credPath: string, cause: unknown) {
+    super(`kimi: refreshed token could not be saved to ${credPath} (${(cause as Error)?.message ?? cause}); run \`kimi login\``);
+    this.name = "KimiCredentialWriteError";
+  }
+}
+
+function readCredsFile(credPath: string): { raw: string; creds: KimiStoredCreds } | null {
+  try {
+    const raw = fs.readFileSync(credPath, "utf8");
+    return { raw, creds: JSON.parse(raw) as KimiStoredCreds };
+  } catch {
+    return null;
+  }
+}
+
 export async function ensureFreshKimiToken(ctx: KimiAuthContext, signal?: AbortSignal): Promise<string> {
   if (!ctx.credPath || !ctx.creds) return ctx.token;
 
-  const creds = ctx.creds;
   const nowSec = Math.floor(Date.now() / 1000);
-  const expiresAt = creds.expires_at ?? 0;
+  const isFresh = (c: KimiStoredCreds) => !!c.access_token && (c.expires_at ?? 0) > nowSec + 60;
 
-  if (creds.access_token && expiresAt > nowSec + 60) {
-    return creds.access_token;
+  if (isFresh(ctx.creds)) {
+    return ctx.creds.access_token!;
   }
+
+  // The Kimi CLI owns this file: re-read it, and adopt a token it refreshed since we loaded it.
+  const before = readCredsFile(ctx.credPath);
+  if (before && before.creds.access_token !== ctx.creds.access_token && isFresh(before.creds)) {
+    ctx.creds = before.creds;
+    ctx.token = before.creds.access_token!;
+    return ctx.token;
+  }
+  const creds = before?.creds ?? ctx.creds;
 
   if (!creds.refresh_token) {
     if (creds.access_token) return creds.access_token;
@@ -315,18 +372,31 @@ export async function ensureFreshKimiToken(ctx: KimiAuthContext, signal?: AbortS
   }
 
   const refreshed = await refreshKimiOAuthToken(ctx.oauthHost, creds.refresh_token, ctx.deviceId, signal);
-  creds.access_token = refreshed.access_token;
-  if (refreshed.refresh_token) {
-    creds.refresh_token = refreshed.refresh_token;
-  }
-  creds.expires_at = nowSec + (refreshed.expires_in ?? 900);
+  const next: KimiStoredCreds = {
+    ...creds,
+    access_token: refreshed.access_token,
+    refresh_token: refreshed.refresh_token ?? creds.refresh_token,
+    expires_at: nowSec + (refreshed.expires_in ?? 900),
+  };
+  ctx.creds = next;
+  ctx.token = refreshed.access_token;
 
+  // Another writer changed the file during the refresh: keep its copy rather than overwrite it.
+  if (readCredsFile(ctx.credPath)?.raw !== before?.raw) return ctx.token;
+
+  // Atomic replace: write a private temp file beside the original, then rename over it.
+  const tmp = `${ctx.credPath}.quotacap-${process.pid}.tmp`;
   try {
-    fs.writeFileSync(ctx.credPath, JSON.stringify(creds, null, 2), { mode: 0o600 });
-  } catch {}
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, ctx.credPath);
+  } catch (e) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {}
+    throw new KimiCredentialWriteError(ctx.credPath, e);
+  }
 
-  ctx.token = creds.access_token;
-  return creds.access_token;
+  return ctx.token;
 }
 
 export async function pollKimiApi(ctx: KimiAuthContext): Promise<ParsedQuota> {
@@ -406,7 +476,10 @@ export const kimiAdapter = {
     if (authCtx) {
       try {
         return await pollKimiApi(authCtx);
-      } catch {}
+      } catch (e) {
+        // A lost rotated token leaves the CLI logged out: report it, do not mask it with the PTY path.
+        if (e instanceof KimiCredentialWriteError) throw e;
+      }
     }
     return pollKimiPty();
   },

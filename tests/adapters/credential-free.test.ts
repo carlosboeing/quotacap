@@ -220,6 +220,22 @@ describe("Credential-free adapters regression", () => {
       delete process.env.QUOTACAP_HOME;
       claudeAdapter.execPath = mockClaudeScript;
 
+      // Isolate the Kimi API path: no inherited env credentials or endpoints, and
+      // every kimi.ai request rejected so poll() falls back to the mocked PTY.
+      const kimiEnvKeys = ["KIMI_CODE_API_KEY", "KIMI_API_KEY", "KIMI_CODE_BASE_URL", "KIMI_CODE_OAUTH_HOST"];
+      const origKimiEnv = kimiEnvKeys.map((k) => [k, process.env[k]] as const);
+      for (const k of kimiEnvKeys) delete process.env[k];
+      const realFetch = globalThis.fetch;
+      const kimiFetchUrls: string[] = [];
+      vi.stubGlobal("fetch", async (input: any, init?: any) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (/kimi\.ai/.test(url)) {
+          kimiFetchUrls.push(url);
+          return new Response("unauthorized", { status: 401 });
+        }
+        return realFetch(input, init);
+      });
+
       const accessedPaths: string[] = [];
       const readSpy = vi.spyOn(fsp, "readFile").mockImplementation(async (file: any, ...args: any[]) => {
         if (typeof file === "string") accessedPaths.push(file);
@@ -251,6 +267,8 @@ describe("Credential-free adapters regression", () => {
         expect(kimiQuota.provider).toBe("kimi");
         expect(kimiQuota.weeklyPct).toBe(7);
         expect(kimiQuota.source).toBe("tui");
+        // The API path ran first: the dummy token has no expiry, so it tried to refresh and was rejected.
+        expect(kimiFetchUrls).toEqual(["https://auth.kimi.ai/api/oauth/token"]);
 
         // 3. Exercise grokAdapter.poll()
         const grokQuota = await grokAdapter.poll();
@@ -328,6 +346,11 @@ describe("Credential-free adapters regression", () => {
         readSyncSpy.mockRestore();
         homedirSpy.mockRestore();
         runPtySpy.mockRestore();
+        vi.unstubAllGlobals();
+        for (const [k, v] of origKimiEnv) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
         process.env.HOME = origHome;
         if (origQcHome === undefined) delete process.env.QUOTACAP_HOME;
         else process.env.QUOTACAP_HOME = origQcHome;
