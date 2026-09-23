@@ -69,7 +69,7 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
           ? `resets ${rawReset}`
           : `resets in ${rawReset}`
         : "";
-      const resetIso = textToParse ? parseResetText(textToParse, now) : undefined;
+      const resetIso = textToParse ? (parseResetText(textToParse, now) ?? undefined) : undefined;
       monthlyFields = {
         monthlyKind: "included",
         monthlyStatus: exhausted ? "exhausted" : "ok",
