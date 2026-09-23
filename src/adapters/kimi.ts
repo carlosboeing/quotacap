@@ -74,7 +74,7 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
         monthlyKind: "included",
         monthlyStatus: exhausted ? "exhausted" : "ok",
         monthlyPct: exhausted ? 100 : Math.min(100, monthlyPct),
-        monthlyResetsAt: resetIso ?? weeklyIso,
+        monthlyResetsAt: resetIso,
       };
     }
   }
@@ -94,10 +94,24 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   };
 }
 
+// Exhaustion comes from the raw ratio; only the displayed pct is rounded, and
+// capped at 99 below full so a rounded 100 never reads as an empty window.
+// An unreadable reset stays undefined: the monthly window is independent of
+// the weekly one, so the weekly reset is no stand-in for it.
+function monthlyFromRatio(ratio: number, resetRaw: unknown): MonthlyFields {
+  const exhausted = ratio >= 1;
+  const resetsMs = Date.parse(String(resetRaw ?? ""));
+  return {
+    monthlyKind: "included",
+    monthlyStatus: exhausted ? "exhausted" : "ok",
+    monthlyPct: exhausted ? 100 : Math.min(99, Math.max(0, Math.round(ratio * 100))),
+    monthlyResetsAt: Number.isFinite(resetsMs) ? new Date(resetsMs).toISOString() : undefined,
+  };
+}
+
 function parseKimiApiMonthly(
   u: Record<string, unknown>,
   legacyUsages: Record<string, unknown> | undefined,
-  fallbackReset: string,
 ): MonthlyFields {
   // 1. Check limits array for an explicit monthly duration (>= 28 days)
   if (Array.isArray(u.limits)) {
@@ -116,18 +130,7 @@ function parseKimiApiMonthly(
             const used = Number(detail.used);
             const limit = Number(detail.limit);
             if (Number.isFinite(used) && Number.isFinite(limit) && limit > 0) {
-              const pct = Math.round((used / limit) * 100);
-              const resetsMs = Date.parse(String(detail.resetTime ?? ""));
-              const monthlyResetsAt = Number.isFinite(resetsMs)
-                ? new Date(resetsMs).toISOString()
-                : fallbackReset;
-              const exhausted = pct >= 100;
-              return {
-                monthlyKind: "included",
-                monthlyStatus: exhausted ? "exhausted" : "ok",
-                monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
-                monthlyResetsAt,
-              };
+              return monthlyFromRatio(used / limit, detail.resetTime);
             }
           }
         }
@@ -141,18 +144,7 @@ function parseKimiApiMonthly(
     if (lMonth && typeof lMonth === "object") {
       const ratio = Number(lMonth.used_ratio);
       if (Number.isFinite(ratio) && ratio >= 0) {
-        const pct = Math.round(ratio * 100);
-        const resetsMs = Date.parse(String(lMonth.reset_time ?? ""));
-        const monthlyResetsAt = Number.isFinite(resetsMs)
-          ? new Date(resetsMs).toISOString()
-          : fallbackReset;
-        const exhausted = pct >= 100;
-        return {
-          monthlyKind: "included",
-          monthlyStatus: exhausted ? "exhausted" : "ok",
-          monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
-          monthlyResetsAt,
-        };
+        return monthlyFromRatio(ratio, lMonth.reset_time);
       }
     }
   }
@@ -162,18 +154,7 @@ function parseKimiApiMonthly(
   if (subBal && typeof subBal === "object") {
     const ratio = Number(subBal.amountUsedRatio ?? subBal.amount_used_ratio);
     if (Number.isFinite(ratio) && ratio >= 0) {
-      const pct = Math.round(ratio * 100);
-      const resetsMs = Date.parse(String(subBal.expireTime ?? subBal.expire_time ?? ""));
-      const monthlyResetsAt = Number.isFinite(resetsMs)
-        ? new Date(resetsMs).toISOString()
-        : fallbackReset;
-      const exhausted = pct >= 100;
-      return {
-        monthlyKind: "included",
-        monthlyStatus: exhausted ? "exhausted" : "ok",
-        monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
-        monthlyResetsAt,
-      };
+      return monthlyFromRatio(ratio, subBal.expireTime ?? subBal.expire_time);
     }
   }
 
@@ -262,7 +243,7 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
   }
 
   // 4. Optional monthly quota (from limit_month_total, limits, or subscriptionBalance)
-  const monthly = parseKimiApiMonthly(u, legacyUsages, resetsAt);
+  const monthly = parseKimiApiMonthly(u, legacyUsages);
 
   const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
   return {

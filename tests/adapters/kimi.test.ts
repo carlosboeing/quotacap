@@ -119,6 +119,15 @@ describe("parseKimiTui", () => {
     expect(q.monthlyResetsAt).toBeDefined();
   });
 
+  it("leaves the monthly reset undefined when the TUI shows none", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const txt = `Welcome to Kimi Code\nWeekly limit  █ 7% used   resets in 6d 19h 57m\n5h limit      33% used  resets in 57m\nMonthly limit █ 73% used\n`;
+    const q = parseKimiTui(txt, now);
+    expect(q.monthlyPct).toBe(73);
+    expect(q.resetsAt).toBeDefined();
+    expect(q.monthlyResetsAt).toBeUndefined();
+  });
+
   it("leaves monthly fields undefined when absent in TUI output", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     const q = parseKimiTui(kimiFixture(), now);
@@ -592,6 +601,59 @@ describe("parseKimiApiUsage", () => {
     expect(q.monthlyResetsAt).toBeUndefined();
     expect(q.monthlyKind).toBeUndefined();
   });
+
+  const monthlyShapes: Array<[string, (ratio: number, reset?: string) => Record<string, unknown>]> = [
+    [
+      "limits",
+      (ratio, reset) => ({
+        ...sampleUsages,
+        limits: [
+          ...sampleUsages.limits,
+          {
+            window: { duration: 30, timeUnit: "TIME_UNIT_DAY" },
+            detail: { limit: "1000", used: String(ratio * 1000), resetTime: reset },
+          },
+        ],
+      }),
+    ],
+    [
+      "limit_month_total",
+      (ratio, reset) => ({
+        ...sampleUsages,
+        usages: { ...sampleUsages.usages, limit_month_total: { used_ratio: ratio, reset_time: reset } },
+      }),
+    ],
+    [
+      "subscriptionBalance",
+      (ratio, reset) => ({ ...sampleUsages, subscriptionBalance: { amountUsedRatio: ratio, expireTime: reset } }),
+    ],
+  ];
+
+  for (const [name, build] of monthlyShapes) {
+    it(`${name}: decides monthly exhaustion from the raw ratio, not the rounded pct`, () => {
+      const now = new Date("2026-09-22T09:00:00Z");
+      const reset = "2026-09-29T00:00:00Z";
+      const below = parseKimiApiUsage(build(0.995, reset), sampleMe, now);
+      expect(below.monthlyStatus).toBe("ok");
+      expect(below.monthlyPct).toBe(99);
+      const at = parseKimiApiUsage(build(1, reset), sampleMe, now);
+      expect(at.monthlyStatus).toBe("exhausted");
+      expect(at.monthlyPct).toBe(100);
+      const above = parseKimiApiUsage(build(1.05, reset), sampleMe, now);
+      expect(above.monthlyStatus).toBe("exhausted");
+      expect(above.monthlyPct).toBe(100);
+    });
+
+    it(`${name}: leaves the monthly reset undefined when omitted or malformed`, () => {
+      const now = new Date("2026-09-22T09:00:00Z");
+      for (const reset of [undefined, "not-a-date"]) {
+        const q = parseKimiApiUsage(build(0.5, reset), sampleMe, now);
+        expect(q.monthlyPct).toBe(50);
+        expect(q.resetsAt).toBeDefined();
+        expect(q.monthlyResetsAt).toBeUndefined();
+      }
+    });
+  }
 });
 
 describe("pollKimiApi with mock fetch", () => {
