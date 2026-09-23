@@ -108,6 +108,24 @@ describe("parseKimiTui", () => {
     expect((q as any).raw.length).toBeLessThanOrEqual(4096);
     expect((q as any).raw).toMatch(/Weekly limit/);
   });
+
+  it("parses monthly limit when present in TUI output", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const txt = `Welcome to Kimi Code\nWeekly limit  █ 7% used   resets in 6d 19h 57m\n5h limit      33% used  resets in 57m\nMonthly limit █ 73% used resets in 5d 10m\n`;
+    const q = parseKimiTui(txt, now);
+    expect(q.monthlyPct).toBe(73);
+    expect(q.monthlyKind).toBe("included");
+    expect(q.monthlyStatus).toBe("ok");
+    expect(q.monthlyResetsAt).toBeDefined();
+  });
+
+  it("leaves monthly fields undefined when absent in TUI output", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const q = parseKimiTui(kimiFixture(), now);
+    expect(q.monthlyPct).toBeUndefined();
+    expect(q.monthlyResetsAt).toBeUndefined();
+    expect(q.monthlyKind).toBeUndefined();
+  });
 });
 
 describe("kimi TUI via fake PTY", () => {
@@ -500,6 +518,79 @@ describe("parseKimiApiUsage", () => {
       limits: sampleUsages.limits,
     };
     expect(() => parseKimiApiUsage(invalid)).toThrow(/weekly reset not found/i);
+  });
+
+  it("parses limit_month_total when present in usages object", () => {
+    const now = new Date("2026-09-22T09:00:00Z");
+    const payload = {
+      ...sampleUsages,
+      usages: {
+        ...sampleUsages.usages,
+        limit_month_total: { used_ratio: 0.7335, reset_time: "2026-09-29T00:00:00Z" },
+      },
+    };
+    const q = parseKimiApiUsage(payload, sampleMe, now);
+    expect(q.monthlyPct).toBe(73);
+    expect(q.monthlyResetsAt).toBe("2026-09-29T00:00:00.000Z");
+    expect(q.monthlyStatus).toBe("ok");
+    expect(q.monthlyKind).toBe("included");
+  });
+
+  it("parses subscriptionBalance when present in API payload", () => {
+    const now = new Date("2026-09-22T09:00:00Z");
+    const payload = {
+      ...sampleUsages,
+      subscriptionBalance: {
+        amountUsedRatio: 0.7335,
+        expireTime: "2026-09-29T00:00:00Z",
+      },
+    };
+    const q = parseKimiApiUsage(payload, sampleMe, now);
+    expect(q.monthlyPct).toBe(73);
+    expect(q.monthlyResetsAt).toBe("2026-09-29T00:00:00.000Z");
+    expect(q.monthlyStatus).toBe("ok");
+    expect(q.monthlyKind).toBe("included");
+  });
+
+  it("parses monthly duration from limits array when present", () => {
+    const now = new Date("2026-09-22T09:00:00Z");
+    const payload = {
+      ...sampleUsages,
+      limits: [
+        ...sampleUsages.limits,
+        {
+          window: { duration: 30, timeUnit: "TIME_UNIT_DAY" },
+          detail: { limit: "100", used: "55", remaining: "45", resetTime: "2026-09-29T00:00:00Z" },
+        },
+      ],
+    };
+    const q = parseKimiApiUsage(payload, sampleMe, now);
+    expect(q.monthlyPct).toBe(55);
+    expect(q.monthlyResetsAt).toBe("2026-09-29T00:00:00.000Z");
+    expect(q.monthlyStatus).toBe("ok");
+    expect(q.monthlyKind).toBe("included");
+  });
+
+  it("marks monthly status as exhausted when usage >= 100%", () => {
+    const now = new Date("2026-09-22T09:00:00Z");
+    const payload = {
+      ...sampleUsages,
+      usages: {
+        ...sampleUsages.usages,
+        limit_month_total: { used_ratio: 1.05, reset_time: "2026-09-29T00:00:00Z" },
+      },
+    };
+    const q = parseKimiApiUsage(payload, sampleMe, now);
+    expect(q.monthlyPct).toBe(100);
+    expect(q.monthlyStatus).toBe("exhausted");
+  });
+
+  it("leaves monthly fields undefined when monthly quota is absent", () => {
+    const now = new Date("2026-09-22T09:00:00Z");
+    const q = parseKimiApiUsage(sampleUsages, sampleMe, now);
+    expect(q.monthlyPct).toBeUndefined();
+    expect(q.monthlyResetsAt).toBeUndefined();
+    expect(q.monthlyKind).toBeUndefined();
   });
 });
 

@@ -15,6 +15,8 @@ export function kimiProbeDir(): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "kimi-probe");
 }
 
+type MonthlyFields = Pick<ParsedQuota, "monthlyPct" | "monthlyResetsAt" | "monthlyStatus" | "monthlyKind">;
+
 export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   const cleaned = stripAnsi(text);
   const weeklyRe = /Weekly limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
@@ -54,6 +56,29 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
     if (lvl) plan = lvl[1].trim().toLowerCase().replace(/^level_/i, "");
   }
 
+  // Optional monthly window
+  const m = cleaned.match(/Monthly limit[^\d%]*(\d+)%\s+used(?:\s+resets\s+(in\s+[^\n│\r]+|[^\n│\r]+))?/i);
+  let monthlyFields: MonthlyFields = {};
+  if (m) {
+    const monthlyPct = parseInt(m[1], 10);
+    if (Number.isFinite(monthlyPct) && monthlyPct >= 0) {
+      const exhausted = monthlyPct >= 100;
+      const rawReset = m[2]?.trim();
+      const textToParse = rawReset
+        ? rawReset.startsWith("in ")
+          ? `resets ${rawReset}`
+          : `resets in ${rawReset}`
+        : "";
+      const resetIso = textToParse ? parseResetText(textToParse, now) : undefined;
+      monthlyFields = {
+        monthlyKind: "included",
+        monthlyStatus: exhausted ? "exhausted" : "ok",
+        monthlyPct: exhausted ? 100 : Math.min(100, monthlyPct),
+        monthlyResetsAt: resetIso ?? weeklyIso,
+      };
+    }
+  }
+
   const periodStart = new Date(new Date(weeklyIso).getTime() - 7 * 86400000).toISOString();
   return {
     provider: "kimi",
@@ -65,7 +90,94 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
     source: "tui",
     fetchedAt: now.toISOString(),
     raw: cleaned.slice(0, 4096),
+    ...monthlyFields,
   };
+}
+
+function parseKimiApiMonthly(
+  u: Record<string, unknown>,
+  legacyUsages: Record<string, unknown> | undefined,
+  fallbackReset: string,
+): MonthlyFields {
+  // 1. Check limits array for an explicit monthly duration (>= 28 days)
+  if (Array.isArray(u.limits)) {
+    for (const item of u.limits) {
+      if (item && typeof item === "object") {
+        const win = (item as Record<string, unknown>).window as Record<string, unknown> | undefined;
+        const unit = typeof win?.timeUnit === "string" ? win.timeUnit : "";
+        const dur = Number(win?.duration);
+        const isMonthly =
+          unit === "TIME_UNIT_MONTH" ||
+          (unit === "TIME_UNIT_DAY" && dur >= 28) ||
+          (unit === "TIME_UNIT_MINUTE" && dur >= 40320);
+        if (isMonthly) {
+          const detail = (item as Record<string, unknown>).detail as Record<string, unknown> | undefined;
+          if (detail && typeof detail === "object") {
+            const used = Number(detail.used);
+            const limit = Number(detail.limit);
+            if (Number.isFinite(used) && Number.isFinite(limit) && limit > 0) {
+              const pct = Math.round((used / limit) * 100);
+              const resetsMs = Date.parse(String(detail.resetTime ?? ""));
+              const monthlyResetsAt = Number.isFinite(resetsMs)
+                ? new Date(resetsMs).toISOString()
+                : fallbackReset;
+              const exhausted = pct >= 100;
+              return {
+                monthlyKind: "included",
+                monthlyStatus: exhausted ? "exhausted" : "ok",
+                monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
+                monthlyResetsAt,
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Check usages.limit_month_total (Moonshot CLI schema)
+  if (legacyUsages && typeof legacyUsages === "object") {
+    const lMonth = legacyUsages.limit_month_total as Record<string, unknown> | undefined;
+    if (lMonth && typeof lMonth === "object") {
+      const ratio = Number(lMonth.used_ratio);
+      if (Number.isFinite(ratio) && ratio >= 0) {
+        const pct = Math.round(ratio * 100);
+        const resetsMs = Date.parse(String(lMonth.reset_time ?? ""));
+        const monthlyResetsAt = Number.isFinite(resetsMs)
+          ? new Date(resetsMs).toISOString()
+          : fallbackReset;
+        const exhausted = pct >= 100;
+        return {
+          monthlyKind: "included",
+          monthlyStatus: exhausted ? "exhausted" : "ok",
+          monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
+          monthlyResetsAt,
+        };
+      }
+    }
+  }
+
+  // 3. Check subscriptionBalance / subscription_balance (Moonshot web gateway schema)
+  const subBal = (u.subscriptionBalance ?? u.subscription_balance) as Record<string, unknown> | undefined;
+  if (subBal && typeof subBal === "object") {
+    const ratio = Number(subBal.amountUsedRatio ?? subBal.amount_used_ratio);
+    if (Number.isFinite(ratio) && ratio >= 0) {
+      const pct = Math.round(ratio * 100);
+      const resetsMs = Date.parse(String(subBal.expireTime ?? subBal.expire_time ?? ""));
+      const monthlyResetsAt = Number.isFinite(resetsMs)
+        ? new Date(resetsMs).toISOString()
+        : fallbackReset;
+      const exhausted = pct >= 100;
+      return {
+        monthlyKind: "included",
+        monthlyStatus: exhausted ? "exhausted" : "ok",
+        monthlyPct: exhausted ? 100 : Math.min(100, Math.max(0, pct)),
+        monthlyResetsAt,
+      };
+    }
+  }
+
+  return {};
 }
 
 export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = new Date()): ParsedQuota {
@@ -149,6 +261,9 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
     }
   }
 
+  // 4. Optional monthly quota (from limit_month_total, limits, or subscriptionBalance)
+  const monthly = parseKimiApiMonthly(u, legacyUsages, resetsAt);
+
   const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
   return {
     provider: "kimi",
@@ -159,6 +274,7 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
     periodStart,
     source: "api",
     fetchedAt: now.toISOString(),
+    ...monthly,
   };
 }
 
