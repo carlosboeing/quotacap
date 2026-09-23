@@ -5,6 +5,8 @@ import { launchWeb, waitForInitialPoll } from "../../src/cli/runtime.js";
 import { registerModelsCommand } from "../../src/cli/models.js";
 import { takeoverManaged, takeoverUnmanaged } from "../../src/cli/takeover.js";
 import { ServiceUnavailable } from "../../src/runtime/client.js";
+import { registerClientCommands } from "../../src/cli/clients.js";
+import { VERSION } from "../../src/version.js";
 import { start as startMacos, restart as restartMacos } from "../../src/service/macos.js";
 import { start as startSystemd, restart as restartSystemd } from "../../src/service/systemd.js";
 
@@ -245,7 +247,24 @@ describe("CLI phase progress integration", () => {
   });
 
   describe("service lifecycle progress", () => {
+    // Outlasts the 250ms grace window, so the wait counts as a real one.
+    const slowReady = () => new Promise<boolean>((r) => setTimeout(() => r(true), 300));
+
     it("macos start emits waiting for daemon…", async () => {
+      const phases: string[] = [];
+      const testPhase = (msg: string) => phases.push(msg);
+
+      await startMacos({
+        platform: "darwin",
+        runLaunchctl: () => "",
+        waitReady: slowReady,
+        phase: testPhase,
+      });
+
+      expect(phases).toEqual(["waiting for daemon…"]);
+    });
+
+    it("macos start stays silent when the service is already ready", async () => {
       const phases: string[] = [];
       const testPhase = (msg: string) => phases.push(msg);
 
@@ -256,7 +275,7 @@ describe("CLI phase progress integration", () => {
         phase: testPhase,
       });
 
-      expect(phases).toEqual(["waiting for daemon…"]);
+      expect(phases).toEqual([]);
     });
 
     it("macos restart emits waiting for daemon to stop… then waiting for daemon…", async () => {
@@ -267,7 +286,7 @@ describe("CLI phase progress integration", () => {
         platform: "darwin",
         runLaunchctl: () => "",
         waitReleased: async () => true,
-        waitReady: async () => true,
+        waitReady: slowReady,
         phase: testPhase,
       });
 
@@ -281,11 +300,25 @@ describe("CLI phase progress integration", () => {
       await startSystemd({
         platform: "linux",
         runSystemctl: () => "",
-        waitReady: async () => true,
+        waitReady: slowReady,
         phase: testPhase,
       });
 
       expect(phases).toEqual(["waiting for daemon…"]);
+    });
+
+    it("systemd start stays silent when the service is already ready", async () => {
+      const phases: string[] = [];
+      const testPhase = (msg: string) => phases.push(msg);
+
+      await startSystemd({
+        platform: "linux",
+        runSystemctl: () => "",
+        waitReady: async () => true,
+        phase: testPhase,
+      });
+
+      expect(phases).toEqual([]);
     });
 
     it("systemd restart emits waiting for daemon to stop… then waiting for daemon…", async () => {
@@ -296,7 +329,7 @@ describe("CLI phase progress integration", () => {
         platform: "linux",
         runSystemctl: () => "",
         waitReleased: async () => true,
-        waitReady: async () => true,
+        waitReady: slowReady,
         phase: testPhase,
       });
 
@@ -312,7 +345,7 @@ describe("CLI phase progress integration", () => {
       await startMacos({
         platform: "darwin",
         runLaunchctl: () => "",
-        waitReady: async () => true,
+        waitReady: () => new Promise<boolean>((r) => setTimeout(() => r(true), 300)),
         quiet: true,
         phase: testPhase,
       });
@@ -397,6 +430,66 @@ describe("CLI phase progress integration", () => {
 
       expect(phases).toEqual(["waiting for daemon…"]);
     });
+
+    it("takeoverManaged silences the nested service restart's own progress", async () => {
+      let nestedOpts: Record<string, any> | undefined;
+      await takeoverManaged({
+        port: 8787,
+        health: { version: "0.0.39" },
+        cliVersion: "0.0.40",
+        execService: async (_args, o) => {
+          nestedOpts = o;
+          return 0;
+        },
+        createClient: () => ({
+          get: async () => ({ ok: true, ready: true, version: "0.0.40" }),
+        } as any),
+        phase: () => {},
+      });
+
+      const writer = vi.fn();
+      nestedOpts?.phase("waiting for daemon to stop…", { isTTY: true, stderr: writer });
+      expect(typeof nestedOpts?.phase).toBe("function");
+      expect(writer).not.toHaveBeenCalled();
+    });
+
+    for (const command of ["status", "advise"]) {
+      it(`${command} --json suppresses managed takeover progress`, async () => {
+        const calls: Array<{ msg: string; json?: boolean }> = [];
+        let upgraded = false;
+        const program = new Command();
+        registerClientCommands(program, {
+          createClient: () => ({
+            get: async (url: string) => {
+              if (url === "/health") {
+                return upgraded
+                  ? { ok: true, ready: true, version: VERSION }
+                  : { ok: true, ready: true, version: "0.0.1" };
+              }
+              throw new ServiceUnavailable("offline");
+            },
+          } as any),
+          isManaged: async () => true,
+          execService: async () => {
+            upgraded = true;
+            return 0;
+          },
+          takeoverOpts: {
+            sleep: async () => {},
+            timeoutMs: 1000,
+            phase: (msg, opts) => calls.push({ msg, json: opts?.json }),
+          },
+          checkUpdates: async () => null,
+          exit: () => {},
+        });
+        vi.spyOn(console, "log").mockImplementation(() => {});
+        vi.spyOn(console, "error").mockImplementation(() => {});
+
+        await program.parseAsync(["node", "quotacap", command, "--json"]);
+
+        expect(calls).toEqual([{ msg: "waiting for daemon…", json: true }]);
+      });
+    }
 
     it("takeoverUnmanaged emits waiting for daemon to stop…", async () => {
       const phases: string[] = [];

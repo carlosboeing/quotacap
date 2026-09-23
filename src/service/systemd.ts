@@ -16,7 +16,7 @@ import {
   readConfig,
 } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
-import { phase, type PhaseFn } from "../cli/progress.js";
+import { phase, phaseIfSlow, type PhaseFn } from "../cli/progress.js";
 import {
   SERVICE_LABEL,
   PROVIDER_BINS,
@@ -332,8 +332,10 @@ export async function start(deps: SystemdDeps = {}): Promise<void> {
   }
   const { dataDir, print, run } = resolved(deps);
   run(["enable", "--now", SERVICE_UNIT]);
-  (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet });
-  const port = await waitForReady(deps, dataDir);
+  // An already-active, ready unit answers at once; report only a real wait.
+  const port = await phaseIfSlow(waitForReady(deps, dataDir), () =>
+    (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet }),
+  );
   print(`service started and ready on port ${port}`);
 }
 

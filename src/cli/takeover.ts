@@ -119,6 +119,7 @@ export type CreateTakeoverClient = (opts: {
 export type ExecServiceFn = (args: string[], opts?: Record<string, any>) => Promise<number>;
 
 const defaultSleep: SleepFn = (ms) => new Promise((r) => setTimeout(r, ms));
+const silentPhase: PhaseFn = () => {};
 
 export interface WaitOpts {
   createClient?: CreateTakeoverClient;
@@ -205,9 +206,11 @@ export async function takeoverManaged(
     opts.execService ?? ((args, o) => runServiceCommand(args, o ?? {}, {}));
   const verb = opts.refreshRegistration ? "install" : "restart";
   (opts.phase ?? phase)("waiting for daemon…", { json: opts.json });
+  // The line above already reports this wait, so the nested restart stays
+  // silent instead of repeating it past the caller's --json suppression.
   const code = await execService(
     [verb],
-    opts.refreshRegistration ? { version: cliVersion, quiet: true } : undefined,
+    opts.refreshRegistration ? { version: cliVersion, quiet: true } : { phase: silentPhase },
   );
   if (code !== 0) {
     throw new TakeoverError(`daemon upgrade failed: service ${verb} exited ${code}`);

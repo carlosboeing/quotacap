@@ -13,7 +13,7 @@ import {
 } from "../config.js";
 import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
-import { phase, type PhaseFn } from "../cli/progress.js";
+import { phase, phaseIfSlow, type PhaseFn } from "../cli/progress.js";
 
 export const SERVICE_LABEL = "quotacap";
 export const PROVIDER_BINS = ["claude", "codex", "kimi", "grok", "agy", "muse"];
@@ -540,10 +540,12 @@ export async function start(deps: ServiceDeps = {}): Promise<void> {
     timeoutMs: bootstrapTimeoutMs,
   });
   run(["enable", `gui/${uid}/${SERVICE_LABEL}`]);
-  (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet });
   const waitReady = deps.waitReady ?? defaultWaitReady;
   const cfg = await readConfig();
-  const ready = await waitReady(cfg.port);
+  // An already-loaded, ready job answers at once; report only a real wait.
+  const ready = await phaseIfSlow(waitReady(cfg.port), () =>
+    (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet }),
+  );
   if (!ready) {
     throw new Error(
       `service did not become ready on port ${cfg.port}; check ${path.join(dataDir, "logs", "service.log")}`,

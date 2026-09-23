@@ -51,6 +51,34 @@ export function phase(message: string, opts: ProgressOptions = {}): void {
 }
 
 /**
+ * Await work, calling emit only if it is still pending after graceMs, so an
+ * already-settled fast path stays silent.
+ */
+export async function phaseIfSlow<T>(
+  work: Promise<T>,
+  emit: () => void,
+  graceMs = 250,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const slow = new Promise<"slow">((r) => {
+    timer = setTimeout(() => r("slow"), graceMs);
+  });
+  try {
+    const first = await Promise.race([
+      work.then(
+        () => "done" as const,
+        () => "done" as const,
+      ),
+      slow,
+    ]);
+    if (first === "slow") emit();
+    return await work;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Create a phase reporter with pre-bound default options.
  */
 export function createPhase(
