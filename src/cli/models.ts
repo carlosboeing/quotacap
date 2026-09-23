@@ -9,6 +9,7 @@ import { providerIdentity } from "../advisory/provider-names.js";
 import { readToken } from "../runtime/token.js";
 import { createServiceClient } from "../runtime/client.js";
 import { OFFLINE_LABEL } from "./snapshot-source.js";
+import { phase } from "./progress.js";
 import type { ClientCommandDeps, CreateClientOptions } from "./clients.js";
 
 function projectModels(
@@ -85,6 +86,9 @@ export function registerModelsCommand(program: Command, deps: ClientCommandDeps 
 
       let body: any;
       try {
+        if (o.refresh) {
+          (deps.phase ?? phase)("refreshing model catalogs…", { json: !!o.json });
+        }
         const url = o.refresh
           ? (o.provider ? `/api/models/refresh?provider=${encodeURIComponent(o.provider)}` : "/api/models/refresh")
           : (o.provider ? `/api/models?provider=${encodeURIComponent(o.provider)}` : "/api/models");

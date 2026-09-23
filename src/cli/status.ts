@@ -95,6 +95,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
                 createClient,
                 execService,
                 ...takeoverOpts,
+                json: !!o.json || takeoverOpts.json,
               });
               console.error(r.message);
               // The takeover verified the daemon now reports the CLI version;

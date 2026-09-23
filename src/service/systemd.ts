@@ -12,9 +12,11 @@ import {
   getDbPath,
   readServiceMetadata,
   writeServiceMetadata,
+  ensureConfig,
+  readConfig,
 } from "../config.js";
-import { ensureConfig, readConfig } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
+import { phase, phaseIfSlow, type PhaseFn } from "../cli/progress.js";
 import {
   SERVICE_LABEL,
   PROVIDER_BINS,
@@ -59,6 +61,7 @@ export interface SystemdDeps {
   // Silence success-path prints; the caller reports the outcome instead.
   // Errors still throw and stay loud. Only the post-update refresh sets it.
   quiet?: boolean;
+  phase?: PhaseFn;
 }
 
 export function formatSystemctlError(args: string[], detail: string): Error {
@@ -329,7 +332,10 @@ export async function start(deps: SystemdDeps = {}): Promise<void> {
   }
   const { dataDir, print, run } = resolved(deps);
   run(["enable", "--now", SERVICE_UNIT]);
-  const port = await waitForReady(deps, dataDir);
+  // An already-active, ready unit answers at once; report only a real wait.
+  const port = await phaseIfSlow(waitForReady(deps, dataDir), () =>
+    (deps.phase ?? phase)("waiting for daemon…", { quiet: deps.quiet }),
+  );
   print(`service started and ready on port ${port}`);
 }
 
@@ -343,6 +349,7 @@ export async function restart(deps: SystemdDeps = {}): Promise<void> {
   // systemctl stop can return before the port is released; same race as launchd.
   // deps.port mirrors start(): tests must never probe the real daemon's port.
   const port = deps.port ?? (await readConfig()).port;
+  (deps.phase ?? phase)("waiting for daemon to stop…", { quiet: deps.quiet });
   const waitReleased = deps.waitReleased ?? defaultWaitReleased;
   if (!(await waitReleased(port))) {
     (deps.print ?? console.log)(

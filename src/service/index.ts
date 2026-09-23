@@ -151,7 +151,9 @@ export async function runServiceCommand(
         await backend.stop(deps);
         break;
       case "restart":
-        await backend.restart(deps);
+        // Internal: a takeover passes its own phase reporter so the nested
+        // restart honours the calling command's progress suppression.
+        await backend.restart({ ...deps, phase: opts.phase ?? deps.phase });
         break;
       case "status":
         await backend.status(deps, { json: !!opts.json });

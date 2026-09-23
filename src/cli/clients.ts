@@ -12,6 +12,7 @@ import { registerModelsCommand } from "./models.js";
 import type { CatalogFetcher } from "../catalog/index.js";
 import type { SleepFn } from "./takeover.js";
 import type { UpdateCache } from "../runtime/updates.js";
+import type { PhaseFn } from "./progress.js";
 
 export interface CreateClientOptions {
   port: number;
@@ -32,9 +33,12 @@ export interface ClientCommandDeps {
     sleep?: SleepFn;
     timeoutMs?: number;
     readToken?: () => string | undefined;
+    phase?: PhaseFn;
+    json?: boolean;
   };
   checkUpdates?: () => Promise<UpdateCache | null>;
   catalogFetchers?: Record<string, CatalogFetcher>;
+  phase?: PhaseFn;
 }
 
 export function registerClientCommands(program: Command, deps?: ClientCommandDeps): void {
