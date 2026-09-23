@@ -1,5 +1,5 @@
 import React from "react";
-import { displayPlan, type ProviderView } from "../state.js";
+import type { ProviderView } from "../state.js";
 import {
   Badge,
   PaceBar,
@@ -26,7 +26,6 @@ export function ProviderRow({
   const asOfMs = Date.parse(asOf);
   const lines = paceLines(advisory);
   const name = provider.displayName;
-  const plan = displayPlan(quota?.plan);
   const reset = resetCellLines(provider, asOfMs);
   const last = lastClose(provider);
   return (
@@ -52,7 +51,6 @@ export function ProviderRow({
               </span>
             )}
           </span>
-          {plan && <span className="pl">{plan}</span>}
         </span>
       </div>
       <div data-label="Used vs elapsed">

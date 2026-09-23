@@ -1164,12 +1164,6 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: var(--t-4);
   letter-spacing: -0.01em;
 }
-.pcard-head .who .pl {
-  display: block;
-  font-size: var(--t-2);
-  font-weight: 500;
-  color: var(--ink-soft);
-}
 .src {
   display: block;
   font-size: var(--t-2);
@@ -1515,11 +1509,6 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   align-items: flex-start;
   gap: var(--s2);
   min-width: 0;
-}
-.prov .pl {
-  display: block;
-  font-size: var(--t-2);
-  color: var(--ink-soft);
 }
 .prov .dot {
   width: 8px;

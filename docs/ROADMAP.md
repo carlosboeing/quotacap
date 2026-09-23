@@ -173,6 +173,7 @@
 
 ## Future
 
+* User-editable subscription plans & monthly plan cost comparison table — allows users to customize provider plan names and view monthly expenditure alongside quota usage
 * Task suitability & model capability routing — benchmark mapping, reasoning/context tier matching, and task profile selector (deferred to keep core advisory strictly economic)
 * Auto-routing proxy (out of scope v1)
 * Cloud sync, team mode
