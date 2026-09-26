@@ -169,7 +169,7 @@ describe("CLI phase progress integration", () => {
             // First call in launchWeb: offline
             if (healthCalls === 1) throw new ServiceUnavailable("offline");
             // Next call in waitForHealthy: ok
-            if (healthCalls === 2) return { ok: true, ready: true, version: "0.0.40" };
+            if (healthCalls === 2) return { ok: true, ready: true, version: VERSION };
             // Next call in waitForInitialPoll: in-progress
             if (healthCalls === 3) return { ok: true, polling: "in-progress", lastCompletedPollAt: null };
             // Next call in waitForInitialPoll: settled
@@ -205,7 +205,7 @@ describe("CLI phase progress integration", () => {
       const fakeClient = {
         get: async (url: string) => {
           if (url === "/health") {
-            return { ok: true, ready: true, version: "0.0.40", polling: "idle", lastCompletedPollAt: "2026-09-23T00:00:00Z" };
+            return { ok: true, ready: true, version: VERSION, polling: "idle", lastCompletedPollAt: "2026-09-23T00:00:00Z" };
           }
           return {};
         },
