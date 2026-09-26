@@ -697,9 +697,10 @@ describe("pollKimiApi with mock fetch", () => {
 
       const usageCall = fetchMock.mock.calls.find((c) => c[0].endsWith("/usages"));
       expect(usageCall).toBeDefined();
-      expect(usageCall[1].headers["Authorization"]).toBe("Bearer test-token-123");
-      expect(usageCall[1].headers["X-Msh-Device-Id"]).toBe("dev-456");
-      expect(usageCall[1].headers["User-Agent"]).toBe("kimi-code-cli/2.0.2");
+      const headers = usageCall![1].headers;
+      expect(headers["Authorization"]).toBe("Bearer test-token-123");
+      expect(headers["X-Msh-Device-Id"]).toBe("dev-456");
+      expect(headers["User-Agent"]).toBe("kimi-code-cli/2.0.2");
     } finally {
       vi.unstubAllGlobals();
     }
