@@ -178,8 +178,53 @@ describe("diagnostic boundary and failure classification", () => {
         const failure = classifyFailure("codex", new Error(text));
         expect(failure.diagnosticCode).toBe(expected);
         expect(failure.category).toBe("auth");
-        expect(failure.summary).toBe("Codex login required");
+        expect(failure.summary).toBe("Codex needs you to confirm the subscription account");
+        expect(failure.action).toBe(
+          "Open Codex, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.",
+        );
       }
+    });
+
+    it("classifies vendor account-confirmation text as auth and drops the browser link", () => {
+      const agy = classifyFailure(
+        "agy",
+        new Error(
+          "Eligibility check failed: Your current account is not eligible for Antigravity. Verify your account to continue. Alternatively, try signing in with another personal Google account. https://accounts.google.com/signin/continue?plt=SECRETTOKEN",
+        ),
+      );
+      expect(agy.diagnosticCode).toBe("auth");
+      expect(agy.category).toBe("auth");
+      expect(agy.summary).toBe("Antigravity needs you to confirm the subscription account");
+      expect(agy.errorDetail).toBe("login required");
+      expect(JSON.stringify(agy)).not.toContain("SECRETTOKEN");
+      expect(JSON.stringify(agy)).not.toContain("accounts.google.com");
+
+      const codex = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty completion timeout after 12000ms"), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: 12000,
+          stdout:
+            "starting\nSign in with Device Code\nhttps://auth.openai.com/oauth/authorize?code_challenge=SECRETVALUE\n",
+        }),
+      );
+      expect(codex.diagnosticCode).toBe("auth");
+      expect(codex.summary).toBe("Codex needs you to confirm the subscription account");
+      expect(codex.errorDetail).toContain("login required");
+      expect(JSON.stringify(codex)).not.toContain("SECRETVALUE");
+      expect(JSON.stringify(codex)).not.toContain("auth.openai.com");
+
+      const stillTimeout = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty completion timeout after 12000ms"), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: 12000,
+          stdout: "starting up\nloading models\n",
+        }),
+      );
+      expect(stillTimeout.diagnosticCode).toBe("timeout");
     });
 
     it("Order 7: network (ENOTFOUND / ECONNREFUSED / ETIMEDOUT / EAI_AGAIN / fetch failed)", () => {

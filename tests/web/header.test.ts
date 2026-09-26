@@ -2,7 +2,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect } from "vitest";
 import { Header, pillFor } from "../../web/src/components/Header.js";
-import { repairFor } from "../../web/src/components/FaultBanner.js";
+import { FaultBanner, repairFor } from "../../web/src/components/FaultBanner.js";
 
 const LIVE_RUNTIME = {
   available: true,
@@ -86,8 +86,9 @@ describe("fault repair", () => {
       exclusionReason: "provider-failed",
       lastAttempt: { failureCategory: "auth" },
     } as any);
-    expect(auth.text).toMatch(/sign in to the claude cli/i);
-    expect(auth.text).toMatch(/By default QuotaCap never reads credentials/i);
+    expect(auth.text).toBe(
+      "Claude needs you to confirm the subscription account. Open Claude, complete the browser sign-in it shows, then select Retry.",
+    );
     const stale = repairFor({ id: "kimi", displayName: "Kimi", exclusionReason: "stale", lastAttempt: null } as any);
     expect(stale.text).toMatch(/poll again/i);
   });
@@ -107,6 +108,57 @@ describe("fault repair", () => {
     expect(enriched.text).toBe(
       "Unable to read Codex usage: bad 5h reset. QuotaCap could not read the usage output. Check for a QuotaCap update or report the adapter failure.",
     );
+  });
+  it("uses the server sign-in summary and labels that banner Retry", () => {
+    const summary = "Antigravity needs you to confirm the subscription account";
+    const auth = repairFor({
+      id: "agy",
+      displayName: "Antigravity",
+      exclusionReason: "provider-failed",
+      lastAttempt: {
+        failureCategory: "auth",
+        summary,
+        action: "Open Antigravity, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.",
+        errorDetail: "exec exited (code 1): login required",
+      },
+    } as any);
+    expect(auth.text).toBe(
+      `${summary}. Open Antigravity, complete the browser sign-in it shows, then select Retry.`,
+    );
+    expect(auth.text).not.toContain("exec exited");
+
+    const html = renderToString(
+      React.createElement(FaultBanner, {
+        providers: [
+          {
+            id: "agy",
+            displayName: "Antigravity",
+            enabled: true,
+            exclusionReason: "provider-failed",
+            ageMs: 45_060_000,
+            lastAttempt: { failureCategory: "auth", summary },
+          },
+          {
+            id: "codex",
+            displayName: "Codex",
+            enabled: true,
+            exclusionReason: "provider-failed",
+            ageMs: 1000,
+            lastAttempt: {
+              failureCategory: "timeout",
+              summary: "Codex took too long to respond",
+              action: "Open Codex directly.",
+              errorDetail: "timed out",
+            },
+          },
+        ],
+        onRepoll: () => {},
+        repolling: false,
+      } as any),
+    );
+    expect(html).toContain(">Retry<");
+    expect(html).toContain(">Check Codex<");
+    expect(html).not.toContain("Check Antigravity");
   });
   it("keeps the legacy wording for attempts without a diagnosis", () => {
     const legacy = repairFor({
