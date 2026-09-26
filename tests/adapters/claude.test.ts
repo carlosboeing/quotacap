@@ -16,6 +16,7 @@ describe("parseClaudeUsage", () => {
     expect(q.weeklyPct).toBe(25);
     expect(q.fiveHourPct).toBe(46);
     expect(q.provider).toBe("claude");
+    expect(q.plan).toBe("unknown");
     expect(q.resetsAt).toMatch(/2026-09-03/);
     expect(q.periodStart).toMatch(/^2026-08-27/);
   });

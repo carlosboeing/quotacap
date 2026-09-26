@@ -15,7 +15,7 @@ export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota 
   const resets = new Date(resetsAt).getTime();
   const periodStart = (parsedReset ? new Date(resets - 7*86400000) : new Date(now.getTime() - 7*86400000)).toISOString();
   return {
-    provider: "claude", plan: "max", weeklyPct: usedPct, fiveHourPct: sessionPct,
+    provider: "claude", plan: "unknown", weeklyPct: usedPct, fiveHourPct: sessionPct,
     resetsAt, periodStart, source: "cli", fetchedAt: now.toISOString(), raw: result,
   };
 }
