@@ -216,7 +216,8 @@ describe("reset clock", () => {
   });
 
   it("resetDateClock adds the calendar date a monthly reset needs", () => {
-    expect(resetDateClock("2026-09-10T21:00:00+10:00", "en-US")).toBe("Thu Sep 10 21:00");
+    // Shape, not the clock reading: the time renders in the machine zone.
+    expect(resetDateClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}$/);
     expect(resetDateClock("not-a-date", "en-US")).toBeNull();
   });
 
