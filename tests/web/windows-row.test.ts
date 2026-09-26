@@ -41,11 +41,11 @@ describe("windows row", () => {
     expect(five.time).toBeNull();
   });
 
-  it("an exhausted month shows the weekday and the full class", () => {
+  it("an exhausted month shows the weekday plus date and the full class", () => {
     const s = toViewModel(JSON.parse(monthlyExhaustedStateSnapshotJson));
     const out = html(React.createElement(WindowsRow, { provider: s.providers[0], asOf: s.asOf, variant: "card" }));
     expect(out).toContain('<span class="seg full">');
-    expect(out).toContain('<span class="t">Tue</span>');
+    expect(out).toContain('<span class="t">Tue Sep 15</span>');
   });
 
   it("Claude renders the 5h unit only; Grok renders no line at all", () => {

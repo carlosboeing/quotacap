@@ -1,6 +1,6 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
-import { resetClock, resetWeekday } from "./PaceBar.js";
+import { resetDateClock, resetDay } from "./PaceBar.js";
 
 const MIN_MS = 60_000;
 const HOUR_MS = 60 * MIN_MS;
@@ -23,7 +23,7 @@ export interface WindowUnit {
   pct: number;
   /** Presentation-only heat: < 80 none, 80–99 hot, 100 or exhausted full. */
   heat: "" | "hot" | "full";
-  /** Tag time outside the pill: "in 7d", or the weekday alone when the month is exhausted. */
+  /** Tag time outside the pill: "in 7d", or the weekday plus date when the month is exhausted. */
   time: string | null;
   /** Expanded card track's reset line. */
   reset: string | null;
@@ -47,10 +47,10 @@ export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[
   if (q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
     const exhausted = q.monthlyStatus === "exhausted";
     const left = windowCountdown(q.monthlyResetsAt, asOfMs);
-    const clock = resetClock(q.monthlyResetsAt);
+    const clock = resetDateClock(q.monthlyResetsAt);
     units.push({ win: "month", tag: "Mth", cardLabel: "Monthly", rowLabel: "Month",
       pct: q.monthlyPct, heat: heatOf(q.monthlyPct, exhausted),
-      time: exhausted ? resetWeekday(q.monthlyResetsAt) : left ? `in ${left}` : null,
+      time: exhausted ? resetDay(q.monthlyResetsAt) : left ? `in ${left}` : null,
       reset: exhausted ? (clock ? `resets ${clock}` : null) : left ? `in ${left}` : null });
   }
   return units;

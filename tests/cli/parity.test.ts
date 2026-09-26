@@ -459,25 +459,25 @@ describe("parity: monthly windows", () => {
     expect(JSON.parse(f.content[0].text).forecast).toBe("5% of month left");
   });
 
-  it("reads Monthly exhausted and unused until Tue on every surface when the month is empty", async () => {
+  it("reads Monthly exhausted and unused until Tue Sep 15 on every surface when the month is empty", async () => {
     current = monthlyExhaustedStateSnapshotJson;
     const go = cli(monthlyExhaustedStateSnapshot);
     expect(stateWord(go)).toBe("Monthly exhausted");
     expect(paceBadge(web(monthlyExhaustedStateSnapshotJson))).toBe("Monthly exhausted");
-    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue");
-    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue");
+    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue Sep 15");
+    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue Sep 15");
     expect(renderMarkdownTable(monthlyExhaustedStateSnapshot, FIXED_NOW)).toContain("| Monthly exhausted |");
     expect(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW, color: true })).toContain("\x1b[31mMonthly exhausted");
     const f: any = await handleTool("forecast", { provider: "opencode-go" });
     const body = JSON.parse(f.content[0].text);
     expect(body.state).toBe("Monthly exhausted");
-    expect(body.forecast).toBe("unused until Tue");
+    expect(body.forecast).toBe("unused until Tue Sep 15");
   });
 
   it("keeps FORECAST column-aligned on a Monthly exhausted row", () => {
     const [header, ...lines] = strip(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW })).split("\n");
     const row = lines.find((l) => l.includes("Monthly exhausted"))!;
-    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue");
+    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue Sep 15");
   });
 
   it("the month sentence wins over unknown pace and over Watch", () => {
