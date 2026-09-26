@@ -89,10 +89,12 @@ function stripAnsiAndControls(s: string): string {
 
 const UNRECOGNIZED_OMITTED = "Unrecognized diagnostic text omitted";
 
-// Vendor sign-in wording. The sentence is safe to recognize. The browser
-// link that follows it can carry a sign-in token, so the link is never stored.
+// Vendor account-confirmation wording. The sentence is safe to recognize.
+// The browser link that follows it can carry a sign-in token, so the link is never stored.
+// "account is not eligible" is the Antigravity sentence; a bare "not eligible" is not.
+// The hyphen covers "Sign-in with". "signed in with" does not match.
 const ACCOUNT_CONFIRMATION =
-  /\b(?:not eligible|verify your account|eligibility check failed|device code|sign(?:ing)? in with)\b/i;
+  /\b(?:account is not eligible|verify your account|eligibility check failed|device code|sign(?:ing)?[ -]in with)\b/i;
 
 interface MatchResult {
   code: DiagnosticCode;
@@ -106,11 +108,14 @@ function matchPrecedence(
   text: string,
 ): MatchResult {
   // Order 1: timeout — Structured AbortError or an explicit QuotaCap abort/timeout checkpoint.
-  // Account-confirmation text wins over that checkpoint: the TUI is often
-  // sitting on a sign-in screen when the completion timer fires.
-  const confirmsAccount = ACCOUNT_CONFIRMATION.test(text);
+  // A ready or completion timeout whose transcript is an account-confirmation
+  // screen falls through, so the sign-in sentence can win later. An explicit
+  // abort stays a timeout even if that screen is in the transcript.
+  const signInTimeout =
+    ACCOUNT_CONFIRMATION.test(text) &&
+    (evidence?.checkpoint === "ready timeout" || evidence?.checkpoint === "completion timeout");
   const isAbort =
-    !confirmsAccount &&
+    !signInTimeout &&
     (errorName === "AbortError" ||
       errorCode === "ABORT_ERR" ||
       evidence?.checkpoint === "abort" ||
@@ -223,9 +228,6 @@ function matchPrecedence(
     /\baccess token could not be refreshed\b/i.test(text) ||
     /\bsign in again\b/i.test(text)
   ) {
-    return { code: "auth", phrase: "login required" };
-  }
-  if (ACCOUNT_CONFIRMATION.test(text)) {
     return { code: "auth", phrase: "login required" };
   }
   if (
@@ -342,6 +344,14 @@ function matchPrecedence(
   }
   if (/\blimits refresh requested\b/i.test(text) || /\brefresh requested\b/i.test(text)) {
     return { code: "service_unavailable", phrase: "limits refresh requested" };
+  }
+
+  // Account confirmation is after network, parse, and service-unavailable.
+  // A sign-in menu line must not hide a harder failure. It is before the
+  // text timeout match so a completion timeout sitting on that screen still
+  // classifies as auth.
+  if (ACCOUNT_CONFIRMATION.test(text)) {
+    return { code: "auth", phrase: "account confirmation required" };
   }
 
   // Order 9: timeout — Remaining explicit timeout or timed out errors
@@ -550,6 +560,7 @@ function getSummaryAndAction(
   code: DiagnosticCode,
   providerName: string,
   provider: string,
+  errorDetail: string,
 ): { summary: string; action: string } {
   switch (code) {
     case "terminal_error":
@@ -558,9 +569,15 @@ function getSummaryAndAction(
         action: `Open ${providerName} directly in your terminal to check whether it starts. If it works there, inspect the QuotaCap service log and report the adapter failure. Refresh in the dashboard retries through the same service.`,
       };
     case "auth":
+      if (/\baccount confirmation required\b/i.test(errorDetail)) {
+        return {
+          summary: `${providerName} needs you to confirm the subscription account`,
+          action: `Open ${providerName}, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.`,
+        };
+      }
       return {
-        summary: `${providerName} needs you to confirm the subscription account`,
-        action: `Open ${providerName}, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.`,
+        summary: `${providerName} login required`,
+        action: `Open ${providerName} and follow its sign-in instructions. Then select Refresh in the QuotaCap dashboard.`,
       };
     case "command_not_found":
       return {
@@ -620,7 +637,7 @@ export function classifyFailure(provider: string, reason: unknown): ClassifiedFa
 
   const category = mapCategory(diag.diagnosticCode);
   const pName = formatProviderName(provider);
-  const { summary, action } = getSummaryAndAction(diag.diagnosticCode, pName, provider);
+  const { summary, action } = getSummaryAndAction(diag.diagnosticCode, pName, provider, diag.errorDetail);
 
   return {
     diagnosticCode: diag.diagnosticCode,

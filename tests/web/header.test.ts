@@ -87,7 +87,7 @@ describe("fault repair", () => {
       lastAttempt: { failureCategory: "auth" },
     } as any);
     expect(auth.text).toBe(
-      "Claude needs you to confirm the subscription account. Open Claude, complete the browser sign-in it shows, then select Retry.",
+      "Claude login required. Open Claude and follow its sign-in instructions. Then select Retry.",
     );
     const stale = repairFor({ id: "kimi", displayName: "Kimi", exclusionReason: "stale", lastAttempt: null } as any);
     expect(stale.text).toMatch(/poll again/i);
@@ -156,9 +156,9 @@ describe("fault repair", () => {
         repolling: false,
       } as any),
     );
-    expect(html).toContain(">Retry<");
+    expect(html).toContain(">Retry Antigravity<");
     expect(html).toContain(">Check Codex<");
-    expect(html).not.toContain("Check Antigravity");
+    expect(html).not.toContain(">Retry<");
   });
   it("keeps the legacy wording for attempts without a diagnosis", () => {
     const legacy = repairFor({

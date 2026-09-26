@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { ProviderView, ViewModel } from "../state.js";
 import { ageDuration } from "../state.js";
 import { failureWords } from "../components/ProviderDrawer.js";
+import { authInstruction } from "../components/FaultBanner.js";
 
 export interface Readiness {
   status: "Ready" | "Sign in first";
@@ -34,7 +35,7 @@ export function readiness(provider: ProviderView): Readiness {
   if (provider.lastAttempt?.failureCategory === "auth") {
     return {
       status: "Sign in first",
-      detail: `Sign in to the ${cli} CLI, then re-poll. ${credentialNote}`,
+      detail: authInstruction(cli, provider.lastAttempt),
     };
   }
   if (!provider.lastAttempt) {

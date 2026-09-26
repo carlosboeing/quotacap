@@ -178,9 +178,9 @@ describe("diagnostic boundary and failure classification", () => {
         const failure = classifyFailure("codex", new Error(text));
         expect(failure.diagnosticCode).toBe(expected);
         expect(failure.category).toBe("auth");
-        expect(failure.summary).toBe("Codex needs you to confirm the subscription account");
+        expect(failure.summary).toBe("Codex login required");
         expect(failure.action).toBe(
-          "Open Codex, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.",
+          "Open Codex and follow its sign-in instructions. Then select Refresh in the QuotaCap dashboard.",
         );
       }
     });
@@ -195,9 +195,17 @@ describe("diagnostic boundary and failure classification", () => {
       expect(agy.diagnosticCode).toBe("auth");
       expect(agy.category).toBe("auth");
       expect(agy.summary).toBe("Antigravity needs you to confirm the subscription account");
-      expect(agy.errorDetail).toBe("login required");
+      expect(agy.action).toContain("complete the browser sign-in");
+      expect(agy.errorDetail).toBe("account confirmation required");
       expect(JSON.stringify(agy)).not.toContain("SECRETTOKEN");
       expect(JSON.stringify(agy)).not.toContain("accounts.google.com");
+
+      const hyphen = classifyFailure("codex", new Error("Sign-in with Google to continue"));
+      expect(hyphen.diagnosticCode).toBe("auth");
+      expect(hyphen.errorDetail).toBe("account confirmation required");
+
+      const promotion = classifyFailure("codex", new Error("This promotion is not eligible for your region"));
+      expect(promotion.diagnosticCode).toBe("unknown");
 
       const codex = classifyFailure(
         "codex",
@@ -211,9 +219,28 @@ describe("diagnostic boundary and failure classification", () => {
       );
       expect(codex.diagnosticCode).toBe("auth");
       expect(codex.summary).toBe("Codex needs you to confirm the subscription account");
-      expect(codex.errorDetail).toContain("login required");
+      expect(codex.errorDetail).toContain("account confirmation required");
       expect(JSON.stringify(codex)).not.toContain("SECRETVALUE");
       expect(JSON.stringify(codex)).not.toContain("auth.openai.com");
+
+      const aborted = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty aborted"), {
+          source: "pty",
+          checkpoint: "abort",
+          stdout: "Sign in with Device Code\n",
+        }),
+      );
+      expect(aborted.diagnosticCode).toBe("timeout");
+
+      const offlineMenu = classifyFailure(
+        "codex",
+        diagnosticError(new Error("connect failed"), {
+          source: "exec",
+          stderr: "ENOTFOUND\nSign in with Device Code\n",
+        }),
+      );
+      expect(offlineMenu.diagnosticCode).toBe("network");
 
       const stillTimeout = classifyFailure(
         "codex",
