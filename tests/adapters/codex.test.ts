@@ -130,6 +130,27 @@ describe("parseCodexTui", () => {
     expect(() => parseCodexTui(txt, new Date())).toThrow(/5h limit/i);
   });
 
+  it("parses the Codex 0.157 12-hour panel", () => {
+    const now = new Date(2026, 8, 26, 12, 0);
+    const txt = [
+      "│  5h limit:             [████░░░░░░░░░░░░░░░░] 91% left (resets 9:43 PM) │",
+      "│  Weekly limit:         [██░░░░░░░░░░░░░░░░░░] 8% left (resets 9:14 AM on 30 Sep) │",
+    ].join("\n");
+    const q = parseCodexTui(txt, now);
+    expect(q.weeklyPct).toBe(92);
+    expect(q.fiveHourPct).toBe(9);
+    expect(q.resetsAtEstimated).toBeUndefined();
+    expect(new Date(q.resetsAt).getTime()).toBe(new Date(2026, 8, 30, 9, 14).getTime());
+  });
+
+  it("maps 12 AM and 12 PM onto 00:00 and 12:00", () => {
+    const now = new Date(2026, 8, 26, 1, 0);
+    const noon = parseCodexTui(codexFixture({ weeklyReset: "12:00 PM on 30 Sep", fiveReset: "12:00 AM" }), now);
+    expect(new Date(noon.resetsAt).getHours()).toBe(12);
+    const midnightWeekly = parseCodexTui(codexFixture({ weeklyReset: "12:00 AM on 30 Sep" }), now);
+    expect(new Date(midnightWeekly.resetsAt).getHours()).toBe(0);
+  });
+
   it("throws when weekly reset is malformed (fail-closed)", () => {
     const txt = codexFixture({ weeklyReset: "bad time" });
     expect(() => parseCodexTui(txt, new Date())).toThrow(/bad weekly reset/i);
