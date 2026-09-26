@@ -1,14 +1,18 @@
 # Changelog
 
-## 0.0.40
+## 0.0.41
 
+- Codex 12-hour resets: Codex 0.157 prints the weekly reset as `9:14 AM on 30 Sep` and the 5-hour reset as `9:43 PM`. The parser accepts that form and keeps the 24-hour form (`23:04 on 19 Sep`, `19:38`). 12 AM is 00:00 and 12 PM is 12:00.
 - Sign-in failures: Antigravity's eligibility text and a Codex device-code screen classify as account confirmation. That case tells you to open the CLI, complete the browser sign-in, and select Retry. Other auth failures keep the generic sign-in instruction. The browser link stays off the banner and out of the log.
 - CLI phase progress (#108): emits progress indicators to stderr during multi-second phases (`resolving latest version…`, `downloading <version>…`, `updating npm package…`, `waiting for daemon…`, `waiting for daemon to stop…`, `waiting for first readings…`, `refreshing model catalogs…`) across `update`, `web`, `service start/restart`, and `models --refresh`. Progress is automatically suppressed on machine outputs (`--json`), in quiet mode, on non-interactive streams (`!stderr.isTTY`), and during fast paths where daemon or initial poll are already settled.
-- Nested included monthly windows (#109): OpenCode Go's monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind: "included"`), and ranking uses bottleneck headroom. A provider whose included month is exhausted leaves both recommendation pools and reads **Monthly exhausted**. When the month is the scarcer window, the forecast reads `5% of month left` instead of the weekly waste, and the known-waste pool ranks on the smaller of weekly waste and the month's headroom priced over the weekly days left. The board adds one collapsed windows row under the weekly bar (`5h` and `Mth` tags, per-card chevron), the drawer stacks Weekly, 5h and Monthly with the badge in its header, and the CLI STATE column widens to fit the new word.
-- Rename: `Quota.usedPct` → `weeklyPct`, `sessionPct` → `fiveHourPct`. `/api/quotas`, `/api/state` and MCP `get_quotas` carry both spellings for one release; `usedPct` and `sessionPct` are deprecated and will be removed.
 - Kimi API polling & auto-refresh: Kimi adapter now polls `https://api.kimi.ai/coding/v1/usages` directly using local credentials from `~/.kimi-code/credentials/` or `KIMI_CODE_API_KEY`, automatically refreshing and rotating expired tokens with `auth.kimi.ai`. This bypasses a Kimi CLI v2.0.2 bug where `/usage` displays 0% used by reading the server's live `limits` and `usage` fields. Seamlessly falls back to PTY probing in `~/.quotacap/kimi-probe` with pre-ready prompt dismissal.
 - Muse warm recovery prompt: Switched warm turn prompt from `muse exec "hi"` to `muse exec "1+1"` to bypass Muse CLI's local greeting short-circuit regex (`(?i)^[\s\p{P}]*(hi|hello)[\s\p{P}]*$`), ensuring warm turns trigger an inference request that refreshes cold subscription usage state.
 - PTY pre-ready response: Added `preReadyResponse` option to `runPty` across Bun and Node runtimes to dismiss interactive prompts (such as workspace trust prompts) before `readyRegex` triggers.
+
+## 0.0.40
+
+- Nested included monthly windows (#109): OpenCode Go's monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind: "included"`), and ranking uses bottleneck headroom. A provider whose included month is exhausted leaves both recommendation pools and reads **Monthly exhausted**. When the month is the scarcer window, the forecast reads `5% of month left` instead of the weekly waste, and the known-waste pool ranks on the smaller of weekly waste and the month's headroom priced over the weekly days left. The board adds one collapsed windows row under the weekly bar (`5h` and `Mth` tags, per-card chevron), the drawer stacks Weekly, 5h and Monthly with the badge in its header, and the CLI STATE column widens to fit the new word.
+- Rename: `Quota.usedPct` → `weeklyPct`, `sessionPct` → `fiveHourPct`. `/api/quotas`, `/api/state` and MCP `get_quotas` carry both spellings for one release; `usedPct` and `sessionPct` are deprecated and will be removed.
 
 ## 0.0.39
 

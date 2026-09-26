@@ -8,21 +8,29 @@ const MONTHS: Record<string, number> = {
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
 
+// Codex 0.157 prints "9:14 AM on 30 Sep" and "9:43 PM". Older panels print
+// "23:04 on 19 Sep" and "19:38". 12 AM is 00:00 and 12 PM is 12:00.
+function clockHours(hours: number, mins: number, ampm: string | undefined): number | null {
+  if (!Number.isFinite(hours) || !Number.isFinite(mins) || mins < 0 || mins > 59) return null;
+  if (!ampm) return hours >= 0 && hours <= 23 ? hours : null;
+  if (hours < 1 || hours > 12) return null;
+  const pm = ampm.toLowerCase() === "pm";
+  if (hours === 12) return pm ? 12 : 0;
+  return pm ? hours + 12 : hours;
+}
+
 function parseWeeklyReset(raw: string, now: Date): string | null {
-  const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s+on\s+(\d{1,2})\s+([A-Za-z]{3,9})$/);
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?\s+on\s+(\d{1,2})\s+([A-Za-z]{3,9})$/);
   if (!m) return null;
-  const hours = parseInt(m[1], 10);
-  const mins = parseInt(m[2], 10);
-  const day = parseInt(m[3], 10);
-  const monStr = m[4].slice(0, 3).toLowerCase();
-  const month = MONTHS[monStr];
-  if (month === undefined || !Number.isFinite(hours) || !Number.isFinite(mins) || !Number.isFinite(day)) return null;
-  if (hours < 0 || hours > 23 || mins < 0 || mins > 59 || day < 1 || day > 31) return null;
+  const hours = clockHours(parseInt(m[1], 10), parseInt(m[2], 10), m[3]);
+  const day = parseInt(m[4], 10);
+  const month = MONTHS[m[5].slice(0, 3).toLowerCase()];
+  if (hours === null || month === undefined || !Number.isFinite(day) || day < 1 || day > 31) return null;
   let year = now.getFullYear();
-  let dt = new Date(year, month, day, hours, mins, 0, 0);
+  let dt = new Date(year, month, day, hours, parseInt(m[2], 10), 0, 0);
   if (Number.isNaN(dt.getTime())) return null;
   if (dt.getTime() < now.getTime()) {
-    dt = new Date(year + 1, month, day, hours, mins, 0, 0);
+    dt = new Date(year + 1, month, day, hours, parseInt(m[2], 10), 0, 0);
     if (Number.isNaN(dt.getTime())) return null;
   }
   if (dt.getTime() < now.getTime()) return null;
@@ -30,16 +38,15 @@ function parseWeeklyReset(raw: string, now: Date): string | null {
 }
 
 function parseFiveReset(raw: string, now: Date): string | null {
-  // The 5h reset is bare ("19:38") when it falls today and date-qualified
-  // ("02:43 on 15 Sep", weekly shape) otherwise; accept both.
+  // The 5h reset is bare ("19:38" or "9:43 PM") when it falls today and
+  // date-qualified ("02:43 on 15 Sep", weekly shape) otherwise; accept both.
   const qualified = parseWeeklyReset(raw, now);
   if (qualified) return qualified;
-  const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?$/);
   if (!m) return null;
-  const hours = parseInt(m[1], 10);
-  const mins = parseInt(m[2], 10);
-  if (hours < 0 || hours > 23 || mins < 0 || mins > 59) return null;
-  let dt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, mins, 0, 0);
+  const hours = clockHours(parseInt(m[1], 10), parseInt(m[2], 10), m[3]);
+  if (hours === null) return null;
+  let dt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, parseInt(m[2], 10), 0, 0);
   if (dt.getTime() < now.getTime()) {
     dt = new Date(dt.getTime() + 86400000);
   }
