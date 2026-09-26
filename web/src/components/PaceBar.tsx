@@ -133,11 +133,30 @@ export function resetClock(resetsAt: string, locale?: string): string | null {
   return `${day} ${time}`;
 }
 
-/** Short weekday in the locked English copy, e.g. "Tue". Mirrors weekdayOf in
- *  src/format/rows.ts, including its pinned en-US locale, so the CLI and the
- *  dashboard word the same sentence identically on any machine. */
-export function resetWeekday(iso: string | undefined): string {
-  return new Date(iso ?? "").toLocaleDateString("en-US", { weekday: "short" });
+/** Weekday, calendar date and 24h clock, e.g. "Thu Oct 22 23:05". Monthly
+ *  resets sit weeks out, where resetClock's weekday-only reading ("Thu 23:05")
+ *  scans as this coming Thursday. Null when unparseable. */
+export function resetDateClock(resetsAt: string, locale?: string): string | null {
+  const ms = Date.parse(resetsAt);
+  if (!Number.isFinite(ms)) return null;
+  const when = new Date(ms);
+  const day = when.toLocaleDateString(locale, { weekday: "short" });
+  const date = when.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  const time = when.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${day} ${date} ${time}`;
+}
+
+/** Short weekday plus calendar date in the locked English copy, e.g.
+ *  "Tue Sep 15". Mirrors dayOf in src/format/rows.ts, including its pinned
+ *  en-US locale, so the CLI and the dashboard word the same sentence
+ *  identically on any machine. */
+export function resetDay(iso: string | undefined): string {
+  const when = new Date(iso ?? "");
+  return `${when.toLocaleDateString("en-US", { weekday: "short" })} ${when.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
 }
 
 /** "6d 12h" style time left from server timestamps. Null when unparseable. */
@@ -453,7 +472,7 @@ export function forecastLine(provider: ProviderView): string | null {
   const advisory = provider.advisory;
   if (!advisory) return null;
   if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining <= 0) {
-    return `unused until ${resetWeekday(provider.quota.monthlyResetsAt)}`;
+    return `unused until ${resetDay(provider.quota.monthlyResetsAt)}`;
   }
   if (advisory.bindingWindow === "monthly") {
     return `${Math.round(advisory.bindingRemaining)}% of month left`;

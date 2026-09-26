@@ -465,6 +465,12 @@ describe("closed weeks drawer", () => {
 });
 
 describe("drawer windows", () => {
+  // Expected monthly clock from locale parts, so the assertion holds in any
+  // timezone without hard-coding one machine's weekday and time.
+  const dateClockOf = (iso: string) => {
+    const when = new Date(iso);
+    return `${when.toLocaleDateString(undefined, { weekday: "short" })} ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+  };
   const render = (json: string, id: string) => {
     const s = JSON.parse(json);
     return renderToString(React.createElement(ProviderDrawer, {
@@ -493,10 +499,19 @@ describe("drawer windows", () => {
 
   it("names the binding month in the meta line", () => {
     const near = JSON.parse(monthlyStateSnapshotJson).providers[0];
-    expect(monthlyMeta(near)).toMatch(/^Resets \S+ \d\d:\d\d · 5% of month left$/);
+    expect(monthlyMeta(near)).toBe(`Resets ${dateClockOf(near.quota.monthlyResetsAt)} · 5% of month left`);
     const full = JSON.parse(monthlyExhaustedStateSnapshotJson).providers[0];
-    expect(monthlyMeta(full)).toMatch(/^Resets \S+ \d\d:\d\d · weekly leftover unused until then$/);
+    expect(monthlyMeta(full)).toBe(`Resets ${dateClockOf(full.quota.monthlyResetsAt)} · weekly leftover unused until then`);
     expect(render(monthlyExhaustedStateSnapshotJson, "opencode-go")).toContain("100% used");
+  });
+
+  it("shows the calendar date for a monthly reset weeks out, not a bare weekday", () => {
+    const s = JSON.parse(monthlyStateSnapshotJson);
+    // The live reading behind the report: 26 days out, on a Thursday.
+    s.providers[0].quota.monthlyResetsAt = "2026-10-22T13:05:10.000Z";
+    const line = monthlyMeta(s.providers[0])!;
+    expect(line).toContain(new Date("2026-10-22T13:05:10.000Z").toLocaleDateString(undefined, { day: "numeric", month: "short" }));
+    expect(line).toMatch(/· 5% of month left$/);
   });
 
   it("the copyable snapshot explains the badge it shows", () => {

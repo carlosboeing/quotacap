@@ -10,7 +10,7 @@ import {
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock } from "../../web/src/components/PaceBar.js";
+import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock, resetDateClock, resetDay } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -214,6 +214,15 @@ describe("reset clock", () => {
     expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).not.toContain("·");
     expect(resetClock("not-a-date", "en-US")).toBeNull();
   });
+
+  it("resetDateClock adds the calendar date a monthly reset needs", () => {
+    expect(resetDateClock("2026-09-10T21:00:00+10:00", "en-US")).toBe("Thu Sep 10 21:00");
+    expect(resetDateClock("not-a-date", "en-US")).toBeNull();
+  });
+
+  it("resetDay pins weekday plus date in English", () => {
+    expect(resetDay("2026-09-15T12:00:00.000Z")).toBe("Tue Sep 15");
+  });
 });
 
 describe("projected-unused hatch", () => {
@@ -322,10 +331,10 @@ describe("monthly headline", () => {
     expect(html).not.toContain("expires unused");
   });
 
-  it("empty month: → unused until Tue, cap colour, no hatch, red badge", () => {
+  it("empty month: → unused until Tue Sep 15, cap colour, no hatch, red badge", () => {
     const html = bar(monthlyExhaustedStateSnapshotJson);
     expect(html).toContain("out-cap");
-    expect(html).toContain("→ unused until Tue");
+    expect(html).toContain("→ unused until Tue Sep 15");
     expect(html).not.toContain("pace-hatch");
     const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
     expect(badge).toContain("pace-cap");

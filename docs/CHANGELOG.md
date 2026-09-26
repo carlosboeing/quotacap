@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.42
+
+- Monthly reset dates: the drawer Monthly line, the exhausted-month forecast, and the collapsed `Mth` tag rendered the monthly reset as a bare weekday (`Thu 23:05`, `unused until Tue`), which reads as this coming week when the reset sits weeks out. All three now carry the calendar date (`Thu Oct 22 23:05`, `unused until Tue Sep 15`), identically on the dashboard, CLI, and MCP.
+
 ## 0.0.41
 
 - Codex 12-hour resets: Codex 0.157 prints the weekly reset as `9:14 AM on 30 Sep` and the 5-hour reset as `9:43 PM`. The parser accepts that form and keeps the 24-hour form (`23:04 on 19 Sep`, `19:38`). 12 AM is 00:00 and 12 PM is 12:00.

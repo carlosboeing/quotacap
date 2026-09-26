@@ -16,6 +16,7 @@ import {
   paceBadge,
   paceFigures,
   resetClock,
+  resetDateClock,
   timeLeft,
   type PaceBadge,
 } from "./PaceBar.js";
@@ -215,7 +216,7 @@ export function resetUnderline(provider: ProviderView, asOfMs: number): string |
 export function monthlyMeta(provider: ProviderView): string | null {
   const q = provider.quota;
   if (q?.monthlyKind !== "included" || !q.monthlyResetsAt) return null;
-  const clock = resetClock(q.monthlyResetsAt);
+  const clock = resetDateClock(q.monthlyResetsAt);
   const base = clock ? `Resets ${clock}` : "Reset unknown";
   const adv = provider.advisory;
   if (q.monthlyStatus === "exhausted" || (adv?.bindingWindow === "monthly" && adv.bindingRemaining === 0)) {

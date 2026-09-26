@@ -48,11 +48,14 @@ export function fmtDuration(ms: number): string {
   return `${Math.max(1, Math.floor(ms / MIN_MS))}m`;
 }
 
-// Short weekday of an ISO instant in the locked English copy, e.g. "Tue".
-// Pinned to en-US: the sentence it feeds ("unused until Tue") is English, so
-// a non-English machine must not print a localized weekday inside it.
-export function weekdayOf(iso: string | undefined): string {
-  return new Date(iso ?? "").toLocaleDateString("en-US", { weekday: "short" });
+// Short weekday plus calendar date of an ISO instant in the locked English
+// copy, e.g. "Tue Sep 15". Pinned to en-US: the sentence it feeds
+// ("unused until Tue Sep 15") is English, so a non-English machine must not
+// print localized parts inside it. A bare weekday scans as this coming week,
+// which misreads a monthly reset sitting weeks out.
+export function dayOf(iso: string | undefined): string {
+  const when = new Date(iso ?? "");
+  return `${when.toLocaleDateString("en-US", { weekday: "short" })} ${when.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
 }
 
 export function countdownText(ps: ProviderSnapshot, now: Date): string {
@@ -155,7 +158,7 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   if (!adv) return "no readings yet";
   let text: string;
   if (adv.bindingWindow === "monthly" && adv.bindingRemaining <= 0) {
-    text = `unused until ${weekdayOf(ps.quota?.monthlyResetsAt)}`;
+    text = `unused until ${dayOf(ps.quota?.monthlyResetsAt)}`;
   } else if (adv.bindingWindow === "monthly") {
     text = `${Math.round(adv.bindingRemaining)}% of month left`;
   } else if (adv.remaining <= 0) {
