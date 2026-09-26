@@ -331,7 +331,8 @@ describe("CLI quotacap providers enable", () => {
     expect(mockClient.post).toHaveBeenCalledWith("/api/providers/opencode-go/enabled", { enabled: true, consent: true });
     const out = logs.join("\n");
     expect(out).toContain("opencode auth login -p opencode-go");
-    expect(out).toContain("restart quotacap daemon to apply");
+    expect(out).toContain("enabled opencode-go");
+    expect(out).toContain("Next: run quotacap service restart to start polling");
   });
 
   it("refuses non-TTY enable of opencode-go without --yes after printing the notice", async () => {

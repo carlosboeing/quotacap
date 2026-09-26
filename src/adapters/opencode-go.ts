@@ -11,8 +11,14 @@ import type { ParsedQuota } from "./types.js";
 const USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
 const POLL_TIMEOUT_MS = 8000;
 
-export const OPENCODE_GO_CONSENT_NOTICE =
-  "QuotaCap will read the API key OpenCode already stored when you ran `opencode auth login -p opencode-go` (`~/.local/share/opencode/auth.json`, `opencode-go` → `opencode` fallback). It is read in-memory, read-only once per poll (every 15 minutes by default). It is sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`. It is never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`). Revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling. If you prefer no file access, set `OPENCODE_API_KEY` instead.";
+export const OPENCODE_GO_CONSENT_NOTICE = [
+  "• What is read: API key OpenCode already stored when you ran `opencode auth login -p opencode-go` (`~/.local/share/opencode/auth.json`, `opencode-go` → `opencode` fallback).",
+  "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
+  "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
+  "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
+  "• Revocation instructions: revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling.",
+  "• Optional environment override: if you prefer no file access, set `OPENCODE_API_KEY` instead.",
+].join("\n");
 
 export function openCodeGoAuthPath(): string {
   return path.join(os.homedir(), ".local", "share", "opencode", "auth.json");
