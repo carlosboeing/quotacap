@@ -179,7 +179,79 @@ describe("diagnostic boundary and failure classification", () => {
         expect(failure.diagnosticCode).toBe(expected);
         expect(failure.category).toBe("auth");
         expect(failure.summary).toBe("Codex login required");
+        expect(failure.action).toBe(
+          "Open Codex and follow its sign-in instructions. Then select Refresh in the QuotaCap dashboard.",
+        );
       }
+    });
+
+    it("classifies vendor account-confirmation text as auth and drops the browser link", () => {
+      const agy = classifyFailure(
+        "agy",
+        new Error(
+          "Eligibility check failed: Your current account is not eligible for Antigravity. Verify your account to continue. Alternatively, try signing in with another personal Google account. https://accounts.google.com/signin/continue?plt=SECRETTOKEN",
+        ),
+      );
+      expect(agy.diagnosticCode).toBe("auth");
+      expect(agy.category).toBe("auth");
+      expect(agy.summary).toBe("Antigravity needs you to confirm the subscription account");
+      expect(agy.action).toContain("complete the browser sign-in");
+      expect(agy.errorDetail).toBe("account confirmation required");
+      expect(JSON.stringify(agy)).not.toContain("SECRETTOKEN");
+      expect(JSON.stringify(agy)).not.toContain("accounts.google.com");
+
+      const hyphen = classifyFailure("codex", new Error("Sign-in with Google to continue"));
+      expect(hyphen.diagnosticCode).toBe("auth");
+      expect(hyphen.errorDetail).toBe("account confirmation required");
+
+      const promotion = classifyFailure("codex", new Error("This promotion is not eligible for your region"));
+      expect(promotion.diagnosticCode).toBe("unknown");
+
+      const codex = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty completion timeout after 12000ms"), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: 12000,
+          stdout:
+            "starting\nSign in with Device Code\nhttps://auth.openai.com/oauth/authorize?code_challenge=SECRETVALUE\n",
+        }),
+      );
+      expect(codex.diagnosticCode).toBe("auth");
+      expect(codex.summary).toBe("Codex needs you to confirm the subscription account");
+      expect(codex.errorDetail).toContain("account confirmation required");
+      expect(JSON.stringify(codex)).not.toContain("SECRETVALUE");
+      expect(JSON.stringify(codex)).not.toContain("auth.openai.com");
+
+      const aborted = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty aborted"), {
+          source: "pty",
+          checkpoint: "abort",
+          stdout: "Sign in with Device Code\n",
+        }),
+      );
+      expect(aborted.diagnosticCode).toBe("timeout");
+
+      const offlineMenu = classifyFailure(
+        "codex",
+        diagnosticError(new Error("connect failed"), {
+          source: "exec",
+          stderr: "ENOTFOUND\nSign in with Device Code\n",
+        }),
+      );
+      expect(offlineMenu.diagnosticCode).toBe("network");
+
+      const stillTimeout = classifyFailure(
+        "codex",
+        diagnosticError(new Error("pty completion timeout after 12000ms"), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: 12000,
+          stdout: "starting up\nloading models\n",
+        }),
+      );
+      expect(stillTimeout.diagnosticCode).toBe("timeout");
     });
 
     it("Order 7: network (ENOTFOUND / ECONNREFUSED / ETIMEDOUT / EAI_AGAIN / fetch failed)", () => {

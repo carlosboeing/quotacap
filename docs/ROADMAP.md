@@ -2,6 +2,7 @@
 
 ## Recently shipped — 0.0.40 — 2026-09-22 (nested included monthly windows)
 
+* Sign-in failures — Antigravity eligibility text and a Codex device-code screen classify as account confirmation, and that case says to open the CLI, complete the browser sign-in, and select Retry. Other auth failures keep the generic sign-in instruction. The browser link stays off the banner and out of the log.
 * Nested included monthly windows — OpenCode Go's included monthly envelope is read (`monthlyPct`, `monthlyResetsAt`, `monthlyStatus`, `monthlyKind`) and ranking uses bottleneck headroom, so a provider whose month is exhausted leaves both recommendation pools and reads **Monthly exhausted**; the forecast names the binding month (`5% of month left` / `unused until Tue`), the board adds one collapsed windows row under the weekly bar (`5h` · `Mth`), the drawer stacks Weekly / 5h / Monthly with the badge in its header, and `Quota.usedPct`/`sessionPct` are renamed `weeklyPct`/`fiveHourPct` with one-release `QuotaWire` aliases (#109)
 * CLI phase progress — emits progress indicators to stderr during multi-second phases (`update`, `web`, `service start/restart`, `models --refresh`), suppressed on fast paths, machine outputs (`--json`), quiet mode, and non-TTY streams (#108)
 * Kimi API polling & auto-refresh — reads local credentials or `KIMI_CODE_API_KEY` to poll `api.kimi.ai` directly with automatic token refresh on `auth.kimi.ai`, bypassing the Kimi CLI v2.0.2 0% usage bug while falling back to sandboxed PTY with pre-ready prompt dismissal

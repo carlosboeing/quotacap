@@ -19,7 +19,22 @@ describe("setup readiness", () => {
     expect(readiness(byId.get("manual")).status).toBe("Sign in first");
     expect(readiness(byId.get("manual")).detail).toMatch(/no live adapter/);
     expect(
-      readiness({ id: "claude", quota: null, lastAttempt: { failureCategory: "auth" } } as any).status
+      readiness({ id: "claude", displayName: "Claude", quota: null, lastAttempt: { failureCategory: "auth" } } as any).status
     ).toBe("Sign in first");
+    const confirmed = readiness({
+      id: "agy",
+      displayName: "Antigravity",
+      harness: "Antigravity",
+      quota: null,
+      lastAttempt: {
+        failureCategory: "auth",
+        summary: "Antigravity needs you to confirm the subscription account",
+        action: "Open Antigravity, complete the browser sign-in it shows, then select Refresh in the QuotaCap dashboard.",
+      },
+    } as any);
+    expect(confirmed.detail).toBe(
+      "Antigravity needs you to confirm the subscription account. Open Antigravity, complete the browser sign-in it shows, then select Retry.",
+    );
+    expect(confirmed.detail).not.toMatch(/never reads credentials/);
   });
 });

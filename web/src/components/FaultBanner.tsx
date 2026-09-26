@@ -7,12 +7,26 @@ export interface Repair {
   text: string;
 }
 
+/** Dashboard wording for a server auth action. The button on this page is Retry. */
+export function authInstruction(
+  name: string,
+  attempt: { summary?: string | null; action?: string | null } | null | undefined,
+): string {
+  const summary = attempt?.summary?.trim() || `${name} login required`;
+  const action = attempt?.action?.trim().replace(
+    /select Refresh in the QuotaCap dashboard/,
+    "select Retry",
+  );
+  if (action) return `${summary}. ${action}`;
+  return `${summary}. Open ${name} and follow its sign-in instructions. Then select Retry.`;
+}
+
 /**
- * Repair routing per excluded provider. Auth failures point at signing into
- * the provider CLI (by default QuotaCap never reads credentials; the only
- * exception is OpenCode Go, which the user enables explicitly); every other
- * exclusion points at a re-poll. Service start/install is covered by the
- * service-unavailable panel when the daemon itself is down.
+ * Repair routing per excluded provider. Auth failures use the server's
+ * summary and action, with Retry in place of the dashboard Refresh control.
+ * OpenCode Go names its own login command. Every other exclusion points at
+ * a re-poll. Service start/install is covered by the service-unavailable
+ * panel when the daemon itself is down.
  */
 export function repairFor(provider: ProviderView): Repair {
   const name = provider.displayName;
@@ -22,9 +36,7 @@ export function repairFor(provider: ProviderView): Repair {
         text: "Run `opencode auth login -p opencode-go`, then re-poll. QuotaCap reads that key only because you enabled OpenCode Go — `quotacap providers disable opencode-go` stops it.",
       };
     }
-    return {
-      text: `Sign in to the ${name} CLI, then re-poll. By default QuotaCap never reads credentials; the only exception is OpenCode Go, which you enable explicitly.`,
-    };
+    return { text: authInstruction(name, provider.lastAttempt) };
   }
   switch (provider.exclusionReason) {
     case "stale":
@@ -127,7 +139,11 @@ export function FaultBanner({
               disabled={repolling}
               style={{ flex: "none", marginLeft: "auto" }}
             >
-              {repolling ? "Polling…" : `Check ${p.displayName}`}
+              {repolling
+                ? "Polling…"
+                : (p.lastAttempt?.failureCategory === "auth"
+                    ? `Retry ${p.displayName}`
+                    : `Check ${p.displayName}`)}
             </button>
           </div>
         );
