@@ -297,7 +297,7 @@ jobs:
     name: Install from the registry and run it
     needs: [verify, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -309,20 +309,21 @@ jobs:
           set -euo pipefail
           version="${{ needs.verify.outputs.version }}"
           # npm propagation is not instant and is not bounded by any promise
-          # we can rely on. v0.0.24 published fine and this step still failed:
-          # five tries over 60s was simply too short a window.
+          # we can rely on. v0.0.24 published fine and this step still failed
+          # at five tries over 60s; v0.0.42 did the same at ten tries over
+          # 5 minutes. Twenty tries over 10 minutes, inside a 15-minute job.
           published=""
-          for attempt in $(seq 1 10); do
+          for attempt in $(seq 1 20); do
             if npx --yes "quotacap@$version" version >/dev/null 2>&1; then
               echo "on the registry after ${attempt} attempt(s)"
               published=1
               break
             fi
-            echo "not on the registry yet (attempt ${attempt}/10), retrying in 30s"
+            echo "not on the registry yet (attempt ${attempt}/20), retrying in 30s"
             sleep 30
           done
           if [ -z "$published" ]; then
-            echo "::error::quotacap@$version did not appear on the registry within 5 minutes of publishing"
+            echo "::error::quotacap@$version did not appear on the registry within 10 minutes of publishing"
             exit 1
           fi
           test "$(npx --yes "quotacap@$version" version)" = "$version"
