@@ -3,6 +3,8 @@
 ## 0.0.42
 
 - Monthly reset dates: the drawer Monthly line, the exhausted-month forecast, and the collapsed `Mth` tag rendered the monthly reset as a bare weekday (`Thu 23:05`, `unused until Tue`), which reads as this coming week when the reset sits weeks out. All three now carry the calendar date (`Thu Oct 22 23:05`, `unused until Tue Sep 15`), identically on the dashboard, CLI, and MCP.
+- Card plan cleanup (#119): provider cards and table rows drop the plan line so the progress bars align, and the Claude adapter reports `unknown` instead of the hardcoded `max` it never measured.
+- Consent notice (#117): the OpenCode Go consent reads as six short lines on the CLI and in the dashboard modal, and `providers enable` points at `quotacap service restart` to start polling.
 
 ## 0.0.41
 

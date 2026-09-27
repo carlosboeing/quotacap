@@ -1,5 +1,11 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.42 — 2026-09-27 (monthly reset dates, plan display, consent notice)
+
+* Monthly reset dates — the drawer Monthly line, the exhausted-month forecast, and the collapsed `Mth` tag show the calendar date (`Thu 22 Oct 23:05`, `unused until Thu Oct 22`) instead of a bare weekday that read as this coming week
+* Card plan cleanup — provider cards and table rows no longer print the plan name, so progress bars align; the Claude adapter reports `unknown` instead of a hardcoded `max` (#119)
+* Consent notice — the OpenCode Go consent reads as six short lines in the CLI and the dashboard modal, and enable points at `quotacap service restart` (#117)
+
 ## Recently shipped — 0.0.41 — 2026-09-26 (Codex 12-hour resets and Kimi API polling)
 
 * Codex 12-hour resets — Codex 0.157's `9:14 AM on 30 Sep` and `9:43 PM` parse alongside the older 24-hour form. 12 AM is 00:00 and 12 PM is 12:00.
