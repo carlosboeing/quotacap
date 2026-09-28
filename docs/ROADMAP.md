@@ -1,5 +1,13 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.43 — 2026-09-28 (poll resilience and failure bundles)
+
+* Screen-first TUI parsing — adapters read the rendered terminal screen instead of the raw byte stream, so cursor repaints no longer garble usage lines; the cumulative transcript stays as fallback (#126)
+* Reset-timestamp degrade — an unparseable reset degrades to a flagged estimate instead of failing the provider (#126)
+* Poll pacing — at most three concurrent polls with one retry for timeouts and output problems; Claude timeout 8 s to 15 s (#126)
+* Failure bundles (opt-in) — `debugFailureBundles` writes a redacted transcript, CLI version, and phase timings per failed poll (#126)
+* Golden transcripts — the claude 2.1.283, codex 0.157.1, and grok 1.0.41 usage formats are pinned as fixtures (#126)
+
 ## Recently shipped — 0.0.42 — 2026-09-27 (monthly reset dates, plan display, consent notice)
 
 * Monthly reset dates — the drawer Monthly line, the exhausted-month forecast, and the collapsed `Mth` tag show the calendar date (`Thu 22 Oct 23:05`, `unused until Thu Oct 22`) instead of a bare weekday that read as this coming week
