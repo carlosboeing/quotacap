@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Poll retries use exponential backoff with equal jitter across all adapters: up to three attempts per poll, spaced ~1–2 s then ~2–4 s, so vendor transients like Codex `limits refresh requested` get room to clear.
+
 ## 0.0.43
 
 - Poll resilience: TUI adapters parse the rendered terminal screen instead of the raw byte stream, so cursor repaints no longer garble usage lines (the intermittent Grok `bad resets timestamp`); when exit output wipes the screen, the cumulative transcript is used as fallback. An unparseable reset timestamp now degrades to a flagged estimate instead of failing the provider, polls run at most three at a time with one retry for timeouts and output problems, and the Claude timeout moves to 15 s. Golden transcripts pin the claude 2.1.283, codex 0.157.1, and grok 1.0.41 usage formats.

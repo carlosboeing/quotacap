@@ -4,6 +4,7 @@ import {
   pollAll,
   mapWithConcurrency,
   isRetryableChildFailure,
+  computeRetryDelayMs,
   ADAPTER_TIMEOUTS,
 } from "../../src/adapters/index.js";
 import { clearAdapterSignal } from "../../src/runtime/spawn.js";
@@ -75,7 +76,7 @@ describe("pollAll resilience", () => {
       },
     };
     testIds.push("test-flaky");
-    const rows = await pollAll(["test-flaky"], { retryDelayMs: 5 });
+    const rows = await pollAll(["test-flaky"], { baseRetryDelayMs: 10 });
     expect(rows[0].status).toBe("fulfilled");
     expect(calls).toBe(2);
   });
@@ -91,7 +92,7 @@ describe("pollAll resilience", () => {
       },
     };
     testIds.push("test-auth");
-    const rows = await pollAll(["test-auth"], { retryDelayMs: 5 });
+    const rows = await pollAll(["test-auth"], { baseRetryDelayMs: 10 });
     expect(rows[0].status).toBe("rejected");
     expect(calls).toBe(1);
   });
@@ -110,10 +111,10 @@ describe("pollAll resilience", () => {
     testIds.push("test-hang");
     const rows = await pollAll(["test-hang"], {
       timeouts: { "test-hang": 80 },
-      retryDelayMs: 5,
+      baseRetryDelayMs: 10,
     });
     expect(rows[0].status).toBe("rejected");
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
     expect(String((rows[0] as any).reason?.message ?? "")).toMatch(/timeout after 80ms/);
   });
 
@@ -128,7 +129,7 @@ describe("pollAll resilience", () => {
       },
     };
     testIds.push("test-once");
-    const rows = await pollAll(["test-once"], { maxAttempts: 1, retryDelayMs: 5 });
+    const rows = await pollAll(["test-once"], { maxAttempts: 1, baseRetryDelayMs: 10 });
     expect(rows[0].status).toBe("rejected");
     expect(calls).toBe(1);
   });
@@ -146,7 +147,7 @@ describe("pollAll resilience", () => {
     testIds.push("test-abort");
     const controller = new AbortController();
     controller.abort();
-    const rows = await pollAll(["test-abort"], { retryDelayMs: 5, signal: controller.signal });
+    const rows = await pollAll(["test-abort"], { baseRetryDelayMs: 10, signal: controller.signal });
     expect(rows[0].status).toBe("rejected");
     expect(calls).toBe(1);
   });
@@ -172,6 +173,47 @@ describe("pollAll resilience", () => {
     expect(rows.map((r) => r.provider)).toEqual(["test-c1", "test-c2", "test-c3"]);
     expect(rows.every((r) => r.status === "fulfilled")).toBe(true);
     expect(maxActive).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("computeRetryDelayMs", () => {
+  it("grows exponentially with equal jitter", () => {
+    // rng 0 pins the low edge (half), ~1 pins the high edge (full).
+    expect(computeRetryDelayMs(1, 2000, 8000, () => 0)).toBe(1000);
+    expect(computeRetryDelayMs(2, 2000, 8000, () => 0)).toBe(2000);
+    expect(computeRetryDelayMs(1, 2000, 8000, () => 0.999)).toBe(1999);
+    expect(computeRetryDelayMs(2, 2000, 8000, () => 0.999)).toBe(3998);
+  });
+
+  it("honours the cap", () => {
+    expect(computeRetryDelayMs(9, 2000, 8000, () => 0.999)).toBeLessThanOrEqual(8000);
+    expect(computeRetryDelayMs(9, 2000, 8000, () => 0)).toBe(4000);
+  });
+
+  it("stays in range with the default rng", () => {
+    for (let i = 0; i < 50; i++) {
+      const d = computeRetryDelayMs(2, 2000, 8000);
+      expect(d).toBeGreaterThanOrEqual(2000);
+      expect(d).toBeLessThanOrEqual(4000);
+    }
+  });
+});
+
+describe("pollAll default attempts", () => {
+  it("tries three times by default", async () => {
+    let calls = 0;
+    adapters["test-always"] = {
+      id: "test-always",
+      requiresAuth: "none",
+      async poll(): Promise<any> {
+        calls++;
+        throw new Error("test: bad resets timestamp");
+      },
+    };
+    testIds.push("test-always");
+    const rows = await pollAll(["test-always"], { baseRetryDelayMs: 5 });
+    expect(rows[0].status).toBe("rejected");
+    expect(calls).toBe(3);
   });
 });
 
