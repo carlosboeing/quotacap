@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.44
 
 - Poll retries use exponential backoff with equal jitter across all adapters: up to three attempts per poll, spaced ~1–2 s then ~2–4 s, so vendor transients like Codex `limits refresh requested` get room to clear.
 

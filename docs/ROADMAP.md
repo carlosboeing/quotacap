@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.44 — 2026-09-28 (retry backoff)
+
+* Exponential backoff with equal jitter — all adapters retry up to three attempts per poll, spaced ~1–2 s then ~2–4 s, so vendor transients get room to clear (#128)
+
 ## Recently shipped — 0.0.43 — 2026-09-28 (poll resilience and failure bundles)
 
 * Screen-first TUI parsing — adapters read the rendered terminal screen instead of the raw byte stream, so cursor repaints no longer garble usage lines; the cumulative transcript stays as fallback (#126)
