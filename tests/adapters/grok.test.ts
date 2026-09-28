@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { parseGrokTui, grokAdapter } from "../../src/adapters/grok.js";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
-import { classifyFailure } from "../../src/diagnostics/failure.js";
 import { buildApp, testCtx } from "../../src/http/server.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import { upsertQuota } from "../../src/store/quotas.js";
@@ -103,28 +102,43 @@ describe("parseGrokTui", () => {
     expect(new Date(q.resetsAt).getTime()).toBeGreaterThan(now.getTime());
   });
 
-  it("throws when resets timestamp malformed", () => {
-    const txt = grokFixture({ reset: "Resets: bad date" });
-    expect(() => parseGrokTui(txt, new Date())).toThrow(/resets/i);
+  it("degrades to an estimated reset when the timestamp is malformed", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    for (const reset of ["Resets: bad date", "Resets: September 99,99:99", "Resets: someday-ish"]) {
+      const q = parseGrokTui(grokFixture({ reset }), now);
+      expect(q.weeklyPct).toBe(26);
+      expect(q.resetsAtEstimated).toBe(true);
+      expect(new Date(q.resetsAt).getTime()).toBe(now.getTime() + 7 * 86400000);
+    }
   });
 
-  it("throws bad resets timestamp for genuinely invalid reset forms and classifies as parse_error", () => {
-    const invalidForms = ["Resets: September 99,99:99", "Resets: someday-ish"];
-    for (const reset of invalidForms) {
-      const txt = grokFixture({ reset });
-      let thrown: any = null;
-      try {
-        parseGrokTui(txt, new Date());
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown).not.toBeNull();
-      expect(thrown.message).toMatch(/bad resets timestamp/i);
-      const classified = classifyFailure("grok", thrown);
-      expect(classified.diagnosticCode).toBe("parse_error");
-      expect(classified.category).toBe("parse");
-      expect(classified.summary).toBe("Unable to read Grok usage");
-    }
+  it("parses the cursor artifact that drops the month/day gap (October5, 10:22)", () => {
+    const now = new Date("2026-09-28T00:00:00Z");
+    const q = parseGrokTui(grokFixture({ reset: "Resets: October5, 10:22" }), now);
+    expect(q.weeklyPct).toBe(26);
+    expect(q.resetsAtEstimated).toBeUndefined();
+    const dt = new Date(q.resetsAt);
+    expect(dt.getMonth()).toBe(9);
+    expect(dt.getDate()).toBe(5);
+    expect(dt.getHours()).toBe(10);
+    expect(dt.getMinutes()).toBe(22);
+  });
+
+  it("reads the rendered screen, not the byte stream (overwritten percent)", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    // A repaint overwrote 99% with 26% in place; the byte stream holds both.
+    const txt = "Weekly limit (SuperGrok)  99%\x1b[3D26%\nResets: September 7, 10:22\n";
+    expect(parseGrokTui(txt, now).weeklyPct).toBe(26);
+  });
+
+  it("recovers via the soup when exit output wipes the dialog (alt-screen clear)", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const txt =
+      "\x1b[?1049hWeekly limit (SuperGrok)  26%\nResets: September 7, 10:22\n" +
+      "\x1b[?1049l\x1b[2JResume this session with:\n  grok --resume abc\n";
+    const q = parseGrokTui(txt, now);
+    expect(q.weeklyPct).toBe(26);
+    expect(q.resetsAtEstimated).toBeUndefined();
   });
 
   it("raw is capped and contains cleaned transcript", () => {

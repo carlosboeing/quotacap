@@ -119,6 +119,33 @@ describe("runPty", () => {
     expect(cleaned).toMatch(/5h limit/);
   });
 
+  it("settles after completion so late-painting fields land in the transcript", async () => {
+    const fake = await writeFake(`
+process.stdout.write('ready\\n');
+let buf='';
+process.stdin.on('data', d=>{
+  buf+=d.toString();
+  if(buf.includes('/usage')){
+    process.stdout.write('COMPLETE\\n');
+    setTimeout(()=>{ process.stdout.write('LATE LINE\\n'); }, 200);
+  }
+});
+setInterval(()=>{},1000);
+`);
+    const start = Date.now();
+    const transcript = await runPty({
+      file: process.execPath,
+      args: [fake],
+      settleDelayMs: 100,
+      input: "/usage\r",
+      completionRegex: /COMPLETE/,
+      completionSettleMs: 600,
+      timeoutMs: 3000,
+    });
+    expect(Date.now() - start).toBeGreaterThanOrEqual(550);
+    expect(stripAnsi(transcript)).toMatch(/LATE LINE/);
+  });
+
   it("rejects on completion timeout", async () => {
     const fake = await writeFake(TIMEOUT_SCRIPT);
     await expect(

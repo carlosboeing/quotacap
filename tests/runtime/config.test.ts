@@ -6,6 +6,7 @@ import {
   autoEnableNewProviders,
   defaultConfig,
   isExperimentalIngestEnabled,
+  isFailureBundlesEnabled,
   LEGACY_KNOWN_PROVIDERS,
   readConfig,
   readServiceConfig,
@@ -164,6 +165,36 @@ describe("experimental ingest flag", () => {
     expect(isExperimentalIngestEnabled({}, { QUOTACAP_EXPERIMENTAL_INGEST: "true" })).toBe(
       true,
     );
+  });
+});
+
+describe("failure bundles flag", () => {
+  const oldFlag = process.env.QUOTACAP_DEBUG_FAILURES;
+
+  afterEach(() => {
+    if (oldFlag === undefined) delete process.env.QUOTACAP_DEBUG_FAILURES;
+    else process.env.QUOTACAP_DEBUG_FAILURES = oldFlag;
+  });
+
+  it("is off by default and omitted from written defaults", async () => {
+    isolatedHome();
+    delete process.env.QUOTACAP_DEBUG_FAILURES;
+    expect(isFailureBundlesEnabled()).toBe(false);
+    const cfg = await readServiceConfig();
+    expect(cfg.debugFailureBundles).toBeUndefined();
+  });
+
+  it("follows env over config, then the optional config key", async () => {
+    isolatedHome();
+    writeConfig({ debugFailureBundles: true });
+    delete process.env.QUOTACAP_DEBUG_FAILURES;
+    const cfg = await readServiceConfig();
+    expect(cfg.debugFailureBundles).toBe(true);
+    expect(isFailureBundlesEnabled(cfg, {})).toBe(true);
+
+    expect(isFailureBundlesEnabled(cfg, { QUOTACAP_DEBUG_FAILURES: "0" })).toBe(false);
+    expect(isFailureBundlesEnabled({ debugFailureBundles: false }, { QUOTACAP_DEBUG_FAILURES: "1" })).toBe(true);
+    expect(isFailureBundlesEnabled({}, { QUOTACAP_DEBUG_FAILURES: "true" })).toBe(true);
   });
 });
 

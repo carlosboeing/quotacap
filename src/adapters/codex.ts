@@ -1,6 +1,8 @@
 import os from "node:os";
-import { runPty, stripAnsi } from "./pty.js";
+import { runPty } from "./pty.js";
+import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal } from "../runtime/spawn.js";
+import { attachEvidence } from "../diagnostics/failure.js";
 import type { ParsedQuota } from "./types.js";
 
 const MONTHS: Record<string, number> = {
@@ -53,8 +55,11 @@ function parseFiveReset(raw: string, now: Date): string | null {
   return dt.toISOString();
 }
 
-export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
-  const cleaned = stripAnsi(text);
+export function parseCodexTui(text: string, now = new Date(), dims?: Partial<GridDims>): ParsedQuota {
+  return parseScreens(text, dims, (cleaned) => parseCodexCleaned(cleaned, now));
+}
+
+function parseCodexCleaned(cleaned: string, now: Date): ParsedQuota {
   if (/refresh token was already used|please log out and sign in again|access token could not be refreshed/i.test(cleaned)) {
     throw new Error("codex: your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.");
   }
@@ -94,12 +99,13 @@ export function parseCodexTui(text: string, now = new Date()): ParsedQuota {
   let estimated = false;
   if (weeklyRaw) {
     weeklyIso = parseWeeklyReset(weeklyRaw, now);
-    if (!weeklyIso) throw new Error(`codex: bad weekly reset "${weeklyRaw}"`);
   }
   if (fiveRaw) {
     fiveIso = parseFiveReset(fiveRaw, now);
-    if (!fiveIso) throw new Error(`codex: bad 5h reset "${fiveRaw}"`);
   }
+  // Degrade, don't fail (grok precedent): the percents are the critical
+  // fields; a garbled or reworded timestamp degrades to an estimate instead
+  // of failing the provider.
   if (!weeklyIso) {
     weeklyIso = new Date(now.getTime() + 7 * 86400000).toISOString();
     estimated = true;
@@ -154,6 +160,13 @@ export const codexAdapter = {
       signal: adapterSignal("codex"),
       label: "codex",
     });
-    return parseCodexTui(transcript);
+    try {
+      return parseCodexTui(transcript);
+    } catch (e) {
+      // Side-channel only: the transcript a parse throw would discard, for
+      // failure bundles. The message is untouched.
+      attachEvidence(e, { source: "pty", stdout: transcript });
+      throw e;
+    }
   },
 };

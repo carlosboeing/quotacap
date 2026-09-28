@@ -30,6 +30,8 @@ export interface FailureEvidence {
   durationMs?: number;
   stdout?: string;
   stderr?: string;
+  /** Phase marks (ms since attempt start): spawn, input, completion, end. */
+  timings?: Record<string, number>;
 }
 
 export interface SafeDiagnostic {
@@ -45,11 +47,52 @@ export interface ClassifiedFailure extends SafeDiagnostic {
 
 export class DiagnosticError extends Error {
   readonly diagnostic: SafeDiagnostic;
-  constructor(diagnostic: SafeDiagnostic) {
+  /** Raw failure evidence (transcript, timings). Memory-only: classification
+   * and logs use `diagnostic`; bundles read this. */
+  readonly evidence?: FailureEvidence;
+  constructor(diagnostic: SafeDiagnostic, evidence?: FailureEvidence) {
     super(diagnostic.errorDetail);
     this.name = "DiagnosticError";
     this.diagnostic = Object.freeze({ ...diagnostic });
+    // Non-enumerable: evidence must never leak through JSON.stringify or
+    // spreads — serialized errors carry the diagnosis only. Readable via
+    // getErrorEvidence.
+    if (evidence) {
+      Object.defineProperty(this, "evidence", {
+        value: Object.freeze({ ...evidence }),
+        enumerable: false,
+        writable: false,
+      });
+    }
   }
+}
+
+// Side-channel evidence for plain Errors: adapter polls attach the transcript
+// a parse throw would otherwise discard, without touching the message that
+// classification and existing logs depend on.
+const EVIDENCE_KEY = "__quotacapEvidence";
+
+export function attachEvidence(error: unknown, evidence: FailureEvidence): void {
+  if (typeof error === "object" && error !== null) {
+    try {
+      // Non-enumerable, like DiagnosticError.evidence: serialization-safe.
+      Object.defineProperty(error, EVIDENCE_KEY, {
+        value: evidence,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      });
+    } catch {}
+  }
+}
+
+export function getErrorEvidence(reason: unknown): FailureEvidence | undefined {
+  if (reason instanceof DiagnosticError && reason.evidence) return reason.evidence;
+  if (typeof reason === "object" && reason !== null) {
+    const ev = (reason as Record<string, unknown>)[EVIDENCE_KEY] as FailureEvidence | undefined;
+    if (ev && typeof ev === "object" && (ev.source === "pty" || ev.source === "exec")) return ev;
+  }
+  return undefined;
 }
 
 export function formatProviderName(provider: string): string {
@@ -529,10 +572,13 @@ export function diagnosticError(reason: unknown, evidence?: FailureEvidence): Di
     detail = detail.slice(0, 300);
   }
 
-  return new DiagnosticError({
-    diagnosticCode: match.code,
-    errorDetail: detail,
-  });
+  return new DiagnosticError(
+    {
+      diagnosticCode: match.code,
+      errorDetail: detail,
+    },
+    evidence,
+  );
 }
 
 function mapCategory(code: DiagnosticCode): Exclude<FailureCategory, null | "skipped"> {

@@ -38,6 +38,13 @@ export interface PtyRunOptions {
   submitInput?: string;
   submitAfterMs?: number;
   /**
+   * Grace delay after the completion pattern first matches, before the
+   * child is killed. Usage dialogs paint asynchronously (header first,
+   * timestamp later); without this the kill can land mid-paint. Bounded
+   * and fixed (not quiescence-detected: spinners never settle). Default 400.
+   */
+  completionSettleMs?: number;
+  /**
    * Opt-in terminal-query responder: answers DSR, DA1 and OSC 4/10/11
    * capability queries the child emits. Off by default; TUIs that never
    * query (codex, kimi, grok) are unaffected either way.
@@ -283,6 +290,9 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
   let transcript = "";
   let exited = false;
   let exitCode: number | undefined;
+  const startedAt = Date.now();
+  const marks: Record<string, number> = { start: 0 };
+  const mark = (k: string) => { marks[k] = Date.now() - startedAt; };
 
   // Genuine PTY via the Bun.spawn `terminal` option (verified on Bun 1.3.11):
   // the child's stdin, stdout, and stderr are all the PTY slave, input goes
@@ -494,9 +504,12 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
       }
     }
 
+    mark("input");
+
     if (opts.completionRegex) {
       const deadline = Date.now() + opts.timeoutMs;
       let done = false;
+      let matched = false;
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
@@ -504,6 +517,8 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
           done = true;
+          matched = true;
+          mark("completion");
           break;
         }
         if (exited) {
@@ -527,7 +542,14 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
           checkpoint: "completion timeout",
           durationMs: opts.timeoutMs,
           stdout: transcript,
+          timings: { ...marks, completion: Date.now() - startedAt },
         });
+      }
+      if (matched && !exited) {
+        await delay(opts.completionSettleMs ?? 400);
+        checkCap();
+        checkAborted();
+        checkAbort(stripAnsi(transcript));
       }
     } else {
       const deadline = Date.now() + opts.timeoutMs;
@@ -566,7 +588,8 @@ async function runPtyBun(opts: PtyRunOptions): Promise<string> {
     unregisterChild();
     teardownAbort();
     if (e instanceof DiagnosticError) throw e;
-    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode });
+    mark("end");
+    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode, timings: { ...marks } });
   }
 }
 
@@ -592,6 +615,9 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   let transcript = "";
   let exited = false;
   let exitCode: number | undefined;
+  const startedAt = Date.now();
+  const marks: Record<string, number> = { start: 0 };
+  const mark = (k: string) => { marks[k] = Date.now() - startedAt; };
 
   const pty = getPty();
   let ptyProcess: any;
@@ -802,9 +828,12 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
       }
     }
 
+    mark("input");
+
     if (opts.completionRegex) {
       const deadline = Date.now() + opts.timeoutMs;
       let done = false;
+      let matched = false;
       while (Date.now() < deadline) {
         checkCap();
         checkAborted();
@@ -812,6 +841,8 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
         checkAbort(clean);
         if (regexTest(opts.completionRegex, clean)) {
           done = true;
+          matched = true;
+          mark("completion");
           break;
         }
         if (exited) {
@@ -835,7 +866,14 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
           checkpoint: "completion timeout",
           durationMs: opts.timeoutMs,
           stdout: transcript,
+          timings: { ...marks, completion: Date.now() - startedAt },
         });
+      }
+      if (matched && !exited) {
+        await delay(opts.completionSettleMs ?? 400);
+        checkCap();
+        checkAborted();
+        checkAbort(stripAnsi(transcript));
       }
     } else {
       const deadline = Date.now() + opts.timeoutMs;
@@ -860,7 +898,8 @@ async function runPtyNode(opts: PtyRunOptions): Promise<string> {
   } catch (e) {
     await kill();
     if (e instanceof DiagnosticError) throw e;
-    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode });
+    mark("end");
+    throw diagnosticError(e, { source: "pty", stdout: transcript, exitCode, timings: { ...marks } });
   } finally {
     cleanup();
     unregisterChild();

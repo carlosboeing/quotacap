@@ -1,6 +1,8 @@
 import os from "node:os";
-import { runPty, stripAnsi } from "./pty.js";
+import { runPty } from "./pty.js";
+import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal } from "../runtime/spawn.js";
+import { attachEvidence } from "../diagnostics/failure.js";
 import type { ParsedQuota } from "./types.js";
 
 const FULL_MONTHS: Record<string, number> = {
@@ -13,7 +15,10 @@ const ABBR_MONTHS: Record<string, number> = {
 };
 
 function parseGrokReset(raw: string, now: Date): string | null {
-  const m = raw.trim().match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})$/);
+  // The month/day gap is optional: cursor repositioning can drop it
+  // ("Resets: October5, 10:22", observed 2026-09-28). Letters-meets-digits
+  // keeps the boundary unambiguous.
+  const m = raw.trim().match(/^([A-Za-z]+)\s*(\d{1,2}),\s*(\d{1,2}):(\d{2})$/);
   if (!m) return null;
   const monStr = m[1].toLowerCase();
   const day = parseInt(m[2], 10);
@@ -37,8 +42,11 @@ function validPct(v: number): v is number {
   return Number.isFinite(v) && v >= 0 && v <= 100;
 }
 
-export function parseGrokTui(text: string, now = new Date()): ParsedQuota {
-  const cleaned = stripAnsi(text);
+export function parseGrokTui(text: string, now = new Date(), dims?: Partial<GridDims>): ParsedQuota {
+  return parseScreens(text, dims, (cleaned) => parseGrokCleaned(cleaned, now));
+}
+
+function parseGrokCleaned(cleaned: string, now: Date): ParsedQuota {
   // The TUI writes "Weekly lim", repositions the cursor, then writes
   // "t (Tier)", so after ANSI stripping the header reads "Weekly limt".
   // The [i!l] class stays optional to keep tolerating past glitch variants.
@@ -101,17 +109,19 @@ export function parseGrokTui(text: string, now = new Date()): ParsedQuota {
     const v = parseFloat(mCred[1]);
     if (Number.isFinite(v) && v >= 0) creditsUsd = v;
   }
-  const resetRe = /Resets:\s*([A-Za-z]+\s+\d+,\s*\d+:\d+)/gi;
+  const resetRe = /Resets:\s*([A-Za-z]+\s*\d+,\s*\d+:\d+)/gi;
   let resetsRaw: string | null = null;
   for (const m of cleaned.matchAll(resetRe)) resetsRaw = m[1].trim();
   let resetsAt: string | null = null;
   let estimated = false;
   if (resetsRaw) {
     resetsAt = parseGrokReset(resetsRaw, now);
-    if (!resetsAt) throw new Error(`grok: bad resets timestamp "${resetsRaw}"`);
-  } else if (cleaned.match(/Resets:/i)) {
-    throw new Error("grok: bad resets timestamp");
-  } else {
+  }
+  if (!resetsAt) {
+    // Degrade, don't fail: the weekly percent is the critical field, and a
+    // garbled or reworded timestamp must not fail the provider. The estimate
+    // flag keeps advisory and scheduler honest (estimated resets are never
+    // used for pre-reset scheduling).
     resetsAt = new Date(now.getTime() + 7 * 86400000).toISOString();
     estimated = true;
   }
@@ -151,6 +161,13 @@ export const grokAdapter = {
       signal: adapterSignal("grok"),
       label: "grok",
     });
-    return parseGrokTui(transcript);
+    try {
+      return parseGrokTui(transcript);
+    } catch (e) {
+      // Side-channel only: the transcript a parse throw would discard, for
+      // failure bundles. The message is untouched.
+      attachEvidence(e, { source: "pty", stdout: transcript });
+      throw e;
+    }
   },
 };

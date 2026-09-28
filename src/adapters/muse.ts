@@ -2,8 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseResetText } from "./parse.js";
-import { runPty, stripAnsi } from "./pty.js";
+import { runPty } from "./pty.js";
+import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal, trackedExecFile } from "../runtime/spawn.js";
+import { attachEvidence } from "../diagnostics/failure.js";
 import type { ParsedQuota } from "./types.js";
 
 /** Canonical unavailability error: parseMuseTui throws it, poll() recognises it
@@ -87,10 +89,14 @@ export function museProbeDir(): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "muse-probe");
 }
 
-export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
-  // After ANSI stripping the panel is ONE line (cursor-addressed, no
-  // newlines), so no pattern here may anchor on ^, $ or \n.
-  const cleaned = stripAnsi(text);
+export function parseMuseTui(text: string, now = new Date(), dims?: Partial<GridDims>): ParsedQuota {
+  return parseScreens(text, dims, (cleaned) => parseMuseCleaned(cleaned, now));
+}
+
+// Input is either the rendered screen (visual rows) or the byte soup (one
+// glued line): no pattern here may anchor on ^ or $, and row-spanning
+// matches must allow newlines.
+function parseMuseCleaned(cleaned: string, now: Date): ParsedQuota {
   if (/currently unavailable|subscriptions aren't currently available|subscription_unavailable/i.test(cleaned)) {
     throw new Error(MUSE_UNAVAILABLE_MESSAGE);
   }
@@ -114,15 +120,18 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
 
   // The Current-window reset ("Resets at 3:51 PM") is a bare clock time with
   // no date, and Quota has no session-reset field — discarded, as claude and
-  // kimi already do. A missing or unparseable Weekly reset throws rather than
-  // estimating: an invented reset would feed the advisory a false deadline.
+  // kimi already do. A missing or unparseable Weekly reset degrades to an
+  // estimate (grok precedent): the percents are the critical fields, and the
+  // estimate flag keeps advisory and scheduler honest.
   const resetMatch = cleaned.match(
-    /Weekly[^\n]*?Resets\s+([A-Za-z]{3}\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)/i,
+    /Weekly[\s\S]{0,400}?Resets\s+([A-Za-z]{3}\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)/i,
   );
-  if (!resetMatch) throw new Error("muse: bad weekly reset");
-  const resetRaw = resetMatch[1].trim();
-  const resetsAt = parseResetText(`resets ${resetRaw}`, now);
-  if (!resetsAt) throw new Error(`muse: bad weekly reset "${resetRaw}"`);
+  let resetsAt = resetMatch ? parseResetText(`resets ${resetMatch[1].trim()}`, now) : null;
+  let estimated = false;
+  if (!resetsAt) {
+    resetsAt = new Date(now.getTime() + 7 * 86400000).toISOString();
+    estimated = true;
+  }
 
   const periodStart = new Date(new Date(resetsAt).getTime() - 7 * 86400000).toISOString();
   return {
@@ -134,6 +143,7 @@ export function parseMuseTui(text: string, now = new Date()): ParsedQuota {
     periodStart,
     source: "tui",
     fetchedAt: now.toISOString(),
+    resetsAtEstimated: estimated || undefined,
     raw: cleaned.slice(0, 4096),
   };
 }
@@ -171,7 +181,14 @@ async function usagePass(timeoutMs = USAGE_TIMEOUT_MS): Promise<ParsedQuota> {
     signal: adapterSignal("muse"),
     label: "muse",
   });
-  return parseMuseTui(transcript);
+  try {
+    return parseMuseTui(transcript);
+  } catch (e) {
+    // Side-channel only: the transcript a parse throw would discard, for
+    // failure bundles. The message is untouched.
+    attachEvidence(e, { source: "pty", stdout: transcript });
+    throw e;
+  }
 }
 
 export const museAdapter = {

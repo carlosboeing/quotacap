@@ -1,7 +1,10 @@
 // Poll coordinator: scheduled and manual refresh share one in-flight poll
 // with a completion-measured cooldown (decisions D3/D4).
-import { pollAll } from "../adapters/index.js";
+import { pollAll, ADAPTER_TIMEOUTS } from "../adapters/index.js";
 import { getAllLatest, upsertQuota } from "../store/quotas.js";
+import { readServiceMetadata } from "../config.js";
+import { writeFailureBundle, providerBin, getCliVersion } from "../diagnostics/bundle.js";
+import { VERSION } from "../version.js";
 import {
   recordAttempt,
   getAttempt,
@@ -65,6 +68,10 @@ export interface CoordinatorOptions {
   onOwnershipLost?: () => void;
   /** Fired after each scheduled tick settles (success or failure). The daemon refreshes its daily update cache here. */
   onSettled?: () => void;
+  /** Data dir for failure bundles. Required with debugFailureBundles. */
+  dataDir?: string;
+  /** Opt-in forensics: write a redacted evidence bundle per poll failure. */
+  debugFailureBundles?: boolean;
 }
 
 export interface Coordinator {
@@ -130,6 +137,8 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
   const ownershipVerify = opts.ownershipVerify;
   const onOwnershipLost = opts.onOwnershipLost ?? (() => process.exit(1));
   const onSettled = opts.onSettled;
+  const dataDir = opts.dataDir;
+  const debugFailureBundles = opts.debugFailureBundles === true;
 
   let inFlight: Promise<RefreshResult> | null = null;
   let lastResult: RefreshResult | null = null;
@@ -257,6 +266,29 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
         console.log(
           `[${completedAt}] [quotacap] [${row.provider}] poll failed (${diagnosis.diagnosticCode}): ${diagnosis.summary}: ${diagnosis.errorDetail}`,
         );
+        if (debugFailureBundles && dataDir) {
+          try {
+            const bin = providerBin(row.provider, readServiceMetadata(dataDir)?.providerPaths);
+            const cliVersion = bin ? await getCliVersion(bin) : null;
+            const bundleDir = await writeFailureBundle({
+              dataDir,
+              provider: row.provider,
+              attemptedAt,
+              reason: row.reason,
+              diagnosticCode: diagnosis.diagnosticCode,
+              summary: diagnosis.summary,
+              errorDetail: diagnosis.errorDetail,
+              attemptDurationMs: new Date(completedAt).getTime() - new Date(attemptedAt).getTime(),
+              timeoutMs: ADAPTER_TIMEOUTS[row.provider],
+              quotacapVersion: VERSION,
+              cliBin: bin,
+              cliVersion,
+            });
+            if (bundleDir) {
+              console.log(`[${completedAt}] [quotacap] [${row.provider}] failure bundle: ${bundleDir}`);
+            }
+          } catch {}
+        }
       }
     }
     lastResult = result;

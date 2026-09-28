@@ -1,4 +1,5 @@
 import { trackedExecFile } from "../runtime/spawn.js";
+import { attachEvidence } from "../diagnostics/failure.js";
 import { parseResetText } from "./parse.js";
 import type { ParsedQuota } from "./types.js";
 
@@ -35,9 +36,18 @@ export const claudeAdapter: ClaudeAdapter = {
     // --strict-mcp-config: a usage read needs no MCP servers. Without it every
     // poll boots the user's servers under the daemon's PATH, and their failures
     // are cached and hide those servers from the user's own sessions.
-    const { stdout } = await trackedExecFile("claude", bin, ["-p","/usage","--output-format","json","--strict-mcp-config"], { timeout: 8000 });
-    const parsed = JSON.parse(stdout);
-    const result: string = parsed.result ?? stdout;
-    return parseClaudeUsage(result);
+    // 15s matches the registry gate (ADAPTER_TIMEOUTS): cold starts measured
+    // 2-4.4s wall, and seven concurrent polls contend for the same CPU.
+    const { stdout } = await trackedExecFile("claude", bin, ["-p","/usage","--output-format","json","--strict-mcp-config"], { timeout: 15000 });
+    try {
+      const parsed = JSON.parse(stdout);
+      const result: string = parsed.result ?? stdout;
+      return parseClaudeUsage(result);
+    } catch (e) {
+      // Side-channel only: the output a parse throw would discard, for
+      // failure bundles. The message is untouched.
+      attachEvidence(e, { source: "exec", stdout });
+      throw e;
+    }
   }
 };
