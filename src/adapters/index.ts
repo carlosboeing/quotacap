@@ -37,13 +37,33 @@ export interface PollAllOptions {
   /** Max concurrent adapter polls. Default 3: seven heavy CLI/TUI spawns at
    * once starve each other into timeouts. */
   maxConcurrency?: number;
-  /** Attempts per adapter including the first. Default 2 (one retry).
+  /** Attempts per adapter including the first. Default 3.
    * 1 disables retry. */
   maxAttempts?: number;
-  /** Delay between attempts. Default 1000. */
-  retryDelayMs?: number;
+  /** Backoff base between attempts: the delay after failed attempt n is
+   * min(cap, base * 2^(n-1)) with equal jitter. Default 2000. */
+  baseRetryDelayMs?: number;
+  /** Backoff ceiling. Default 8000. */
+  maxRetryDelayMs?: number;
   /** When aborted, in-flight attempts run out but no retry is started. */
   signal?: AbortSignal;
+}
+
+/**
+ * Exponential backoff with equal jitter: half the exponential delay plus a
+ * uniform random half, so concurrent adapters do not retry in lockstep.
+ * failedAttempt is 1-based (1 = the first attempt just failed).
+ */
+export function computeRetryDelayMs(
+  failedAttempt: number,
+  baseMs = 2000,
+  capMs = 8000,
+  rng: () => number = Math.random,
+): number {
+  const base = Math.max(0, baseMs);
+  const cap = Math.max(0, capMs);
+  const exp = Math.min(cap, base * 2 ** Math.max(0, failedAttempt - 1));
+  return Math.floor(exp / 2 + rng() * (exp / 2));
 }
 
 /** Order-preserving concurrency-limited map. */
@@ -130,8 +150,9 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function pollAll(enabled: string[], opts?: PollAllOptions) {
   const maxConcurrency = opts?.maxConcurrency ?? 3;
-  const maxAttempts = Math.max(1, opts?.maxAttempts ?? 2);
-  const retryDelayMs = Math.max(0, opts?.retryDelayMs ?? 1000);
+  const maxAttempts = Math.max(1, opts?.maxAttempts ?? 3);
+  const baseRetryDelayMs = opts?.baseRetryDelayMs ?? 2000;
+  const maxRetryDelayMs = opts?.maxRetryDelayMs ?? 8000;
   const runOne = async (id: string) => {
     const a = adapters[id];
     if (!a) return { provider: id, status: "rejected" as const, reason: new Error(`unknown adapter ${id}`) };
@@ -149,7 +170,7 @@ export async function pollAll(enabled: string[], opts?: PollAllOptions) {
       // failure retries only for output problems, never for deaths.
       const retry = outcome.timedOut || isRetryableChildFailure(outcome.reason);
       if (!retry) break;
-      await delay(retryDelayMs);
+      await delay(computeRetryDelayMs(attempt, baseRetryDelayMs, maxRetryDelayMs));
     }
     return { provider: id, status: "rejected" as const, reason: lastReason };
   };
