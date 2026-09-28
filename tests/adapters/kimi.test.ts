@@ -88,9 +88,22 @@ describe("parseKimiTui", () => {
     expect(() => parseKimiTui(txt, new Date())).toThrow(/5h limit/i);
   });
 
-  it("throws when reset duration is malformed (fail-closed)", () => {
+  it("degrades to an estimated reset when the reset duration is malformed", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
     const txt = kimiFixture({ weeklyReset: "in ???", fiveReset: "in 57m" });
-    expect(() => parseKimiTui(txt, new Date())).toThrow(/bad weekly reset/i);
+    const q = parseKimiTui(txt, now);
+    expect(q.weeklyPct).toBe(7);
+    expect(q.fiveHourPct).toBe(33);
+    expect(q.resetsAtEstimated).toBe(true);
+    expect(new Date(q.resetsAt).getTime()).toBe(now.getTime() + 7 * 86400000);
+  });
+
+  it("reads the repainted line, not the stale first draw (CR overwrite)", () => {
+    const now = new Date("2026-09-01T00:00:00Z");
+    const line1 = "Weekly limit  10% used   resets in 6d 19h 57m";
+    const line2 = "Weekly limit  77% used   resets in 6d 19h 57m";
+    const txt = `${line1}\r${line2}\n5h limit  33% used   resets in 57m\n`;
+    expect(parseKimiTui(txt, now).weeklyPct).toBe(77);
   });
 
   it("takes plan from Weekly limit (Tier) when present", () => {

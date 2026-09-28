@@ -151,9 +151,23 @@ describe("parseCodexTui", () => {
     expect(new Date(midnightWeekly.resetsAt).getHours()).toBe(0);
   });
 
-  it("throws when weekly reset is malformed (fail-closed)", () => {
-    const txt = codexFixture({ weeklyReset: "bad time" });
-    expect(() => parseCodexTui(txt, new Date())).toThrow(/bad weekly reset/i);
+  it("degrades to an estimated reset when a reset is malformed", () => {
+    const now = new Date(2026, 8, 26, 12, 0);
+    const weekly = parseCodexTui(codexFixture({ weeklyReset: "bad time" }), now);
+    expect(weekly.weeklyPct).toBe(73);
+    expect(weekly.resetsAtEstimated).toBe(true);
+    expect(new Date(weekly.resetsAt).getTime()).toBe(now.getTime() + 7 * 86400000);
+    const five = parseCodexTui(codexFixture({ fiveReset: "bad time" }), now);
+    expect(five.fiveHourPct).toBe(91);
+    expect(five.resetsAtEstimated).toBeUndefined();
+  });
+
+  it("reads the repainted line, not the stale first draw (CR overwrite)", () => {
+    const now = new Date("2026-09-01T00:00:00");
+    const txt =
+      "Weekly limit: 10% left (resets 16:36 on 7 Sep)\rWeekly limit: 73% left (resets 16:36 on 7 Sep)\n" +
+      "5h limit: 9% left (resets 14:12)\n";
+    expect(parseCodexTui(txt, now).weeklyPct).toBe(27);
   });
 
   it("raw is capped and contains cleaned transcript", () => {

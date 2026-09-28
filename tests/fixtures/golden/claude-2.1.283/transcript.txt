@@ -1,0 +1,17 @@
+You are currently using your subscription to power your Claude Code usage
+
+Current session: 28% used · resets Sep 28 at 6:59pm (Australia/Brisbane)
+Current week (all models): 97% used · resets Oct 1 at 8:59pm (Australia/Brisbane)
+
+What's contributing to your limits usage?
+Approximate, based on local sessions on this machine — does not include other devices or claude.ai. Behaviors are independent characteristics, not a breakdown.
+
+Last 24h · 562 requests · 15 sessions
+  100% of your usage came from sessions active for 8+ hours
+  98% of your usage was at >150k context
+
+Last 7d · 2912 requests · 147 sessions
+  83% of your usage was at >150k context
+  65% of your usage came from sessions active for 8+ hours
+  Top skills: /superpowers:brainstorming 4%, /penmark-comments 3%, /superpowers:writing-plans 2%, /code-review 1%
+  Top plugins: superpowers 6%

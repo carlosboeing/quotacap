@@ -2,8 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseResetText } from "./parse.js";
-import { runPty, stripAnsi } from "./pty.js";
+import { runPty } from "./pty.js";
+import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal } from "../runtime/spawn.js";
+import { attachEvidence } from "../diagnostics/failure.js";
 import type { ParsedQuota } from "./types.js";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
@@ -17,18 +19,19 @@ export function kimiProbeDir(): string {
 
 type MonthlyFields = Pick<ParsedQuota, "monthlyPct" | "monthlyResetsAt" | "monthlyStatus" | "monthlyKind">;
 
-export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
-  const cleaned = stripAnsi(text);
+export function parseKimiTui(text: string, now = new Date(), dims?: Partial<GridDims>): ParsedQuota {
+  return parseScreens(text, dims, (cleaned) => parseKimiCleaned(cleaned, now));
+}
+
+function parseKimiCleaned(cleaned: string, now: Date): ParsedQuota {
   const weeklyRe = /Weekly limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
   const fiveRe = /5h limit\s+[^0-9]*(\d+)%\s+used\s+resets\s+(in\s+[^\n│\r]+)/i;
   const w = cleaned.match(weeklyRe);
   if (!w) throw new Error("kimi: weekly limit not found in TUI output");
   const f = cleaned.match(fiveRe);
   let sessionPct: number | null = null;
-  let fiveRaw: string | null = null;
   if (f) {
     sessionPct = parseInt(f[1], 10);
-    fiveRaw = f[2].trim();
   } else {
     const fallback = cleaned.match(/5h limit[^\d%]*(\d+)%\s+used/i);
     if (fallback) sessionPct = parseInt(fallback[1], 10);
@@ -40,13 +43,14 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
   if (!Number.isFinite(sessionPct) || sessionPct < 0 || sessionPct > 100)
     throw new Error("kimi: bad 5h pct");
   const weeklyRaw = w[2].trim();
-  const weeklyIso = parseResetText(`resets ${weeklyRaw}`, now);
-  if (!weeklyIso) throw new Error(`kimi: bad weekly reset "${weeklyRaw}"`);
-  if (fiveRaw) {
-    const fiveIso = parseResetText(`resets ${fiveRaw}`, now);
-    if (!fiveIso) throw new Error(`kimi: bad 5h reset "${fiveRaw}"`);
+  // Degrade, don't fail (grok precedent): the percents are the critical
+  // fields; an unparseable timestamp degrades to an estimate.
+  let weeklyIso = parseResetText(`resets ${weeklyRaw}`, now);
+  let estimated = false;
+  if (!weeklyIso) {
+    weeklyIso = new Date(now.getTime() + 7 * 86400000).toISOString();
+    estimated = true;
   }
-
   let plan = "unknown";
   const paren = cleaned.match(/Weekly limit\s*\(([^)]+)\)/i);
   if (paren) {
@@ -89,6 +93,7 @@ export function parseKimiTui(text: string, now = new Date()): ParsedQuota {
     periodStart,
     source: "tui",
     fetchedAt: now.toISOString(),
+    resetsAtEstimated: estimated || undefined,
     raw: cleaned.slice(0, 4096),
     ...monthlyFields,
   };
@@ -562,7 +567,14 @@ export async function pollKimiPty(): Promise<ParsedQuota> {
     signal: adapterSignal("kimi"),
     label: "kimi",
   });
-  return parseKimiTui(transcript);
+  try {
+    return parseKimiTui(transcript, new Date(), { cols: 140, rows: 35 });
+  } catch (e) {
+    // Side-channel only: the transcript a parse throw would discard, for
+    // failure bundles. The message is untouched.
+    attachEvidence(e, { source: "pty", stdout: transcript });
+    throw e;
+  }
 }
 
 export const kimiAdapter = {

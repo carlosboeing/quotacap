@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Poll resilience: TUI adapters parse the rendered terminal screen instead of the raw byte stream, so cursor repaints no longer garble usage lines (the intermittent Grok `bad resets timestamp`); when exit output wipes the screen, the cumulative transcript is used as fallback. An unparseable reset timestamp now degrades to a flagged estimate instead of failing the provider, polls run at most three at a time with one retry for timeouts and output problems, and the Claude timeout moves to 15 s. Golden transcripts pin the claude 2.1.283, codex 0.157.1, and grok 1.0.41 usage formats.
+- Failure bundles (opt-in): with `debugFailureBundles` in config.json or `QUOTACAP_DEBUG_FAILURES=1`, each failed poll writes a redacted evidence bundle (transcript, error, CLI version, phase timings) under `~/.quotacap/failures/`, keeping the last five per provider.
+
 ## 0.0.42
 
 - Monthly reset dates: the drawer Monthly line, the exhausted-month forecast, and the collapsed `Mth` tag rendered the monthly reset as a bare weekday (`Thu 23:05`, `unused until Tue`), which reads as this coming week when the reset sits weeks out. All three now carry the calendar date (`Thu Oct 22 23:05`, `unused until Tue Sep 15`), identically on the dashboard, CLI, and MCP.

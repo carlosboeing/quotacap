@@ -41,6 +41,10 @@ const ConfigSchema = z.object({
   // Optional, omitted from defaults and `init` output. Manual ingest stays
   // in-tree but is not a public surface until the product design lands.
   experimentalIngest: z.boolean().optional(),
+  // Opt-in failure forensics: on poll failure, write a redacted evidence
+  // bundle (transcript, error, versions, timings) under <dataDir>/failures/.
+  // Local-only, never uploaded. Env QUOTACAP_DEBUG_FAILURES wins (see below).
+  debugFailureBundles: z.boolean().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -68,6 +72,26 @@ export function isExperimentalIngestEnabled(
   try {
     const parsed = JSON.parse(fsSync.readFileSync(getConfigPath(), "utf8"));
     return parsed?.experimentalIngest === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Failure evidence bundles (per-provider redacted transcripts under
+ * <dataDir>/failures/) are off unless this returns true. Env
+ * `QUOTACAP_DEBUG_FAILURES` wins; otherwise the optional config key.
+ */
+export function isFailureBundlesEnabled(
+  config?: Pick<Config, "debugFailureBundles">,
+  env: NodeJS.Dict<string> = process.env,
+): boolean {
+  const fromEnv = envFlag(env.QUOTACAP_DEBUG_FAILURES);
+  if (fromEnv !== undefined) return fromEnv;
+  if (config) return config.debugFailureBundles === true;
+  try {
+    const parsed = JSON.parse(fsSync.readFileSync(getConfigPath(), "utf8"));
+    return parsed?.debugFailureBundles === true;
   } catch {
     return false;
   }
@@ -109,6 +133,7 @@ const ServiceConfigSchema = z.object({
   providerNames: z.record(z.string(), ProviderDisplayNameSchema).default({}),
   opencodeGoConsentAt: z.string().nullable().default(null),
   experimentalIngest: z.boolean().optional(),
+  debugFailureBundles: z.boolean().optional(),
 });
 
 export function defaultConfig(): Config {

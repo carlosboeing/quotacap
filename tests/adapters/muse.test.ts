@@ -50,8 +50,8 @@ function museRows(o?: MuseFixtureOpts): string[] {
   return rows;
 }
 
-// Raw transcript: the TUI positions with cursor moves, not newlines, so after
-// ANSI stripping this is one line. No parse rule may rely on line boundaries.
+// Raw transcript: the TUI positions with cursor moves, not newlines. The
+// grid renderer restores the visual rows; no parse rule may anchor on ^ or $.
 function museRawTranscript(o?: MuseFixtureOpts): string {
   return "\x1b[2J\x1b[?25l" + museRows(o).map((r, i) => `\x1b[${i + 1};1H${r}`).join("");
 }
@@ -81,10 +81,9 @@ describe("parseMuseTui", () => {
     expect(q.raw!.length).toBeLessThanOrEqual(4096);
   });
 
-  it("parses single-line input with the panel embedded mid-line (no anchors)", () => {
-    const line = `muse-spark-1.3 footer noise ${stripAnsi(museRawTranscript())} trailing TUI chrome`;
-    expect(line).not.toContain("\n");
-    const q = parseMuseTui(line, HAPPY_NOW);
+  it("parses the cursor-addressed panel embedded in surrounding noise (no anchors)", () => {
+    const txt = `muse-spark-1.3 footer noise ${museRawTranscript()} trailing TUI chrome`;
+    const q = parseMuseTui(txt, HAPPY_NOW);
     expect(q.plan).toBe("High Usage");
     expect(q.weeklyPct).toBe(35);
     expect(q.fiveHourPct).toBe(11);
@@ -128,10 +127,18 @@ describe("parseMuseTui", () => {
     expect(() => parseMuseTui(museRawTranscript({ currentPct: 101 }), HAPPY_NOW)).toThrow(/bad current pct/);
   });
 
-  it("throws on an unparseable reset with no estimated fallback (fail-closed)", () => {
-    expect(() => parseMuseTui(museRawTranscript({ weeklyReset: "Feb 30 at 10:00 AM" }), HAPPY_NOW)).toThrow(
-      /bad weekly reset/,
-    );
+  it("degrades to an estimated reset when the reset is unparseable", () => {
+    const q = parseMuseTui(museRawTranscript({ weeklyReset: "Feb 30 at 10:00 AM" }), HAPPY_NOW);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.resetsAtEstimated).toBe(true);
+    expect(new Date(q.resetsAt).getTime()).toBe(HAPPY_NOW.getTime() + 7 * 86400000);
+  });
+
+  it("spans visual rows between Weekly and Resets", () => {
+    const txt = "Subscription · Muse Code Pro  \nWeekly 35% used\nCurrent 10% used\nResets Sep 14 at 10:00 AM\n";
+    const q = parseMuseTui(txt, HAPPY_NOW);
+    expect(q.weeklyPct).toBe(35);
+    expect(q.resetsAtEstimated).toBeUndefined();
   });
 
   it("rolls a January reset parsed in December into next year", () => {

@@ -16,7 +16,7 @@ import { createCoordinator, type Coordinator } from "./poll.js";
 import { killAll } from "./spawn.js";
 import { ensureToken } from "./token.js";
 import { openDb, migrate } from "../store/db.js";
-import { autoEnableNewProviders, ensureConfig, getConfigPath, getDbPath, isExperimentalIngestEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
+import { autoEnableNewProviders, ensureConfig, getConfigPath, getDbPath, isExperimentalIngestEnabled, isFailureBundlesEnabled, readServiceConfig, readServiceMetadata, type Config } from "../config.js";
 import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
@@ -209,6 +209,8 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
     coordinator = createCoordinator({
       db,
       enabledProviders: config.enabledProviders,
+      dataDir,
+      debugFailureBundles: isFailureBundlesEnabled(config),
       ownershipVerify: () => claim.verify(),
       // Passive daily update signal: refresh the shared cache on schedule.
       // Background and best-effort — never blocks or fails a poll.
