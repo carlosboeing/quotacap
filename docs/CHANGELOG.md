@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Automatic recovery polls: when a provider's window expires or goes stale with a retryable cause, the daemon re-polls just that provider with backoff instead of waiting for the next scheduled tick or a manual Refresh.
+
 ## 0.0.44
 
 - Poll retries use exponential backoff with equal jitter across all adapters: up to three attempts per poll, spaced ~1–2 s then ~2–4 s, so vendor transients like Codex `limits refresh requested` get room to clear.
