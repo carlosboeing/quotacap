@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { openDb, migrate } from "../../src/store/db.js";
-import { getLatestByProvider } from "../../src/store/quotas.js";
+import { getLatestByProvider, upsertQuota } from "../../src/store/quotas.js";
 import { getAttempt, getAttempts, recordAttempt } from "../../src/store/attempts.js";
 import {
   createCoordinator,
@@ -625,5 +625,160 @@ describe("poll coordinator", () => {
     expect(finiteLog).toBe(`[${iso(T0)}] [quotacap] [p-finite] poll succeeded (42% used)`);
     expect(nullLog).toBe(`[${iso(T0)}] [quotacap] [p-null] poll succeeded`);
     expect(arrayLog).toBe(`[${iso(T0)}] [quotacap] [p-array] poll succeeded`);
+  });
+});
+
+describe("recovery polls", () => {
+  function seedExpiredQuota(db: any, provider: string): void {
+    upsertQuota(db, {
+      provider,
+      plan: "test",
+      weeklyPct: 87,
+      resetsAt: iso(T0 - 1000),
+      periodStart: iso(T0 - 7 * 86400000),
+      source: "tui",
+      fetchedAt: iso(T0 - 3600000),
+    });
+  }
+
+  function seedFreshQuota(db: any, provider: string): void {
+    upsertQuota(db, fakeQuota(provider, 10, T0));
+  }
+
+  it("(a) recovers a reset-passed provider without manual action", async () => {
+    const db = freshDb();
+    seedExpiredQuota(db, "kimi");
+    let calls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["kimi"],
+        now: () => T0,
+        pollFn: async () => {
+          calls++;
+          if (calls === 1) {
+            return [{ provider: "kimi", status: "rejected", reason: new Error("timeout after 8000ms") }];
+          }
+          return [{ provider: "kimi", status: "fulfilled", value: fakeQuota("kimi", 3, T0) }];
+        },
+        recovery: { baseDelayMs: 20, maxDelayMs: 40 },
+      }),
+    );
+    const first = await coord.refresh();
+    expect(first.rejected).toHaveLength(1);
+    await sleep(150);
+    expect(calls).toBe(2);
+    expect(getAttempt(db, "kimi")?.success).toBe(true);
+    expect(getLatestByProvider(db, "kimi").weeklyPct).toBe(3);
+    await sleep(100);
+    expect(calls).toBe(2);
+  });
+
+  it("(b) never recovers auth failures", async () => {
+    const db = freshDb();
+    seedExpiredQuota(db, "kimi");
+    let calls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["kimi"],
+        now: () => T0,
+        pollFn: async () => {
+          calls++;
+          return [
+            { provider: "kimi", status: "rejected", reason: new Error("run kimi login to continue") },
+          ];
+        },
+        recovery: { baseDelayMs: 20, maxDelayMs: 40 },
+      }),
+    );
+    await coord.refresh();
+    await sleep(120);
+    expect(calls).toBe(1);
+  });
+
+  it("(c) backs off and gives up after maxFailures", async () => {
+    const db = freshDb();
+    seedExpiredQuota(db, "kimi");
+    let calls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["kimi"],
+        now: () => T0,
+        pollFn: async () => {
+          calls++;
+          return [{ provider: "kimi", status: "rejected", reason: new Error("timeout after 8000ms") }];
+        },
+        recovery: { baseDelayMs: 20, maxDelayMs: 30, maxFailures: 2 },
+      }),
+    );
+    await coord.refresh();
+    await sleep(250);
+    expect(calls).toBe(2);
+  });
+
+  it("(d) recovery polls only the needy providers and merges results", async () => {
+    const db = freshDb();
+    seedExpiredQuota(db, "kimi");
+    seedFreshQuota(db, "codex");
+    const seenIds: string[][] = [];
+    let kimiCalls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["kimi", "codex"],
+        now: () => T0,
+        pollFn: async (ids: string[]) => {
+          seenIds.push(ids);
+          kimiCalls += ids.includes("kimi") ? 1 : 0;
+          const rows: any[] = [];
+          if (ids.includes("kimi")) {
+            rows.push(
+              kimiCalls === 1
+                ? { provider: "kimi", status: "rejected", reason: new Error("timeout after 8000ms") }
+                : { provider: "kimi", status: "fulfilled", value: fakeQuota("kimi", 3, T0) },
+            );
+          }
+          if (ids.includes("codex")) {
+            rows.push({ provider: "codex", status: "fulfilled", value: fakeQuota("codex", 10, T0) });
+          }
+          return rows;
+        },
+        recovery: { baseDelayMs: 20, maxDelayMs: 40 },
+      }),
+    );
+    const first = await coord.refresh();
+    expect(first.rejected).toHaveLength(1);
+    await sleep(150);
+    expect(seenIds).toEqual([
+      ["kimi", "codex"],
+      ["kimi"],
+    ]);
+    const merged = coord.getState().lastResult!;
+    expect(merged.results.map((r) => r.provider).sort()).toEqual(["codex", "kimi"]);
+    expect(merged.fulfilled).toHaveLength(2);
+    expect(merged.degraded).toBe(false);
+  });
+
+  it("(e) recovery: false disables automatic recovery", async () => {
+    const db = freshDb();
+    seedExpiredQuota(db, "kimi");
+    let calls = 0;
+    const coord = track(
+      createCoordinator({
+        db,
+        enabledProviders: ["kimi"],
+        now: () => T0,
+        pollFn: async () => {
+          calls++;
+          return [{ provider: "kimi", status: "rejected", reason: new Error("timeout after 8000ms") }];
+        },
+        recovery: false,
+      }),
+    );
+    await coord.refresh();
+    await sleep(120);
+    expect(calls).toBe(1);
   });
 });

@@ -1,7 +1,8 @@
 // Poll coordinator: scheduled and manual refresh share one in-flight poll
 // with a completion-measured cooldown (decisions D3/D4).
-import { pollAll, ADAPTER_TIMEOUTS } from "../adapters/index.js";
-import { getAllLatest, upsertQuota } from "../store/quotas.js";
+import { pollAll, ADAPTER_TIMEOUTS, RETRYABLE_DIAGNOSTIC_CODES } from "../adapters/index.js";
+import { getAllLatest, getLatestByProvider, upsertQuota } from "../store/quotas.js";
+import { STALE_MS } from "../advisory/snapshot.js";
 import { readServiceMetadata } from "../config.js";
 import { writeFailureBundle, providerBin, getCliVersion } from "../diagnostics/bundle.js";
 import { VERSION } from "../version.js";
@@ -58,6 +59,16 @@ export interface CoordinatorState {
   lastResult: RefreshResult | null;
 }
 
+export interface RecoveryOptions {
+  /** First recovery delay. Default 60000. Doubles per consecutive failure. */
+  baseDelayMs?: number;
+  /** Recovery delay ceiling. Default 600000. */
+  maxDelayMs?: number;
+  /** Stop auto-recovery after this many consecutive failures per provider.
+   * Scheduled ticks keep trying; a success resets the count. Default 5. */
+  maxFailures?: number;
+}
+
 export interface CoordinatorOptions {
   db: any;
   enabledProviders: string[];
@@ -72,6 +83,10 @@ export interface CoordinatorOptions {
   dataDir?: string;
   /** Opt-in forensics: write a redacted evidence bundle per poll failure. */
   debugFailureBundles?: boolean;
+  /** Auto-recovery: re-poll providers whose window expired or went stale
+   * instead of waiting for the next scheduled tick. Enabled by default;
+   * pass false to disable. */
+  recovery?: false | RecoveryOptions;
 }
 
 export interface Coordinator {
@@ -139,6 +154,11 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
   const onSettled = opts.onSettled;
   const dataDir = opts.dataDir;
   const debugFailureBundles = opts.debugFailureBundles === true;
+  const recoveryEnabled = opts.recovery !== false;
+  const recoveryOpts = typeof opts.recovery === "object" ? opts.recovery : {};
+  const recoveryBaseMs = recoveryOpts.baseDelayMs ?? 60000;
+  const recoveryMaxMs = recoveryOpts.maxDelayMs ?? 600000;
+  const recoveryMaxFailures = recoveryOpts.maxFailures ?? 5;
 
   let inFlight: Promise<RefreshResult> | null = null;
   let lastResult: RefreshResult | null = null;
@@ -148,6 +168,9 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
   let started = false;
   let intervalMs = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  const recoveryFailures = new Map<string, number>();
+  const recoveryExhausted = new Set<string>();
 
   function arm() {
     if (timer) clearTimeout(timer);
@@ -166,9 +189,9 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
     }));
   }
 
-  async function runGeneration(): Promise<RefreshResult> {
+  async function runGeneration(ids: string[] = enabledProviders): Promise<RefreshResult> {
     const attemptedAt = new Date(now()).toISOString();
-    const rows = await pollFn(enabledProviders);
+    const rows = await pollFn(ids);
     const completedAt = new Date(now()).toISOString();
     // Self-fence before any poll write (decision D1).
     if (ownershipVerify && !ownershipVerify()) {
@@ -291,13 +314,115 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
         }
       }
     }
+    // Partial (recovery) generations merge into the previous full result so
+    // a refresh response never drops providers that were not re-polled.
+    if (lastResult && ids.length < enabledProviders.length) {
+      const idsSet = new Set(ids);
+      result.fulfilled = [
+        ...lastResult.fulfilled.filter((f: any) => !idsSet.has(f?.provider)),
+        ...result.fulfilled,
+      ];
+      result.rejected = [
+        ...lastResult.rejected.filter((r) => !idsSet.has(r.provider)),
+        ...result.rejected,
+      ];
+      result.results = [
+        ...lastResult.results.filter((r) => !idsSet.has(r.provider)),
+        ...result.results,
+      ];
+      result.degraded = result.rejected.length > 0;
+    }
     lastResult = result;
     lastCompletedPollAt = completedAt;
     completedAtMs = new Date(completedAt).getTime();
+    // Recovery bookkeeping before re-arming: an attempt is an attempt,
+    // whether it came from the schedule, a manual refresh, or recovery.
+    for (const id of ids) {
+      if (needsRecovery(id)) {
+        recoveryFailures.set(id, (recoveryFailures.get(id) ?? 0) + 1);
+      } else {
+        recoveryFailures.delete(id);
+        recoveryExhausted.delete(id);
+      }
+    }
+    evaluateRecovery();
     return result;
   }
 
-  function launch(): Promise<RefreshResult> {
+  /** A provider needs recovery when its row is expired but a fresh poll
+   * could plausibly fix it: reset passed or stale, and the last failure —
+   * if any — is a retryable or timeout cause, never auth or a hard wall. */
+  function needsRecovery(id: string): boolean {
+    if (id === "manual") return false;
+    const quota: any = getLatestByProvider(db, id);
+    if (!quota) return false;
+    const nowMs = now();
+    const resetsMs = new Date(quota.resetsAt).getTime();
+    const fetchedMs = new Date(quota.fetchedAt).getTime();
+    const resetPassed = !Number.isNaN(resetsMs) && resetsMs <= nowMs;
+    const stale = !Number.isNaN(fetchedMs) && nowMs - fetchedMs > STALE_MS;
+    if (!resetPassed && !stale) return false;
+    const attempt = getAttempt(db, id);
+    if (attempt && !attempt.success && attempt.diagnosticCode) {
+      const code = attempt.diagnosticCode;
+      if (code !== "timeout" && !RETRYABLE_DIAGNOSTIC_CODES.has(code)) return false;
+    }
+    return true;
+  }
+
+  function evaluateRecovery(): void {
+    if (recoveryTimer) {
+      clearTimeout(recoveryTimer);
+      recoveryTimer = null;
+    }
+    if (closing || !recoveryEnabled) return;
+    const needy = enabledProviders.filter(
+      (id) => needsRecovery(id) && (recoveryFailures.get(id) ?? 0) < recoveryMaxFailures,
+    );
+    for (const id of enabledProviders) {
+      if (needsRecovery(id) && (recoveryFailures.get(id) ?? 0) >= recoveryMaxFailures) {
+        if (!recoveryExhausted.has(id)) {
+          recoveryExhausted.add(id);
+          console.log(`[quotacap] [${id}] recovery exhausted; waiting for the next scheduled poll`);
+        }
+      }
+    }
+    if (needy.length === 0) return;
+    const worst = Math.max(...needy.map((id) => recoveryFailures.get(id) ?? 0));
+    const delay = Math.min(recoveryMaxMs, recoveryBaseMs * 2 ** worst);
+    console.log(
+      `[quotacap] [${needy.join(", ")}] scheduling recovery poll in ${Math.round(delay / 1000)}s`,
+    );
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = null;
+      void fireRecovery(needy);
+    }, delay);
+  }
+
+  async function fireRecovery(ids: string[]): Promise<void> {
+    if (closing) return;
+    // Self-fence on wake, like scheduledTick: do not spawn doomed children.
+    if (ownershipVerify && !ownershipVerify()) {
+      closing = true;
+      onOwnershipLost();
+      return;
+    }
+    const targets = ids.filter((id) => needsRecovery(id));
+    if (targets.length === 0) {
+      evaluateRecovery();
+      return;
+    }
+    try {
+      await (inFlight ?? launch(targets));
+    } catch (e: any) {
+      const detail = classifyFailure("all", e).errorDetail;
+      console.warn("[quotacap] recovery poll failed", detail);
+    } finally {
+      evaluateRecovery();
+    }
+  }
+
+  function launch(ids: string[] = enabledProviders): Promise<RefreshResult> {
     // Gate first: inFlight is set before pollFn runs, so getState()
     // reports in-progress from inside the poll itself.
     let resolve!: (r: RefreshResult) => void;
@@ -311,7 +436,7 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
       if (inFlight === gate) inFlight = null;
     };
     gate.then(clear, clear);
-    runGeneration().then(resolve, reject);
+    runGeneration(ids).then(resolve, reject);
     return gate;
   }
 
@@ -369,6 +494,10 @@ export function createCoordinator(opts: CoordinatorOptions): Coordinator {
     if (timer) {
       clearTimeout(timer);
       timer = null;
+    }
+    if (recoveryTimer) {
+      clearTimeout(recoveryTimer);
+      recoveryTimer = null;
     }
   }
 

@@ -86,14 +86,19 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// A child that ran and produced a diagnosable output problem is worth one
-// more attempt; a login wall, missing binary, trust prompt, or rate limit
-// will not clear in a second, and a mid-flight child death (killAll,
-// crash) must never respawn — especially during shutdown.
-const RETRYABLE_CODES = new Set(["parse_error", "network", "service_unavailable"]);
+// A child that ran and produced a diagnosable output problem is worth more
+// attempts; a login wall, missing binary, trust prompt, or rate limit will
+// not clear on retry, and a mid-flight child death (killAll, crash) must
+// never respawn — especially during shutdown. Shared with the coordinator,
+// which consults it for both in-generation retries and recovery polls.
+export const RETRYABLE_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
+  "parse_error",
+  "network",
+  "service_unavailable",
+]);
 
 export function isRetryableChildFailure(reason: unknown): boolean {
-  return RETRYABLE_CODES.has(classifyFailure("Provider", reason).diagnosticCode);
+  return RETRYABLE_DIAGNOSTIC_CODES.has(classifyFailure("Provider", reason).diagnosticCode);
 }
 
 interface GateOutcome {
