@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.46 — 2026-09-29 (inactive subscriptions)
+
+* Inactive subscriptions — a cancelled plan reads as `Kimi subscription inactive` with a manage-or-disable action instead of a timeout or a passed reset, and a fresh failure outranks a passed reset (#132)
+
 ## Recently shipped — 0.0.45 — 2026-09-29 (automatic recovery polls)
 
 * Recovery polls — providers whose window expired or went stale with a retryable cause are re-polled automatically with backoff, targeting only the needy providers (#130)

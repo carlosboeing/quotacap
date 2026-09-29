@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.46
 
 - Inactive subscriptions: a cancelled plan no longer reads as a timeout or a passed reset. Kimi detects the state directly (API 402/403, or an empty usage body on a free plan) and the classifier recognizes Kimi's own sentences (`No usage data available`, `[provider.auth_error] 403 ... does not have access to Kimi Code`), including inside a completion-timeout transcript. The banner reads `Kimi subscription inactive` with a manage-or-disable action, and the failure skips retries and recovery polls while scheduled polls keep re-checking so a re-subscribe heals itself.
 - Exclusion precedence: a fresh poll failure now outranks a passed reset, so `Poll again to capture the new window` no longer masks the real failure message.
