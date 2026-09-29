@@ -139,6 +139,17 @@ const UNRECOGNIZED_OMITTED = "Unrecognized diagnostic text omitted";
 const ACCOUNT_CONFIRMATION =
   /\b(?:account is not eligible|verify your account|eligibility check failed|device code|sign(?:ing)?[ -]in with)\b/i;
 
+// Cancelled- or missing-subscription wording. The QuotaCap-authored phrase
+// ("subscription inactive", thrown by adapters that detect it directly) plus
+// Kimi's own sentences for the same state: the /usage panel shows "No usage
+// data available" and prompting fails with "[provider.auth_error] 403 ...
+// does not have access to Kimi Code ... Upgrade your plan". Bare "does not
+// have access" is not enough: it must name Kimi Code, so file-permission
+// errors never match. A bare "Upgrade your plan" is not enough either: it
+// can be upsell banner text on an otherwise healthy screen.
+const SUBSCRIPTION_INACTIVE =
+  /\bsubscription inactive\b|\bno usage data available\b|\bprovider\.auth_error\b|\bdoes not have access to Kimi Code\b/i;
+
 interface MatchResult {
   code: DiagnosticCode;
   phrase?: string;
@@ -157,8 +168,15 @@ function matchPrecedence(
   const signInTimeout =
     ACCOUNT_CONFIRMATION.test(text) &&
     (evidence?.checkpoint === "ready timeout" || evidence?.checkpoint === "completion timeout");
+  // Same fall-through for a dead subscription: a completion timeout whose
+  // stable transcript is the empty usage panel reports the subscription
+  // state, not the timeout that a missing completion pattern caused.
+  const inactiveTimeout =
+    SUBSCRIPTION_INACTIVE.test(text) &&
+    (evidence?.checkpoint === "ready timeout" || evidence?.checkpoint === "completion timeout");
   const isAbort =
     !signInTimeout &&
+    !inactiveTimeout &&
     (errorName === "AbortError" ||
       errorCode === "ABORT_ERR" ||
       evidence?.checkpoint === "abort" ||
@@ -231,6 +249,12 @@ function matchPrecedence(
 
   // Order 6: auth — login required, not logged in, logged out, unauthorized, unauthorised, forbidden,
   // run <provider> login to continue, or error indicating missing, invalid, or expired credentials, authentication, or API key
+  // A dead subscription sorts as auth (the 403 is an authorization state),
+  // first in this order so its summary wins over login wording: the user is
+  // logged in, and "login required" would mislead.
+  if (SUBSCRIPTION_INACTIVE.test(text)) {
+    return { code: "auth", phrase: "subscription inactive" };
+  }
   if (/\brun\s+[a-z0-9_:-]+\s+login\s+to\s+continue\b/i.test(text)) {
     return { code: "auth", phrase: "run <provider> login to continue" };
   }
@@ -529,7 +553,8 @@ export function diagnosticError(reason: unknown, evidence?: FailureEvidence): Di
           /\b(error|failed|failure|fatal|unauthorized|unauthorised|denied|forbidden|panic|exception)\b/i.test(l) ||
           /\btrust\b/i.test(l) ||
           /\b(stdin is not a terminal|device not configured|not a tty|inappropriate ioctl|node-pty)\b/i.test(l) ||
-          ACCOUNT_CONFIRMATION.test(l),
+          ACCOUNT_CONFIRMATION.test(l) ||
+          SUBSCRIPTION_INACTIVE.test(l),
       );
       safeStdoutText = matchedLines.join(" ");
     } else {
@@ -615,6 +640,12 @@ function getSummaryAndAction(
         action: `Open ${providerName} directly in your terminal to check whether it starts. If it works there, inspect the QuotaCap service log and report the adapter failure. Refresh in the dashboard retries through the same service.`,
       };
     case "auth":
+      if (/\bsubscription inactive\b/i.test(errorDetail)) {
+        return {
+          summary: `${providerName} subscription inactive`,
+          action: `Open ${providerName} to manage your subscription, or run \`quotacap providers disable ${provider}\` to stop polling it. Then select Refresh in the QuotaCap dashboard.`,
+        };
+      }
       if (/\baccount confirmation required\b/i.test(errorDetail)) {
         return {
           summary: `${providerName} needs you to confirm the subscription account`,

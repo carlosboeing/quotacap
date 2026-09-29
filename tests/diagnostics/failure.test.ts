@@ -254,6 +254,51 @@ describe("diagnostic boundary and failure classification", () => {
       expect(stillTimeout.diagnosticCode).toBe("timeout");
     });
 
+    it("classifies an inactive subscription as auth with a manage-or-disable action", () => {
+      // QuotaCap-authored phrase (adapters that detect it directly).
+      const api = classifyFailure("kimi", new Error("kimi: subscription inactive (HTTP 403)"));
+      expect(api.diagnosticCode).toBe("auth");
+      expect(api.category).toBe("auth");
+      expect(api.errorDetail).toBe("subscription inactive");
+      expect(api.summary).toBe("Kimi subscription inactive");
+      expect(api.summary).not.toContain("login required");
+      expect(api.action).toContain("manage your subscription");
+      expect(api.action).toContain("quotacap providers disable kimi");
+
+      // Kimi's own 403 sentence, as pasted from the CLI.
+      const vendor = classifyFailure(
+        "kimi",
+        new Error(
+          "Error: [provider.auth_error] 403 Your current subscription does not have access to Kimi Code right now. Upgrade your plan to keep coding",
+        ),
+      );
+      expect(vendor.diagnosticCode).toBe("auth");
+      expect(vendor.errorDetail).toBe("subscription inactive");
+      expect(vendor.summary).toBe("Kimi subscription inactive");
+
+      // A completion timeout whose stable transcript is the empty usage panel
+      // reports the subscription state, not the timeout.
+      const pty = classifyFailure(
+        "kimi",
+        diagnosticError(new Error("pty completion timeout after 8000ms"), {
+          source: "pty",
+          checkpoint: "completion timeout",
+          durationMs: 8000,
+          stdout: "Plan usage\nNo usage data available.\n",
+        }),
+      );
+      expect(pty.diagnosticCode).toBe("auth");
+      expect(pty.errorDetail).toContain("subscription inactive");
+      expect(pty.summary).toBe("Kimi subscription inactive");
+
+      // Near-misses stay out: bare access-denied or upsell wording is not a
+      // dead subscription.
+      expect(classifyFailure("kimi", new Error("EACCES: file does not have access")).diagnosticCode).toBe(
+        "unknown",
+      );
+      expect(classifyFailure("kimi", new Error("Upgrade your plan for more seats")).diagnosticCode).toBe("unknown");
+    });
+
     it("Order 7: network (ENOTFOUND / ECONNREFUSED / ETIMEDOUT / EAI_AGAIN / fetch failed)", () => {
       for (const phrase of ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "fetch failed"]) {
         const failure = classifyFailure("claude", new Error(`network error ${phrase}`));

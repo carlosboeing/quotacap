@@ -149,16 +149,19 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       }
     }
 
-    // Precedence: invalid, reset-passed, provider-failed, stale, not-reporting
+    // Precedence: invalid, provider-failed, reset-passed, stale, not-reporting.
+    // A fresh failure outranks a passed reset: "poll again to capture the new
+    // window" is only actionable when polls succeed, and would otherwise mask
+    // the real state (e.g. an inactive subscription) behind a re-poll prompt.
     let exclusionReason: ExclusionReason = null;
     if (quota === null) {
       exclusionReason = "not-reporting";
     } else if (isInvalid) {
       exclusionReason = "invalid";
-    } else if (resetPassed) {
-      exclusionReason = "reset-passed";
     } else if (providerFailed) {
       exclusionReason = "provider-failed";
+    } else if (resetPassed) {
+      exclusionReason = "reset-passed";
     } else if (stale) {
       exclusionReason = "stale";
     }

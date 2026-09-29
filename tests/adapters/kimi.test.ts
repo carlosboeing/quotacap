@@ -12,6 +12,7 @@ import {
   pollKimiPty,
   readKimiProviderConfig,
   KimiCredentialWriteError,
+  KimiSubscriptionInactiveError,
 } from "../../src/adapters/kimi.js";
 import { runPty, stripAnsi } from "../../src/adapters/pty.js";
 
@@ -667,6 +668,19 @@ describe("parseKimiApiUsage", () => {
       }
     });
   }
+
+  it("reports an inactive subscription for an empty body on a free plan", () => {
+    // Observed shape of a cancelled plan: /usages 200 with {}, /me Free.
+    expect(() => parseKimiApiUsage({}, { user_level_name: "Free" })).toThrow(KimiSubscriptionInactiveError);
+    expect(() => parseKimiApiUsage({}, { user_level_name: "Free" })).toThrow(/subscription inactive/);
+  });
+
+  it("keeps an empty body on a paid or unknown plan a parse error for PTY corroboration", () => {
+    expect(() => parseKimiApiUsage({}, { user_level_name: "Pro" })).toThrow(
+      "kimi: weekly pct not found in api response",
+    );
+    expect(() => parseKimiApiUsage({})).toThrow("kimi: weekly pct not found in api response");
+  });
 });
 
 describe("pollKimiApi with mock fetch", () => {
@@ -716,6 +730,26 @@ describe("pollKimiApi with mock fetch", () => {
       expect(headers["User-Agent"]).toBe("kimi-code-cli/2.0.2");
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it("throws subscription-inactive on 402/403 instead of a generic request failure", async () => {
+    const mockAuthCtx = {
+      token: "test-token-123",
+      oauthHost: "https://auth.kimi.ai",
+      baseUrl: "https://api.kimi.ai/coding/v1",
+    };
+    for (const status of [402, 403]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(async () => new Response("{}", { status })),
+      );
+      try {
+        await expect(pollKimiApi(mockAuthCtx)).rejects.toBeInstanceOf(KimiSubscriptionInactiveError);
+        await expect(pollKimiApi(mockAuthCtx)).rejects.toThrow("kimi: subscription inactive");
+      } finally {
+        vi.unstubAllGlobals();
+      }
     }
   });
 
