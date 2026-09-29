@@ -53,6 +53,17 @@ describe("snapshot", () => {
     expect(codex.evidence).toContain("estimated-reset");
   });
 
+  it("ranks a fresh failure above a passed reset so the real state is not masked", () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "kimi", usedPct: 87, resetsAt: "2026-09-06T06:00:00+10:00", periodStart: "2026-08-30T06:00:00+10:00", fetchedAt: "2026-09-06T05:00:00+10:00" });
+    recordAttempt(db, { provider: "kimi", attemptedAt: NOW.toISOString(), completedAt: NOW.toISOString(), succeededAt: "2026-09-06T05:00:00+10:00", success: false, failureCategory: "auth", diagnosticCode: "auth", summary: "Kimi subscription inactive" });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi"], now: NOW, runtime: RT });
+    const kimi = s.providers.find(p => p.id === "kimi")!;
+    expect(kimi.resetPassed).toBe(true);
+    expect(kimi.exclusionReason).toBe("provider-failed");
+    expect(kimi.lastAttempt!.summary).toBe("Kimi subscription inactive");
+  });
+
   it("keeps agy group rows independent", () => {
     const db = openDb(":memory:"); migrate(db);
     quota(db, { provider: "agy", usedPct: 50, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-09-07T06:00:00+10:00", fetchedAt: NOW.toISOString() });

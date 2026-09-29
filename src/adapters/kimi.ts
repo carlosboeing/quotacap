@@ -166,6 +166,15 @@ function parseKimiApiMonthly(
   return {};
 }
 
+function isEmptyUsageBody(u: Record<string, unknown>): boolean {
+  const usage = u.usage;
+  const hasUsage = !!usage && typeof usage === "object" && Object.keys(usage).length > 0;
+  const hasLimits = Array.isArray(u.limits) && u.limits.length > 0;
+  const usages = u.usages;
+  const hasUsages = !!usages && typeof usages === "object" && Object.keys(usages).length > 0;
+  return !hasUsage && !hasLimits && !hasUsages;
+}
+
 export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = new Date()): ParsedQuota {
   if (typeof usagesBody !== "object" || usagesBody === null) {
     throw new Error("kimi: invalid api response");
@@ -228,6 +237,22 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
     }
   }
 
+  // 3. Plan identity (from meBody), before the field throws: an empty
+  // usage body on a free plan is a dead subscription, not a parse failure.
+  let plan = "unknown";
+  if (meBody && typeof meBody === "object") {
+    const me = meBody as Record<string, unknown>;
+    if (typeof me.user_level_name === "string" && me.user_level_name.trim().length > 0) {
+      plan = me.user_level_name.trim().toLowerCase();
+    }
+  }
+
+  if (weeklyPct === null && sessionPct === null && !resetsAt && isEmptyUsageBody(u) && plan === "free") {
+    throw new KimiSubscriptionInactiveError("plan free, empty usage response");
+  }
+  // Any other shape without data stays a parse error: an empty body on a
+  // paid or unknown plan falls through to the PTY path, whose transcript
+  // decides (usage panel vs "No usage data available").
   if (weeklyPct === null || weeklyPct < 0 || weeklyPct > 100) {
     throw new Error("kimi: weekly pct not found in api response");
   }
@@ -236,15 +261,6 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
   }
   if (!resetsAt || Number.isNaN(new Date(resetsAt).getTime())) {
     throw new Error("kimi: weekly reset not found in api response");
-  }
-
-  // 3. Plan identity (from meBody)
-  let plan = "unknown";
-  if (meBody && typeof meBody === "object") {
-    const me = meBody as Record<string, unknown>;
-    if (typeof me.user_level_name === "string" && me.user_level_name.trim().length > 0) {
-      plan = me.user_level_name.trim().toLowerCase();
-    }
   }
 
   // 4. Optional monthly quota (from limit_month_total, limits, or subscriptionBalance)
@@ -432,6 +448,17 @@ export async function refreshKimiOAuthToken(
   };
 }
 
+/** The Kimi account has no active subscription (observed: cancelled plan
+ * answers /usages 200 with `{}`, /me `user_level_name` "Free", and the TUI
+ * shows "No usage data available"). The TUI reports the same state, so the
+ * PTY fallback is skipped: report it, do not mask it with a timeout. */
+export class KimiSubscriptionInactiveError extends Error {
+  constructor(detail: string) {
+    super(`kimi: subscription inactive (${detail})`);
+    this.name = "KimiSubscriptionInactiveError";
+  }
+}
+
 /** A refresh rotated the tokens but the result could not be saved for the Kimi CLI. */
 export class KimiCredentialWriteError extends Error {
   constructor(credPath: string, cause: unknown) {
@@ -527,6 +554,11 @@ export async function pollKimiApi(ctx: KimiAuthContext): Promise<ParsedQuota> {
     usagesRes = await fetch(usagesUrl, { headers, signal });
   }
 
+  // 402/403 on an authenticated /usages call is an entitlement state, not
+  // a transport failure: the account has no active subscription.
+  if (usagesRes.status === 402 || usagesRes.status === 403) {
+    throw new KimiSubscriptionInactiveError(`HTTP ${usagesRes.status}`);
+  }
   if (!usagesRes.ok) {
     throw new Error(`kimi: usage request failed (HTTP ${usagesRes.status})`);
   }
@@ -586,8 +618,11 @@ export const kimiAdapter = {
       try {
         return await pollKimiApi(authCtx);
       } catch (e) {
-        // A lost rotated token leaves the CLI logged out: report it, do not mask it with the PTY path.
+        // A lost rotated token leaves the CLI logged out, and a dead
+        // subscription reads the same in the TUI: report either, do not
+        // mask them with the PTY path.
         if (e instanceof KimiCredentialWriteError) throw e;
+        if (e instanceof KimiSubscriptionInactiveError) throw e;
       }
     }
     return pollKimiPty();
