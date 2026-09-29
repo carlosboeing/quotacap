@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.45
 
 - Automatic recovery polls: when a provider's window expires or goes stale with a retryable cause, the daemon re-polls just that provider with backoff instead of waiting for the next scheduled tick or a manual Refresh.
 

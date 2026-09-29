@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.45 — 2026-09-29 (automatic recovery polls)
+
+* Recovery polls — providers whose window expired or went stale with a retryable cause are re-polled automatically with backoff, targeting only the needy providers (#130)
+
 ## Recently shipped — 0.0.44 — 2026-09-28 (retry backoff)
 
 * Exponential backoff with equal jitter — all adapters retry up to three attempts per poll, spaced ~1–2 s then ~2–4 s, so vendor transients get room to clear (#128)
