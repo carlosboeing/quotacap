@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.48 — 2026-09-30 (rail graze and edge fixes)
+
+* Rail graze tolerance — pins whose pills merely touch stay centered on their dots instead of dodging; edge pills clamp by exact layout offset with a diagonal stem to the pill center (#136)
+
 ## Recently shipped — 0.0.47 — 2026-09-30 (reset rail sideways dodge)
 
 * Sideways dodge — same-band pills that would truly overlap dodge sideways by pill width with short diagonal stems, crowds shingle with hover-to-front resolution, and the rail stays flat; Grouped mode clusters windows of 3+ with a persisted toggle (#134)
