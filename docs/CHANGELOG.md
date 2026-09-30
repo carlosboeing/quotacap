@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Reset rail graze tolerance: pins whose pills merely touch now stay centered on their dots instead of dodging; only real overlap splits sideways.
+- Reset rail edge clamp: edge pills shift by an exact layout offset with a diagonal stem to the pill center, replacing the half-pill text shift that left the stem meeting the pill edge. Narrow edge pills that already fit stay centered.
+
 ## 0.0.47
 
 - Reset rail overlap: same-time resets now dodge sideways by pill width with short diagonal stems instead of painting on top of each other, and the rail stays flat. Crowds past the spread cap shingle with small overlap, resolved by hover. A Separate/Grouped toggle in the rail header keeps the cluster popover (now for windows of 3+ resets) one click away; the choice persists in the browser.

@@ -982,17 +982,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 .pin.below .pin-when {
   margin-top: 4px;
 }
-/* Edge pins clamp their text, not their position: the dot and stem mark the
-   reset's time coordinate, so the pin stays centred on it while only the
-   label and timestamp shift inward to avoid the rail edge. */
-.pin.pin-start .pin-label,
-.pin.pin-start .pin-when {
-  translate: 50% 0;
-}
-.pin.pin-end .pin-label,
-.pin.pin-end .pin-when {
-  translate: -50% 0;
-}
+/* Edge pins keep the pin-start/pin-end classes for tooltip placement, but the
+   pill itself is clamped by layout (exact px offset + diagonal stem), so the
+   stem still meets the pill centre instead of its edge. */
 
 .pin-tooltip {
   position: absolute;

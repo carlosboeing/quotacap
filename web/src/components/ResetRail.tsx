@@ -14,6 +14,8 @@ export const STEM_PX = 14;
 const RAIL_REF_PX = 1072;
 /** Gap kept between dodged pills. */
 const DODGE_GAP_PX = 6;
+/** Computed overlap tolerated before pins dodge; pills may touch slightly. */
+const GROUP_OVERLAP_TOL_PX = 10;
 /** Widest one dodge group may spread; past this pills shingle with overlap. */
 const MAX_GROUP_SPREAD_PX = 160;
 
@@ -191,7 +193,7 @@ export function placePins(
       edge = -Infinity;
     };
     for (const slot of lane) {
-      if (slot.x - slot.half > edge + DODGE_GAP_PX) flush();
+      if (slot.x - slot.half > edge - GROUP_OVERLAP_TOL_PX) flush();
       group.push(slot);
       edge = Math.max(edge, slot.x + slot.half);
     }
@@ -217,6 +219,15 @@ export function placePins(
       g.forEach((s, i) => {
         s.target.offsetPx = centers[i] + shift - s.x;
       });
+    }
+    // Singletons near the edges shift just enough to stay on the rail; the
+    // diagonal stem reconnects the pill to its dot. Groups already clamp.
+    for (const s of lane) {
+      if (s.target.offsetPx !== 0) continue;
+      const left = s.x - s.half;
+      const right = s.x + s.half;
+      if (left < 0) s.target.offsetPx = -left;
+      else if (right > width) s.target.offsetPx = width - right;
     }
   }
 
