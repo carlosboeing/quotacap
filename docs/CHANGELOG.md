@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.47
 
 - Reset rail overlap: same-time resets now dodge sideways by pill width with short diagonal stems instead of painting on top of each other, and the rail stays flat. Crowds past the spread cap shingle with small overlap, resolved by hover. A Separate/Grouped toggle in the rail header keeps the cluster popover (now for windows of 3+ resets) one click away; the choice persists in the browser.
 
