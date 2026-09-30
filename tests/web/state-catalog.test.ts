@@ -278,7 +278,7 @@ describe("state catalog: server-rendered components", () => {
     expect(html).toContain("Measuring pace");
     expect(html).not.toContain("predicted");
   });
-  it("renders the rail cluster, live pill, and fault banners", () => {
+  it("renders separate rail pins by default and the cluster in grouped mode", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const rail = renderToString(
       React.createElement(ResetRail, {
@@ -287,8 +287,18 @@ describe("state catalog: server-rendered components", () => {
         onSelectProvider: () => {},
       })
     );
-    expect(rail).toContain("cluster-pin");
-    expect(rail).toContain("6 resets");
+    expect(rail.match(/data-testid="pin"/g)).toHaveLength(6);
+    expect(rail).not.toContain("cluster-pin");
+    const grouped = renderToString(
+      React.createElement(ResetRail, {
+        providers: s.providers,
+        asOf: s.asOf,
+        onSelectProvider: () => {},
+        initialMode: "grouped",
+      })
+    );
+    expect(grouped).toContain("cluster-pin");
+    expect(grouped).toContain("6 resets");
     const header = renderToString(
       React.createElement(Header, {
         runtime: s.runtime,

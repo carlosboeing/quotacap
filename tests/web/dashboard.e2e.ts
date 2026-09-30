@@ -338,12 +338,16 @@ test("lanes follow server urgency", async ({ page }) => {
   await expect(page.getByTestId("lane-ease-off")).toHaveCount(0);
 });
 
-test("crowded resets group into a cluster popover", async ({ browser }) => {
+test("crowded resets stay separate by default and group behind the toggle", async ({ browser }) => {
   const stub = await stubFor(exampleState());
   for (const theme of THEMES) {
     const { context, page } = await themedPage(browser, theme, 1440);
     try {
       await page.goto(stub.url);
+      await expect(page.getByTestId("pin")).toHaveCount(6);
+      await expect(page.getByTestId("cluster-pin")).toHaveCount(0);
+      await shot(page, `rail-separate-1440-${theme}.png`);
+      await page.getByTestId("rail-mode").getByRole("button", { name: "Grouped" }).click();
       const cluster = page.getByTestId("cluster-pin");
       await expect(cluster).toContainText("6 resets");
       await cluster.click();
@@ -353,6 +357,8 @@ test("crowded resets group into a cluster popover", async ({ browser }) => {
       await shot(page, `rail-crowded-1440-${theme}.png`);
       await popover.locator("li button").first().click();
       await expect(page.getByTestId("provider-drawer")).toBeVisible();
+      await page.reload();
+      await expect(page.getByTestId("cluster-pin")).toBeVisible();
     } finally {
       await context.close();
     }

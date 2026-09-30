@@ -4,13 +4,23 @@ import { paceBadge, resetClock, resetCountdown, timeLeft } from "./PaceBar.js";
 
 export const RAIL_DAYS = 7;
 const RAIL_MS = RAIL_DAYS * 24 * 60 * 60 * 1000;
-/** Pins within this span of rail group into one collision window. */
+/** Pins within this span of rail group into one collision window (grouped mode). */
 const COLLISION_PCT = 3;
-/** Pins per window before they group into a cluster pin. */
-const WINDOW_CAPACITY = 3;
+/** Pins per window past which they group into a cluster pin (grouped mode). */
+const WINDOW_CAPACITY = 2;
+/** Stem height; every pin sits at tier 0, so the rail never grows. */
+export const STEM_PX = 14;
+/** Layout width before the rail measures itself (dashboard content max). */
+const RAIL_REF_PX = 1072;
+/** Gap kept between dodged pills. */
+const DODGE_GAP_PX = 6;
+/** Widest one dodge group may spread; past this pills shingle with overlap. */
+const MAX_GROUP_SPREAD_PX = 160;
 
 export interface RailRow {
   id: string;
+  /** Pill text, used to estimate the width for dodge packing. */
+  label: string;
   resetsAt: string | null;
   estimated?: boolean;
 }
@@ -20,14 +30,17 @@ export type RailBand = "above" | "below";
 export interface PlacedPin extends RailRow {
   positionPct: number;
   band: RailBand;
-  tier: number;
+  /** Sideways pill offset in px; the dot stays on the time coordinate. */
+  offsetPx: number;
 }
 
 export interface PinCluster {
   ids: string[];
+  label: string;
   positionPct: number;
   band: RailBand;
-  tier: number;
+  /** Sideways pill offset in px; the dot stays on the time coordinate. */
+  offsetPx: number;
 }
 
 export interface PinPlacement {
@@ -37,13 +50,58 @@ export interface PinPlacement {
   invalid: RailRow[];
 }
 
+/** Half the pill width for a display name: 16ch cap, ~7px per char + chrome. */
+export function pillHalfWidth(label: string): number {
+  return (Math.min(label.length, 16) * 7 + 30) / 2;
+}
+
+/** Half the timestamp width: tabular mono, ~6.6px per char + padding. */
+export function stampHalfWidth(text: string): number {
+  return (text.length * 6.6 + 12) / 2;
+}
+
+function pinHalfWidth(pin: Pick<PlacedPin, "label" | "resetsAt" | "estimated">): number {
+  // Candidates reaching layout always parsed, but the row type allows null.
+  const clock = pin.resetsAt === null ? "" : (resetClock(pin.resetsAt) ?? "");
+  const stamp = `${clock}${pin.estimated ? " (est.)" : ""}`;
+  return Math.max(pillHalfWidth(pin.label), stampHalfWidth(stamp));
+}
+
+export type RailMode = "separate" | "grouped";
+
+export const RAIL_MODE_KEY = "quotacap-rail-mode";
+
+export function storedRailMode(): RailMode {
+  try {
+    const v = typeof localStorage === "undefined" ? null : localStorage.getItem(RAIL_MODE_KEY);
+    return v === "grouped" ? "grouped" : "separate";
+  } catch {
+    return "separate";
+  }
+}
+
+function persistRailMode(mode: RailMode): void {
+  try {
+    localStorage.setItem(RAIL_MODE_KEY, mode);
+  } catch {
+    // Private mode or non-DOM: the choice simply does not persist.
+  }
+}
+
 /**
  * Place reset pins proportionally over the next 7 days from `asOf`.
- * Crowded windows past tier capacity group into clusters; resets beyond the
- * rail overflow; invalid rows are reported; reset-passed rows place no pin
- * (the ledger shows "awaiting fresh window" for them).
+ * Same-band pills that would overlap dodge sideways by pill width (earlier
+ * left, later right); crowds past the spread cap shingle with small overlap
+ * instead, resolved by hover. Dots stay on the time coordinate and the rail
+ * stays flat. Resets beyond the rail overflow; invalid rows are reported;
+ * reset-passed rows place no pin (the ledger shows "awaiting fresh window"
+ * for them). Grouped mode collapses crowded windows into cluster pins.
  */
-export function placePins(rows: RailRow[], asOf: Date): PinPlacement {
+export function placePins(
+  rows: RailRow[],
+  asOf: Date,
+  opts?: { grouped?: boolean; railWidthPx?: number }
+): PinPlacement {
   const asOfMs = asOf.getTime();
   const placed: PlacedPin[] = [];
   const clusters: PinCluster[] = [];
@@ -82,19 +140,20 @@ export function placePins(rows: RailRow[], asOf: Date): PinPlacement {
     | { kind: "cluster"; cluster: PinCluster };
   const items: Item[] = [];
   for (const window of windows) {
-    if (window.length <= WINDOW_CAPACITY) {
+    if (opts?.grouped && window.length > WINDOW_CAPACITY) {
+      const positionPct = window.reduce((sum, c) => sum + c.positionPct, 0) / window.length;
+      const ids = window.map((c) => c.row.id);
+      items.push({
+        kind: "cluster",
+        cluster: { ids, label: `${ids.length} resets`, positionPct, band: "above", offsetPx: 0 },
+      });
+    } else {
       for (const c of window) {
         items.push({
           kind: "pin",
-          pin: { ...c.row, positionPct: c.positionPct, band: "above", tier: 0 },
+          pin: { ...c.row, positionPct: c.positionPct, band: "above", offsetPx: 0 },
         });
       }
-    } else {
-      const positionPct = window.reduce((sum, c) => sum + c.positionPct, 0) / window.length;
-      items.push({
-        kind: "cluster",
-        cluster: { ids: window.map((c) => c.row.id), positionPct, band: "above", tier: 0 },
-      });
     }
   }
   items.sort((a, b) => {
@@ -103,20 +162,63 @@ export function placePins(rows: RailRow[], asOf: Date): PinPlacement {
     return pa - pb;
   });
 
-  // Alternate above/below bands; stagger tiers when same-band items crowd.
-  const lastByBand: Record<RailBand, { position: number; tier: number }> = {
-    above: { position: -Infinity, tier: 0 },
-    below: { position: -Infinity, tier: 0 },
-  };
+  // Alternate above/below bands so time-adjacent pins never share a side.
   items.forEach((item, index) => {
     const target = item.kind === "pin" ? item.pin : item.cluster;
-    const band: RailBand = index % 2 === 0 ? "above" : "below";
-    const prev = lastByBand[band];
-    const tier = target.positionPct - prev.position < COLLISION_PCT * 2 ? prev.tier + 1 : 0;
-    target.band = band;
-    target.tier = tier;
-    lastByBand[band] = { position: target.positionPct, tier };
+    target.band = index % 2 === 0 ? "above" : "below";
   });
+
+  const width = opts?.railWidthPx && opts.railWidthPx > 0 ? opts.railWidthPx : RAIL_REF_PX;
+  const cap = Math.min(MAX_GROUP_SPREAD_PX, width * 0.3);
+  for (const band of ["above", "below"] as const) {
+    const lane = items
+      .filter((item) => (item.kind === "pin" ? item.pin.band : item.cluster.band) === band)
+      .map((item) => {
+        const target = item.kind === "pin" ? item.pin : item.cluster;
+        return {
+          target,
+          x: (target.positionPct / 100) * width,
+          half: item.kind === "pin" ? pinHalfWidth(item.pin) : pillHalfWidth(item.cluster.label),
+        };
+      });
+    // Chain natural extents into dodge groups.
+    const groups: typeof lane[] = [];
+    let group: typeof lane = [];
+    let edge = -Infinity;
+    const flush = () => {
+      if (group.length > 0) groups.push(group);
+      group = [];
+      edge = -Infinity;
+    };
+    for (const slot of lane) {
+      if (slot.x - slot.half > edge + DODGE_GAP_PX) flush();
+      group.push(slot);
+      edge = Math.max(edge, slot.x + slot.half);
+    }
+    flush();
+    for (const g of groups) {
+      if (g.length === 1) continue; // offsetPx stays 0
+      const mid = (g[0].x + g[g.length - 1].x) / 2;
+      const totalW = g.reduce((sum, s) => sum + s.half * 2, 0) + DODGE_GAP_PX * (g.length - 1);
+      let cursor = mid - totalW / 2;
+      let centers = g.map((s) => {
+        const center = cursor + s.half;
+        cursor += s.half * 2 + DODGE_GAP_PX;
+        return center;
+      });
+      const boxSpan = centers[centers.length - 1] + g[g.length - 1].half - (centers[0] - g[0].half);
+      if (boxSpan > cap) centers = centers.map((c) => mid + ((c - mid) * cap) / boxSpan);
+      const shift =
+        centers[0] - g[0].half < 0
+          ? -(centers[0] - g[0].half)
+          : centers[centers.length - 1] + g[g.length - 1].half > width
+            ? width - (centers[centers.length - 1] + g[g.length - 1].half)
+            : 0;
+      g.forEach((s, i) => {
+        s.target.offsetPx = centers[i] + shift - s.x;
+      });
+    }
+  }
 
   for (const item of items) {
     if (item.kind === "pin") placed.push(item.pin);
@@ -240,40 +342,94 @@ function dayLabels(asOfMs: number): string[] {
   });
 }
 
+/**
+ * Stem from the dot to the pill: vertical when centered, a short diagonal
+ * when the pill dodged sideways. The over-tall layout box is pulled back
+ * with a negative margin so the pill meets the stem's visual end.
+ */
+function PinStem({ band, offsetPx }: { band: RailBand; offsetPx: number }) {
+  if (offsetPx === 0) return <span className="pin-stem" />;
+  const dx = Math.abs(offsetPx);
+  const len = Math.sqrt(dx * dx + STEM_PX * STEM_PX);
+  const angle = (Math.atan2(dx, STEM_PX) * 180) / Math.PI;
+  const deg = band === "above" ? Math.sign(offsetPx) * angle : -Math.sign(offsetPx) * angle;
+  const pull = len - STEM_PX;
+  const style: React.CSSProperties =
+    band === "above"
+      ? { height: len, marginTop: -pull, transform: `rotate(${deg}deg)` }
+      : { height: len, marginBottom: -pull, transform: `rotate(${deg}deg)` };
+  return <span className="pin-stem" style={style} />;
+}
+
 export function ResetRail({
   providers,
   asOf,
   onSelectProvider,
+  initialMode,
 }: {
   providers: ProviderView[];
   asOf: string;
   onSelectProvider: (id: string) => void;
+  initialMode?: RailMode;
 }) {
   const [openCluster, setOpenCluster] = useState<number | null>(null);
+  const [mode, setMode] = useState<RailMode>(() => initialMode ?? storedRailMode());
+  const [railWidth, setRailWidth] = useState<number>(RAIL_REF_PX);
+  const railRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setRailWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const asOfMs = Date.parse(asOf);
   const byId = new Map(providers.map((p) => [p.id, p]));
   const rows: RailRow[] = providers
     .filter((p) => p.enabled && p.quota)
-    .map((p) => ({ id: p.id, resetsAt: p.quota!.resetsAt, estimated: !!p.quota!.resetsAtEstimated }));
-  const placement = placePins(rows, new Date(asOfMs));
+    .map((p) => ({
+      id: p.id,
+      label: p.displayName ?? p.id,
+      resetsAt: p.quota!.resetsAt,
+      estimated: !!p.quota!.resetsAtEstimated,
+    }));
+  const placement = placePins(rows, new Date(asOfMs), { grouped: mode === "grouped", railWidthPx: railWidth });
   const labels = dayLabels(asOfMs);
+  const setModePersist = (next: RailMode) => {
+    setOpenCluster(null);
+    setMode(next);
+    persistRailMode(next);
+  };
 
   return (
     <section aria-label="Upcoming resets">
       <div className="section-head">
         <h2 id="resets-h">Upcoming resets</h2>
-        <span className="note">
-          Next 7 days · hover pin for usage · click for details · {tzAbbrev()}
-          {placement.overflow.length > 0 && (
-            <span
-              data-testid="rail-overflow"
-              title={placement.overflow.map((o) => byId.get(o.id)?.displayName ?? o.id).join(", ")}
-              style={{ marginLeft: 8, fontWeight: 600, color: "var(--ahead)" }}
-            >
-              +{placement.overflow.length} beyond rail
-            </span>
-          )}
-        </span>
+        <div className="section-head-controls">
+          <span className="note">
+            Next 7 days · hover pin for usage · click for details · {tzAbbrev()}
+            {placement.overflow.length > 0 && (
+              <span
+                data-testid="rail-overflow"
+                title={placement.overflow.map((o) => byId.get(o.id)?.displayName ?? o.id).join(", ")}
+                style={{ marginLeft: 8, fontWeight: 600, color: "var(--ahead)" }}
+              >
+                +{placement.overflow.length} beyond rail
+              </span>
+            )}
+          </span>
+          <div data-testid="rail-mode" role="group" aria-label="Reset pin grouping" className="seg">
+            <button type="button" aria-pressed={mode === "separate"} onClick={() => setModePersist("separate")}>
+              Separate
+            </button>
+            <button type="button" aria-pressed={mode === "grouped"} onClick={() => setModePersist("grouped")}>
+              Grouped
+            </button>
+          </div>
+        </div>
       </div>
 
       <div
@@ -283,7 +439,7 @@ export function ResetRail({
         role="region"
         aria-label={`Upcoming resets over the next ${RAIL_DAYS} days`}
       >
-        <div className="rail">
+        <div className="rail" ref={railRef}>
           <div className="rail-grid" aria-hidden="true">
             {Array.from({ length: RAIL_DAYS }, (_, i) => (
               <span key={i} />
@@ -303,20 +459,20 @@ export function ResetRail({
             const name = provider?.displayName ?? pin.id;
             const { cls: paceCls, color: paceColor } = pinPace(provider);
             const alignClass = pin.positionPct < 12 ? "pin-start" : pin.positionPct > 88 ? "pin-end" : "";
-            const tierClass = pin.tier > 0 ? `tier${pin.tier + 1}` : "tier1";
             const pinBorder = {
               ["--pin-border" as string]: `color-mix(in oklch, ${paceColor} 45%, var(--line))`,
             };
+            const dodgeX = pin.offsetPx === 0 ? undefined : { translate: `${pin.offsetPx}px 0` };
             return (
               <button
                 key={pin.id}
                 data-testid="pin"
                 type="button"
-                className={`pin ${pin.band} ${tierClass} ${alignClass}`}
+                className={`pin ${pin.band} ${alignClass}`}
                 style={
                   {
                     left: `${pin.positionPct}%`,
-                    "--dot-color": paceColor,
+                    ["--dot-color" as string]: paceColor,
                   } as React.CSSProperties
                 }
                 aria-label={`${name}: ${pace}, resets ${when}`}
@@ -324,21 +480,21 @@ export function ResetRail({
               >
                 {pin.band === "above" ? (
                   <>
-                    <span className="pin-when">{pin.estimated ? `${when} (est.)` : when}</span>
-                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                    <span className="pin-when" style={dodgeX}>{pin.estimated ? `${when} (est.)` : when}</span>
+                    <span className={`pin-label ${paceCls}`} style={{ ...pinBorder, ...dodgeX }}>
                       {name}
                     </span>
-                    <span className="pin-stem" />
+                    <PinStem band={pin.band} offsetPx={pin.offsetPx} />
                     <span className="pin-dot" />
                   </>
                 ) : (
                   <>
                     <span className="pin-dot" />
-                    <span className="pin-stem" />
-                    <span className={`pin-label ${paceCls}`} style={pinBorder}>
+                    <PinStem band={pin.band} offsetPx={pin.offsetPx} />
+                    <span className={`pin-label ${paceCls}`} style={{ ...pinBorder, ...dodgeX }}>
                       {name}
                     </span>
-                    <span className="pin-when">{pin.estimated ? `${when} (est.)` : when}</span>
+                    <span className="pin-when" style={dodgeX}>{pin.estimated ? `${when} (est.)` : when}</span>
                   </>
                 )}
                 <span className="pin-tooltip" role="tooltip">
@@ -355,13 +511,13 @@ export function ResetRail({
 
           {placement.clusters.map((cluster, index) => {
             const alignClass = cluster.positionPct < 12 ? "pin-start" : cluster.positionPct > 88 ? "pin-end" : "";
-            const tierClass = cluster.tier > 0 ? `tier${cluster.tier + 1}` : "tier1";
+            const dodgeX = cluster.offsetPx === 0 ? undefined : { translate: `${cluster.offsetPx}px 0` };
             return (
               <button
                 key={cluster.ids.join("+")}
                 data-testid="cluster-pin"
                 type="button"
-                className={`pin ${cluster.band} ${tierClass} ${alignClass}`}
+                className={`pin ${cluster.band} ${alignClass}`}
                 style={
                   {
                     left: `${cluster.positionPct}%`,
@@ -374,17 +530,17 @@ export function ResetRail({
               >
                 {cluster.band === "above" ? (
                   <>
-                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)", ...dodgeX }}>
                       {cluster.ids.length} resets
                     </span>
-                    <span className="pin-stem" />
+                    <PinStem band={cluster.band} offsetPx={cluster.offsetPx} />
                     <span className="pin-dot" />
                   </>
                 ) : (
                   <>
                     <span className="pin-dot" />
-                    <span className="pin-stem" />
-                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+                    <PinStem band={cluster.band} offsetPx={cluster.offsetPx} />
+                    <span className="pin-label" style={{ borderColor: "var(--accent)", color: "var(--accent)", ...dodgeX }}>
                       {cluster.ids.length} resets
                     </span>
                   </>

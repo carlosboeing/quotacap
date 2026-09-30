@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Reset rail overlap: same-time resets now dodge sideways by pill width with short diagonal stems instead of painting on top of each other, and the rail stays flat. Crowds past the spread cap shingle with small overlap, resolved by hover. A Separate/Grouped toggle in the rail header keeps the cluster popover (now for windows of 3+ resets) one click away; the choice persists in the browser.
+
 ## 0.0.46
 
 - Inactive subscriptions: a cancelled plan no longer reads as a timeout or a passed reset. Kimi detects the state directly (API 402/403, or an empty usage body on a free plan) and the classifier recognizes Kimi's own sentences (`No usage data available`, `[provider.auth_error] 403 ... does not have access to Kimi Code`), including inside a completion-timeout transcript. The banner reads `Kimi subscription inactive` with a manage-or-disable action, and the failure skips retries and recovery polls while scheduled polls keep re-checking so a re-subscribe heals itself.

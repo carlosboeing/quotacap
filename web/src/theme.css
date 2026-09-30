@@ -917,15 +917,17 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
 }
 .pin-stem {
   width: 1px;
+  height: 14px;
   background: var(--line-strong);
   flex: none;
   align-self: center;
 }
-.pin.tier1 .pin-stem {
-  height: 14px;
+/* Dodged pills rotate the stem about the dot end into a short diagonal. */
+.pin.above .pin-stem {
+  transform-origin: bottom center;
 }
-.pin.tier2 .pin-stem {
-  height: 30px;
+.pin.below .pin-stem {
+  transform-origin: top center;
 }
 .pin.above .pin-dot {
   margin-bottom: -6px;
