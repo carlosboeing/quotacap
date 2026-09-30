@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.48
 
 - Reset rail graze tolerance: pins whose pills merely touch now stay centered on their dots instead of dodging; only real overlap splits sideways.
 - Reset rail edge clamp: edge pills shift by an exact layout offset with a diagonal stem to the pill center, replacing the half-pill text shift that left the stem meeting the pill edge. Narrow edge pills that already fit stay centered.
