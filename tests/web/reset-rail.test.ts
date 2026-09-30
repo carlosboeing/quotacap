@@ -55,6 +55,38 @@ describe("reset rail", () => {
     expect(pins.placed[0].offsetPx).toBe(0);
     expect(pins.placed[2].offsetPx).toBe(0);
   });
+  it("tolerates small grazes instead of dodging", () => {
+    // pills 2px into each other stay centered; only real overlap dodges
+    const pins = placePins(
+      [
+        { id: "codex", label: "Codex", resetsAt: "2026-09-08T06:00:00+10:00" },
+        { id: "filler", label: "Filler", resetsAt: "2026-09-08T07:00:00+10:00" },
+        { id: "opencode", label: "OpenCode Go Plus!", resetsAt: "2026-09-08T22:30:00+10:00" },
+      ],
+      new Date("2026-09-07T06:00:00+10:00")
+    );
+    expect(pins.placed.map((p: any) => p.band)).toEqual(["above", "below", "above"]);
+    expect(pins.placed[0].offsetPx).toBe(0);
+    expect(pins.placed[2].offsetPx).toBe(0);
+    const graze = boxOf(pins.placed[2])[0] - boxOf(pins.placed[0])[1];
+    expect(graze).toBeGreaterThan(-10);
+    expect(graze).toBeLessThan(6);
+  });
+  it("clamps only overflowing singletons into the rail edges", () => {
+    const pins = placePins(
+      [
+        { id: "wide", label: "Antigravity 3P", resetsAt: "2026-09-13T23:00:00+10:00" },
+        { id: "narrow", label: "Kimi", resetsAt: "2026-09-13T21:36:00+10:00" },
+      ],
+      new Date("2026-09-07T06:00:00+10:00")
+    );
+    // narrow pill already fits: untouched, vertical stem
+    expect(pins.placed[0].id).toBe("narrow");
+    expect(pins.placed[0].offsetPx).toBe(0);
+    // wide pill would hang off the rail: shift exactly back inside
+    expect(pins.placed[1].offsetPx).toBeLessThan(0);
+    expect(boxOf(pins.placed[1])[1]).toBeCloseTo(1072, 4);
+  });
   it("clusters trios in grouped mode so the toggle bites on real data", () => {
     const rows = [
       { id: "a", label: "AA", resetsAt: "2026-09-08T06:00:00+10:00" },
@@ -268,18 +300,16 @@ describe("reset rail", () => {
 
   // Regression: pin-start and pin-end used to shift the whole pin button so
   // its pill stayed on the rail, which dragged the dot (the data point) off
-  // its time coordinate by half a pill width. Only the text clamps now.
-  it("anchors edge-pin dots and clamps only the text", () => {
+  // its time coordinate by half a pill width. Dots stay anchored now; layout
+  // clamps edge pills with an exact px offset and a diagonal stem, and the
+  // classes survive only for tooltip placement.
+  it("anchors edge-pin dots and lets layout clamp the text", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.pin \{[^}]*transform: translateX\(-50%\)/);
     expect(css).not.toMatch(/\.pin\.pin-start\s*\{[^}]*transform:/);
     expect(css).not.toMatch(/\.pin\.pin-end\s*\{[^}]*transform:/);
-    expect(css).not.toMatch(/\.pin\.pin-(?:start|end) \.pin-(?:dot|stem)/);
-    expect(css).toMatch(
-      /\.pin\.pin-start \.pin-label,\s*\.pin\.pin-start \.pin-when\s*\{[^}]*translate: 50% 0/
-    );
-    expect(css).toMatch(
-      /\.pin\.pin-end \.pin-label,\s*\.pin\.pin-end \.pin-when\s*\{[^}]*translate: -50% 0/
-    );
+    expect(css).not.toMatch(/\.pin\.pin-(?:start|end) \.pin-(?:dot|stem|label|when)/);
+    expect(css).toMatch(/\.pin\.pin-start \.pin-tooltip/);
+    expect(css).toMatch(/\.pin\.pin-end \.pin-tooltip/);
   });
 });
