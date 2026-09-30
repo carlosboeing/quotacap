@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.47 — 2026-09-30 (reset rail sideways dodge)
+
+* Sideways dodge — same-band pills that would truly overlap dodge sideways by pill width with short diagonal stems, crowds shingle with hover-to-front resolution, and the rail stays flat; Grouped mode clusters windows of 3+ with a persisted toggle (#134)
+
 ## Recently shipped — 0.0.46 — 2026-09-29 (inactive subscriptions)
 
 * Inactive subscriptions — a cancelled plan reads as `Kimi subscription inactive` with a manage-or-disable action instead of a timeout or a passed reset, and a fresh failure outranks a passed reset (#132)
