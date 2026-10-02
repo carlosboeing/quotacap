@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.49 — 2026-10-02 (weekly reset scoping)
+
+* Weekly reset scoping — the Claude card reads its reset from the `Current week` line instead of farthest-future-wins, so the last ~5h before the weekly roll no longer shows the 5h session reset; manual pastes prefer the weekly line the same way (#143)
+
 ## Recently shipped — 0.0.48 — 2026-09-30 (rail graze and edge fixes)
 
 * Rail graze tolerance — pins whose pills merely touch stay centered on their dots instead of dodging; edge pills clamp by exact layout offset with a diagonal stem to the pill center (#136)
