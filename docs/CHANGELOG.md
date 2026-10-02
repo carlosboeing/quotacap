@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.49
 
 - Claude weekly reset: within ~5h of the weekly roll the card showed the 5h session reset instead of the weekly one; the reset now always comes from the `Current week` line.
 - Manual paste: two-window pastes prefer the weekly line's reset the same way, falling back to whole-text only when the weekly line states no reset.
