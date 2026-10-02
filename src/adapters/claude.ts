@@ -10,7 +10,12 @@ export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota 
     result.match(/Current week[^\d%]*(\d+)%\s+used/i);
   const usedPct = weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0;
   const sessionPct = sessionMatch ? parseInt(sessionMatch[1], 10) : undefined;
-  let resetsAt = parseResetText(result, now);
+  // The paced window's reset lives on the "Current week" line. Parse that
+  // line alone: within ~5h of the weekly roll the session reset is sooner,
+  // and whole-text farthest-wins would pick it instead (muse precedent:
+  // scope to the weekly section, then degrade to +7d when it won't parse).
+  const weeklyLine = result.match(/^.*current week.*$/gim)?.[0];
+  let resetsAt = parseResetText(weeklyLine ?? result, now);
   const parsedReset = !!resetsAt;
   if (!resetsAt) resetsAt = new Date(now.getTime()+7*86400000).toISOString();
   const resets = new Date(resetsAt).getTime();

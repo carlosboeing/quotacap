@@ -60,9 +60,11 @@ function parseRelativeDuration(raw: string, now: Date): Date | null {
 }
 
 export function parseResetText(text: string, now: Date): string | null {
-  // Farthest future reset wins. Claude output lists the session reset before
-  // the weekly one; kimi lists the weekly window before its 5h rolling one —
-  // the period reset is always the farthest, so one rule serves both.
+  // Farthest future reset wins across the given text. Callers whose output
+  // carries two windows must pre-scope to the paced window's line first —
+  // near the weekly roll the session reset is sooner, so whole-text
+  // farthest-wins would pick the wrong one (claude/manual scope; kimi/muse
+  // pass pre-scoped snippets).
   const matches = [...text.matchAll(/resets\s+([^\n(]+?)\s*(?:\(|$)/gm)];
   let best: Date | null = null;
   for (const m of matches) {

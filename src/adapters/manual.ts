@@ -4,7 +4,15 @@ import type { ParsedQuota } from "./types.js";
 export function parseManualUsage(provider: string, text: string, now = new Date()): ParsedQuota {
   const m = text.match(/(\d+)% used/);
   const usedPct = m ? parseInt(m[1], 10) : 0;
-  const parsedReset = parseResetText(text, now);
+  // Prefer the weekly line's reset: within ~5h of the weekly roll the 5h
+  // reset is sooner, and whole-text farthest-wins would pick it instead.
+  // Fall back to whole-text only when the weekly line states no reset at
+  // all (e.g. a paste with the reset on its own line).
+  const weeklyLine = text.match(/^.*(?:current week|weekly).*$/gim)?.[0];
+  let parsedReset = weeklyLine ? parseResetText(weeklyLine, now) : null;
+  if (!parsedReset && (!weeklyLine || !/resets/i.test(weeklyLine))) {
+    parsedReset = parseResetText(text, now);
+  }
   const resetsAt = parsedReset ?? new Date(now.getTime() + 3 * 86400000).toISOString();
   const periodStart = (parsedReset ? new Date(new Date(resetsAt).getTime() - 7 * 86400000) : new Date(now.getTime() - 7 * 86400000)).toISOString();
   let sessionPct: number | undefined;

@@ -28,4 +28,15 @@ describe("manual", () => {
     const expected = now.getTime() + ((3 * 24 + 1) * 3600 + 24 * 60) * 1000;
     expect(new Date(q.resetsAt).getTime()).toBe(expected);
   });
+
+  it("prefers the weekly reset when it is nearer than the 5h reset", () => {
+    const now = new Date("2026-08-28T22:00:00Z");
+    const text = [
+      "Weekly limit  92% used  resets in 1h 30m",
+      "5h limit      19% used  resets in 3h 29m",
+    ].join("\n");
+    const q = parseManualUsage("claude", text, now);
+    const expected = now.getTime() + (1 * 3600 + 30 * 60) * 1000;
+    expect(new Date(q.resetsAt).getTime()).toBe(expected);
+  });
 });

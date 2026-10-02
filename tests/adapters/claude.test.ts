@@ -35,6 +35,14 @@ describe("parseClaudeUsage", () => {
     expect(q.weeklyPct).toBe(10);
     expect(q.fiveHourPct).toBe(0);
   });
+
+  it("uses the weekly reset when it falls inside the 5h window (near rollover)", () => {
+    const txt = `Current session: 24% used · resets Oct 1 at 10:29pm (Australia/Brisbane)\nCurrent week (all models): 93% used · resets Oct 1 at 8:59pm (Australia/Brisbane)\n`;
+    const q = parseClaudeUsage(txt, new Date("2026-10-01T19:00:00+10:00"));
+    expect(q.weeklyPct).toBe(93);
+    expect(q.fiveHourPct).toBe(24);
+    expect(q.resetsAt).toMatch(/2026-10-01T20:59/);
+  });
 });
 
 describe("pollAll isolation", () => {
