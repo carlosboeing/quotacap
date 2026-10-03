@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test as base, expect, type Browser, type Page } from "@playwright/test";
 import { startStub, type StubHandle, type StubOptions } from "./stub-server.js";
 import { hatchGradient } from "../../web/src/components/PaceBar.js";
 import {
@@ -18,11 +18,50 @@ import {
  */
 
 const liveStubs: StubHandle[] = [];
+
+/** Uncaught page errors per test run, across both page-creating paths. */
+const pageErrors = new Map<string, Error[]>();
+
+function errorsFor(testId: string, retry: number): Error[] {
+  const key = `${testId}#${retry}`;
+  let list = pageErrors.get(key);
+  if (!list) {
+    list = [];
+    pageErrors.set(key, list);
+  }
+  return list;
+}
+
+/** Same `page` fixture, plus uncaught-error collection. */
+const test = base.extend<{ page: Page }>({
+  page: async ({ page }, use, testInfo) => {
+    page.on("pageerror", (e) => errorsFor(testInfo.testId, testInfo.retry).push(e));
+    await use(page);
+  },
+});
+
+/** Wire a hand-created page (themedPage, reduced-motion) into the same net. */
+function trackPageErrors(page: Page): void {
+  const info = base.info();
+  const errors = errorsFor(info.testId, info.retry);
+  page.on("pageerror", (e) => errors.push(e));
+}
+
 test.afterEach(async () => {
   while (liveStubs.length > 0) {
     const stub = liveStubs.pop();
     if (stub) await stub.stop();
   }
+});
+
+// Every test fails on any uncaught page error, so the next render crash
+// fails here instead of in user testing. A test that deliberately crashes
+// a render (fallback-UI coverage) opts out by draining its own list.
+test.afterEach(async ({}, testInfo) => {
+  const key = `${testInfo.testId}#${testInfo.retry}`;
+  const errors = pageErrors.get(key) ?? [];
+  pageErrors.delete(key);
+  expect(errors).toEqual([]);
 });
 
 async function stubFor(state: unknown, extra?: Omit<StubOptions, "state">): Promise<StubHandle> {
@@ -67,6 +106,7 @@ async function themedPage(browser: Browser, theme: Theme, width: number, height 
     colorScheme: theme,
   });
   const page = await context.newPage();
+  trackPageErrors(page);
   return { context, page };
 }
 
@@ -573,6 +613,7 @@ test("reduced motion disables transitions", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce" });
   try {
     const page = await context.newPage();
+    trackPageErrors(page);
     await page.goto(stub.url);
     await expect(page.getByTestId("rec-prose")).toBeVisible();
     const reduced = await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -852,40 +893,82 @@ test("Monthly exhausted pill stays on one line inside the table badge column", a
 });
 
 // A drawer render throw used to unmount the whole React tree, leaving a
-// blank page. This canary opens every provider drawer and fails on any
-// page error, so the next such crash fails here instead of in user testing.
-// Codex carries the shape that blanked the dashboard: a fresh window with
-// a history baseline (burnRate set, avgPace and recentRate null).
+// blank page. This canary opens every provider drawer in every fixture
+// state and fails on any page error, so the next such crash fails here
+// instead of in user testing. Codex carries the shape that blanked the
+// dashboard: a fresh window with a history baseline (burnRate set, avgPace
+// and recentRate null).
 test("every provider drawer opens without a render crash", async ({ page }) => {
-  const s = exampleState();
-  const codex = s.providers.find((p: any) => p.id === "codex");
-  codex.advisory = {
-    ...codex.advisory,
-    burnRate: 5.2,
-    recentRate: null,
-    baselineRate: 5.2,
-    avgPace: null,
-    burnMeasured: false,
-    paceSource: "window-average",
-  };
-  const stub = await stubFor(s);
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(stub.url);
-  await expect(page.getByTestId("rec-prose")).toBeVisible();
-  const cards = page.locator('[data-testid^="provider-card-"]');
-  const count = await cards.count();
-  expect(count).toBeGreaterThan(0);
-  for (let i = 0; i < count; i++) {
-    const card = cards.nth(i);
-    await card.scrollIntoViewIfNeeded();
-    // The Inspect affordance, not the card center: a center click can
-    // land on the windows chevron, which toggles instead of opening.
-    await card.locator(".rowbtn").click();
-    await expect(page.getByTestId("provider-drawer")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("provider-drawer")).toBeHidden();
+  const states: Array<[string, () => any]> = [
+    ["example", exampleState],
+    ["unknown-pace", () => JSON.parse(unknownPaceStateSnapshotJson)],
+    ["stale", () => JSON.parse(staleStateSnapshotJson)],
+    ["reset-passed", () => JSON.parse(resetPassedStateSnapshotJson)],
+    ["monthly", () => JSON.parse(boardMonthlyStateSnapshotJson)],
+  ];
+  for (const [label, load] of states) {
+    const s = load();
+    if (label === "example") {
+      const codex = s.providers.find((p: any) => p.id === "codex");
+      codex.advisory = {
+        ...codex.advisory,
+        burnRate: 5.2,
+        recentRate: null,
+        baselineRate: 5.2,
+        avgPace: null,
+        burnMeasured: false,
+        paceSource: "window-average",
+      };
+    }
+    const stub = await stubFor(s);
+    await page.goto(stub.url);
+    await expect(page.getByTestId("rec-prose"), label).toBeVisible();
+    const cards = page.locator('[data-testid^="provider-card-"]');
+    const count = await cards.count();
+    expect(count, label).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const card = cards.nth(i);
+      await card.scrollIntoViewIfNeeded();
+      // The Inspect affordance, not the card center: a center click can
+      // land on the windows chevron, which toggles instead of opening.
+      await card.locator(".rowbtn").click();
+      await expect(page.getByTestId("provider-drawer"), label).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("provider-drawer"), label).toBeHidden();
+    }
+    await expect(page.getByTestId("dashboard-root"), label).toBeVisible();
   }
-  await expect(page.getByTestId("dashboard-root")).toBeVisible();
-  expect(errors).toEqual([]);
 });
+
+// A corrupt advisory used to unmount the whole React tree into a blank
+// page. Each card, row, and the drawer now degrades to fallback UI while
+// the rest of the dashboard keeps working.
+test("a corrupt advisory degrades to fallback UI instead of a blank page", async ({ page }) => {
+  // Spread resets so the Codex rail pin is directly clickable.
+  const s = spreadResetState();
+  const codex = s.providers.find((p: any) => p.id === "codex");
+  codex.advisory = { ...codex.advisory, idealRate: null };
+  const stub = await stubFor(s);
+  await page.goto(stub.url);
+  await expect(page.getByTestId("dashboard-root")).toBeVisible();
+  const cardFallback = page.getByTestId("provider-card-codex-error");
+  await expect(cardFallback).toBeVisible();
+  await expect(cardFallback).toContainText("Couldn't show this subscription.");
+  await expect(page.getByTestId("provider-card-kimi")).toBeVisible();
+  // A healthy provider still inspects.
+  await page.getByTestId("provider-card-kimi").locator(".rowbtn").click();
+  await expect(page.getByTestId("provider-drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  // The drawer for the corrupt provider degrades too, via its rail pin.
+  await page.getByRole("button", { name: /^Codex:/ }).click();
+  const drawerFallback = page.getByTestId("provider-drawer-error");
+  await expect(drawerFallback).toBeVisible();
+  await expect(drawerFallback).toContainText("Couldn't show these details.");
+  await drawerFallback.getByRole("button", { name: "Close provider details" }).click();
+  await expect(drawerFallback).toBeHidden();
+  await expect(page.getByTestId("dashboard-root")).toBeVisible();
+  // Table density degrades per row as well.
+  await page.getByRole("button", { name: "Table" }).click();
+  await expect(page.getByTestId("provider-row-codex-error")).toBeVisible();
+});
+

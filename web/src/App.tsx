@@ -14,6 +14,7 @@ import { Recommendation } from "./components/Recommendation.js";
 import { SubscriptionList } from "./components/SubscriptionList.js";
 import { ResetRail } from "./components/ResetRail.js";
 import { ProviderDrawer } from "./components/ProviderDrawer.js";
+import { DrawerErrorFallback, ErrorBoundary } from "./components/ErrorBoundary.js";
 import { AdviceDrawer } from "./components/AdviceDrawer.js";
 import { SettingsDrawer } from "./components/settings/SettingsDrawer.js";
 import { navigate, routeFor, useRoute } from "./router.js";
@@ -346,13 +347,27 @@ function App() {
           />
         )}
       </main>
-      <ProviderDrawer
-        provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
-        asOf={snapshot?.asOf ?? ""}
-        recommendation={snapshot?.recommendation ?? null}
-        onClose={() => setSelectedProvider(null)}
-        onRenamed={() => void load()}
-      />
+      <ErrorBoundary
+        resetKey={selectedProvider}
+        fallback={
+          <DrawerErrorFallback
+            name={
+              snapshot?.providers.find((p) => p.id === selectedProvider)?.displayName ??
+              selectedProvider ??
+              "provider"
+            }
+            onClose={() => setSelectedProvider(null)}
+          />
+        }
+      >
+        <ProviderDrawer
+          provider={snapshot?.providers.find((p) => p.id === selectedProvider) ?? null}
+          asOf={snapshot?.asOf ?? ""}
+          recommendation={snapshot?.recommendation ?? null}
+          onClose={() => setSelectedProvider(null)}
+          onRenamed={() => void load()}
+        />
+      </ErrorBoundary>
       {consentOpen && (
         <ConsentModal
           busy={consentBusy}
