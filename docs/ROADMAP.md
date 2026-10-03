@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.50 — 2026-10-03 (probe lifecycle)
+
+* Probe lifecycle — hung provider CLIs can no longer outlive their probe: each probe runs in its own process group with stdin closed and a bounded timeout, kills go to the whole group with SIGTERM-to-SIGKILL escalation, and the timeout promise rejects promptly; the lifecycle suite reaps stray probe children before removing temp dirs (#145)
+
 ## Recently shipped — 0.0.49 — 2026-10-02 (weekly reset scoping)
 
 * Weekly reset scoping — the Claude card reads its reset from the `Current week` line instead of farthest-future-wins, so the last ~5h before the weekly roll no longer shows the 5h session reset; manual pastes prefer the weekly line the same way (#143)
