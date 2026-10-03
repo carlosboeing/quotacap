@@ -850,3 +850,42 @@ test("Monthly exhausted pill stays on one line inside the table badge column", a
   const cell = await pill.evaluate((e) => (e.closest("[data-label]") as HTMLElement).getBoundingClientRect().right);
   expect(box!.x + box!.width).toBeLessThanOrEqual(cell);
 });
+
+// A drawer render throw used to unmount the whole React tree, leaving a
+// blank page. This canary opens every provider drawer and fails on any
+// page error, so the next such crash fails here instead of in user testing.
+// Codex carries the shape that blanked the dashboard: a fresh window with
+// a history baseline (burnRate set, avgPace and recentRate null).
+test("every provider drawer opens without a render crash", async ({ page }) => {
+  const s = exampleState();
+  const codex = s.providers.find((p: any) => p.id === "codex");
+  codex.advisory = {
+    ...codex.advisory,
+    burnRate: 5.2,
+    recentRate: null,
+    baselineRate: 5.2,
+    avgPace: null,
+    burnMeasured: false,
+    paceSource: "window-average",
+  };
+  const stub = await stubFor(s);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto(stub.url);
+  await expect(page.getByTestId("rec-prose")).toBeVisible();
+  const cards = page.locator('[data-testid^="provider-card-"]');
+  const count = await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for (let i = 0; i < count; i++) {
+    const card = cards.nth(i);
+    await card.scrollIntoViewIfNeeded();
+    // The Inspect affordance, not the card center: a center click can
+    // land on the windows chevron, which toggles instead of opening.
+    await card.locator(".rowbtn").click();
+    await expect(page.getByTestId("provider-drawer")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("provider-drawer")).toBeHidden();
+  }
+  await expect(page.getByTestId("dashboard-root")).toBeVisible();
+  expect(errors).toEqual([]);
+});

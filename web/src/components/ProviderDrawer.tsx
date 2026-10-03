@@ -246,12 +246,17 @@ export function rankingCopy(
     pace = `Exhausted at ${quota?.weeklyPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
   } else {
     const { avg, recent } = paceFigures(advisory);
+    // Both figures are null on a fresh window with a history baseline:
+    // avgPace needs 6h elapsed and recentRate needs a 24h span, while
+    // burnRate (non-null past the guard above) carries the forecast.
     const figures =
       avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)
         ? `${avg.toFixed(1)}%/day window average and ${recent.toFixed(1)}%/day over the last 24h`
         : avg !== null
           ? `${avg.toFixed(1)}%/day window average`
-          : `${(recent as number).toFixed(1)}%/day over the last 24h`;
+          : recent !== null
+            ? `${recent.toFixed(1)}%/day over the last 24h`
+            : `${advisory.burnRate.toFixed(1)}%/day forecast pace`;
     const ideal = `${advisory.idealRate.toFixed(1)}%/day`;
     pace =
       advisory.status === "at risk"

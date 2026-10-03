@@ -139,6 +139,42 @@ describe("provider drawer", () => {
       "10.6%/day window average and 24.0%/day over the last 24h, against an ideal pace of 11.1%/day."
     );
   });
+  it("names the forecast pace when both figures are unknown but a forecast exists", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    // Fresh window with a history baseline: burnRate set, avgPace null
+    // (<6h elapsed), recentRate null (no 24h span). rankingCopy used to
+    // call toFixed on the null figure and blank the dashboard on Inspect.
+    const fresh = {
+      ...kimi,
+      advisory: {
+        ...kimi.advisory!,
+        burnRate: 5.2,
+        recentRate: null,
+        baselineRate: 5.2,
+        avgPace: null,
+        burnMeasured: false,
+        paceSource: "window-average",
+        status: "on track",
+      },
+    };
+    expect(rankingCopy(fresh as any, s.recommendation).pace).toBe(
+      "5.2%/day forecast pace. The ideal pace to finish is 11.1%/day."
+    );
+    const risky = { ...fresh, advisory: { ...fresh.advisory, status: "at risk" } };
+    expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
+      "5.2%/day forecast pace, against an ideal pace of 11.1%/day."
+    );
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: fresh as any,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(html).toContain("forecast pace");
+  });
   it("names Watch rows as near the cap instead of on-track or save copy", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
