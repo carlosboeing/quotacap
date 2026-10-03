@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Dashboard crash hardening: each subscription card, table row, and the provider drawer now degrades to fallback UI when its render throws, instead of blanking the whole dashboard. A fresh reading or a newly selected provider retries the render. The e2e suite fails on any uncaught page error, and the drawer canary opens every provider drawer across all fixture states.
+
 ## 0.0.51
 
 - Provider drawer: Inspect no longer blanks the dashboard on a fresh window with a history baseline. When both pace figures are unknown but a forecast exists, the ranking rationale now names the forecast pace (e.g. "5.2%/day forecast pace") instead of throwing on a null figure.

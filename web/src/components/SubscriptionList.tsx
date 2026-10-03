@@ -4,6 +4,7 @@ import { nextRefreshLabel } from "../state.js";
 import { lanesFor } from "./Recommendation.js";
 import { ProviderCard } from "./ProviderCard.js";
 import { ProviderRow } from "./ProviderRow.js";
+import { CardErrorFallback, ErrorBoundary, RowErrorFallback } from "./ErrorBoundary.js";
 import { resetCountdown } from "./PaceBar.js";
 
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
@@ -218,13 +219,18 @@ export function SubscriptionList({
       {effective === "cards" ? (
         <div data-testid="cards-grid" className="cards cards-grid">
           {enabled.map((p) => (
-            <ProviderCard
+            <ErrorBoundary
               key={p.id}
-              provider={p}
-              recommended={p.id === recommendation.use}
-              asOf={asOf}
-              onSelect={onSelectProvider}
-            />
+              resetKey={p.quota?.fetchedAt ?? null}
+              fallback={<CardErrorFallback id={p.id} name={p.displayName} />}
+            >
+              <ProviderCard
+                provider={p}
+                recommended={p.id === recommendation.use}
+                asOf={asOf}
+                onSelect={onSelectProvider}
+              />
+            </ErrorBoundary>
           ))}
         </div>
       ) : (
@@ -238,13 +244,18 @@ export function SubscriptionList({
               <span role="columnheader" />
             </div>
             {enabled.map((p) => (
-              <ProviderRow
+              <ErrorBoundary
                 key={p.id}
-                provider={p}
-                recommended={p.id === recommendation.use}
-                asOf={asOf}
-                onSelect={onSelectProvider}
-              />
+                resetKey={p.quota?.fetchedAt ?? null}
+                fallback={<RowErrorFallback id={p.id} name={p.displayName} />}
+              >
+                <ProviderRow
+                  provider={p}
+                  recommended={p.id === recommendation.use}
+                  asOf={asOf}
+                  onSelect={onSelectProvider}
+                />
+              </ErrorBoundary>
             ))}
           </div>
         </div>
