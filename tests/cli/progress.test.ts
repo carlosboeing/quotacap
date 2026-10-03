@@ -12,7 +12,7 @@ describe("formatPhase", () => {
   });
 
   it("normalizes three dots to unicode ellipsis", () => {
-    expect(formatPhase("downloading 0.0.50...")).toBe("downloading 0.0.50…");
+    expect(formatPhase("downloading 0.0.51...")).toBe("downloading 0.0.51…");
   });
 
   it("preserves existing unicode ellipsis without duplicating", () => {
@@ -55,9 +55,9 @@ describe("shouldEmitProgress", () => {
 describe("phase", () => {
   it("emits strictly to stderr via custom writer when active", () => {
     const writer = vi.fn();
-    phase("downloading 0.0.50", { isTTY: true, stderr: writer });
+    phase("downloading 0.0.51", { isTTY: true, stderr: writer });
     expect(writer).toHaveBeenCalledTimes(1);
-    expect(writer).toHaveBeenCalledWith("downloading 0.0.50…");
+    expect(writer).toHaveBeenCalledWith("downloading 0.0.51…");
   });
 
   it("suppresses output when json is true", () => {
