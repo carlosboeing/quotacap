@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.51 — 2026-10-03 (drawer forecast pace)
+
+* Drawer forecast pace — Inspect on a fresh window with a history baseline no longer blanks the dashboard; the ranking rationale names the forecast pace when both pace figures are unknown (#147)
+
 ## Recently shipped — 0.0.50 — 2026-10-03 (probe lifecycle)
 
 * Probe lifecycle — hung provider CLIs can no longer outlive their probe: each probe runs in its own process group with stdin closed and a bounded timeout, kills go to the whole group with SIGTERM-to-SIGKILL escalation, and the timeout promise rejects promptly; the lifecycle suite reaps stray probe children before removing temp dirs (#145)

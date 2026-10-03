@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.51
 
 - Provider drawer: Inspect no longer blanks the dashboard on a fresh window with a history baseline. When both pace figures are unknown but a forecast exists, the ranking rationale now names the forecast pace (e.g. "5.2%/day forecast pace") instead of throwing on a null figure.
 
