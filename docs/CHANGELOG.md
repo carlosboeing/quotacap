@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Probe lifecycle: hung provider CLIs can no longer outlive their probe. Every `trackedExecFile` probe now runs in its own process group with stdin closed and a bounded timeout (default 30s); timeout, abort, and shutdown kills go to the whole group with SIGTERM → SIGKILL escalation, and the promise rejects promptly instead of pending forever on a SIGTERM-ignoring child. The lifecycle suite reaps each test daemon's group plus a home-path stray sweep before removing temp dirs, and asserts no probe child references the home after the hang tests.
+
 ## 0.0.49
 
 - Claude weekly reset: within ~5h of the weekly roll the card showed the 5h session reset instead of the weekly one; the reset now always comes from the `Current week` line.

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -14,15 +14,35 @@ const FAKE = path.join(here, "helpers", "fake-provider.mjs");
 const procs: ChildProcess[] = [];
 const dirs: string[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  // Reap every daemon (and its probe children) before removing any temp
+  // dir: a SIGKILLed daemon cannot reap its own children, so deleting the
+  // home first would strand live `node <home>/bin/claude ...` fakes with
+  // their binary path gone. Reaps run even when the test failed; a reap
+  // that cannot confirm death fails the suite instead of leaking quietly.
+  let firstError: unknown = null;
   for (const p of procs.splice(0)) {
     try {
-      p.kill("SIGKILL");
-    } catch {}
+      await reapDaemon(p);
+    } catch (e) {
+      firstError ??= e;
+    }
   }
-  for (const d of dirs.splice(0)) {
-    fs.rmSync(d, { recursive: true, force: true });
+  // Backstop for probe children that outlived their daemon (force-exit path,
+  // failed or cancelled tests): each probe leads its own group, so sweep by
+  // home path before the temp dir — and the fake binary path — is removed.
+  const homes = dirs.splice(0);
+  for (const h of homes) {
+    try {
+      await reapStraysForHome(h);
+    } catch (e) {
+      firstError ??= e;
+    }
   }
+  for (const h of homes) {
+    fs.rmSync(h, { recursive: true, force: true });
+  }
+  if (firstError) throw firstError;
 });
 
 function mkHome(): string {
@@ -83,6 +103,9 @@ function spawnDaemon(
   const child = spawn("node", ["dist/cli/index.js", "daemon", ...args], {
     env: { ...process.env, QUOTACAP_HOME: home, ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"],
+    // Own process group: cleanup kills the daemon's probe children as a
+    // group, which a SIGKILLed daemon can no longer do for itself.
+    detached: true,
   });
   procs.push(child);
   let stdout = "";
@@ -108,6 +131,74 @@ function waitExit(child: ChildProcess, timeoutMs: number): Promise<number | null
       resolve(code);
     });
   });
+}
+
+/** Signal the daemon's whole process group (daemon + probe children). */
+function killDaemonGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  const pid = child.pid;
+  if (pid !== undefined) {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch {}
+  }
+  try {
+    child.kill(signal);
+  } catch {}
+}
+
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reapDaemon(child: ChildProcess): Promise<void> {
+  if (child.exitCode === null) killDaemonGroup(child, "SIGTERM");
+  await waitExit(child, 5000);
+  if (child.exitCode === null) killDaemonGroup(child, "SIGKILL");
+  await waitExit(child, 5000);
+  if (child.exitCode === null) throw new Error(`daemon ${child.pid} survived SIGKILL`);
+  // The daemon is dead but its group may outlive it (force-exit path):
+  // SIGKILL stragglers, then confirm the group is gone.
+  const pid = child.pid;
+  if (pid !== undefined && groupAlive(pid)) {
+    killDaemonGroup(child, "SIGKILL");
+    await waitFor(() => !groupAlive(pid), 2000, `process group ${pid} to die`);
+  }
+}
+
+/** Pids of live processes whose command line references this home — the
+ * `node <home>/bin/claude ...` fakes. The daemon itself never matches: the
+ * home reaches it via QUOTACAP_HOME env, not argv. */
+function straysForHome(home: string): number[] {
+  const pattern = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    const out = execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim();
+    if (!out) return [];
+    return out
+      .split("\n")
+      .map((l) => parseInt(l, 10))
+      .filter((n) => Number.isFinite(n) && n !== process.pid);
+  } catch {
+    return []; // pgrep exits 1 on no match
+  }
+}
+
+/** SIGKILL every live process referencing this home and confirm none remain.
+ * Matches by home path (not pidfile: the pidfile holds only the last-spawned
+ * fake) and across process groups (each probe leads its own group). */
+async function reapStraysForHome(home: string): Promise<void> {
+  const pattern = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    execFileSync("pkill", ["-KILL", "-f", pattern]);
+  } catch {
+    // pkill exits 1 on no match — nothing to reap.
+  }
+  await waitFor(() => straysForHome(home).length === 0, 2000, `strays for ${home} to die`);
 }
 
 async function waitHealth(port: number, timeoutMs = 15000): Promise<void> {
@@ -274,6 +365,8 @@ describe("service lifecycle", () => {
     expect(await healthRefused(port)).toBe(true);
     // The in-flight poll was closed before it could write.
     expect(attemptsOf(home)).toEqual([]);
+    // No probe child (usage poll or catalog warm) may survive the daemon.
+    expect(straysForHome(home)).toEqual([]);
   }, 30000);
 
   it("(f) second SIGTERM force-exits a stuck shutdown", async () => {
@@ -290,18 +383,19 @@ describe("service lifecycle", () => {
     });
     await waitHealth(port);
     await waitFor(() => fs.existsSync(pidFile), 10000, "hanging provider to spawn");
-    const pid = parseInt(fs.readFileSync(pidFile, "utf8"), 10);
     d.child.kill("SIGTERM");
     await new Promise((r) => setTimeout(r, 250));
     d.child.kill("SIGTERM");
     try {
       expect(await waitExit(d.child, 10000)).toBe(1);
     } finally {
-      // Force exit orphans the TERM-ignoring fake; reap it here.
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {}
+      // Force exit orphans the TERM-ignoring fakes (usage poll + catalog
+      // warm). Sweep by home path: the pidfile holds only the last-spawned
+      // fake, and each probe leads its own process group.
+      await reapStraysForHome(home);
     }
+    // Both fakes must be gone — including the pidfile race loser.
+    expect(straysForHome(home)).toEqual([]);
   }, 30000);
 
   it("(g) stop then start restarts and serves", async () => {
