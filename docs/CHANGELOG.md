@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- OpenCode Go reads the bearer the v2 CLI stores in `opencode.db` (active `opencode-go` credential, else `opencode`: API key or OAuth access token) and falls back to the legacy `auth.json` key. The refresh token is not read.
 - Dashboard crash hardening: each subscription card, table row, and the provider drawer now degrades to fallback UI when its render throws, instead of blanking the whole dashboard. A fresh reading or a newly selected provider retries the render. The e2e suite fails on any uncaught page error, and the drawer canary opens every provider drawer across all fixture states.
 
 ## 0.0.51

@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import type { ProviderView, RuntimeView } from "../state.js";
 
 export const OPENCODE_GO_CONSENT_COPY = [
-  "• What is read: API key OpenCode already stored when you ran `opencode auth login -p opencode-go` (`~/.local/share/opencode/auth.json`, `opencode-go` → `opencode` fallback).",
+  "• What is read: bearer OpenCode already stored when you ran `opencode auth login -p opencode-go` (v2 `~/.local/share/opencode/opencode.db` active credential, else legacy `~/.local/share/opencode/auth.json`; `opencode-go` then `opencode`).",
   "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
   "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
   "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
