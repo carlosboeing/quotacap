@@ -113,6 +113,8 @@ describe("opencodeGoAdapter.poll", () => {
   let mockHome = "";
   const origHome = process.env.HOME;
   const origEnvKey = process.env.OPENCODE_API_KEY;
+  const origDb = process.env.OPENCODE_DB;
+  const origXdg = process.env.XDG_DATA_HOME;
   let fetchSpy: any;
 
   afterEach(() => {
@@ -121,17 +123,49 @@ describe("opencodeGoAdapter.poll", () => {
     process.env.HOME = origHome;
     if (origEnvKey === undefined) delete process.env.OPENCODE_API_KEY;
     else process.env.OPENCODE_API_KEY = origEnvKey;
+    if (origDb === undefined) delete process.env.OPENCODE_DB;
+    else process.env.OPENCODE_DB = origDb;
+    if (origXdg === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = origXdg;
     if (mockHome) fs.rmSync(mockHome, { recursive: true, force: true });
     mockHome = "";
   });
 
-  function authHome(entries: Record<string, unknown>): void {
+  function useMockHome(): string {
     mockHome = fs.mkdtempSync(path.join(os.tmpdir(), "qc-ocgo-"));
-    const dir = path.join(mockHome, ".local", "share", "opencode");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "auth.json"), JSON.stringify(entries));
+    delete process.env.OPENCODE_DB;
+    delete process.env.XDG_DATA_HOME;
     process.env.HOME = mockHome;
     vi.spyOn(os, "homedir").mockReturnValue(mockHome);
+    return path.join(mockHome, ".local", "share", "opencode");
+  }
+
+  function authHome(entries: Record<string, unknown>): void {
+    const dir = useMockHome();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "auth.json"), JSON.stringify(entries));
+  }
+
+  function seedDb(rows: Array<{ integration: string; active: number; value: unknown }>): void {
+    const { DatabaseSync } = require("node:sqlite") as {
+      DatabaseSync: new (p: string) => {
+        exec: (sql: string) => void;
+        prepare: (sql: string) => { run: (...args: unknown[]) => void };
+        close: () => void;
+      };
+    };
+    const dir = path.join(mockHome, ".local", "share", "opencode");
+    fs.mkdirSync(dir, { recursive: true });
+    const db = new DatabaseSync(path.join(dir, "opencode.db"));
+    db.exec(`CREATE TABLE credential (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      integration_id TEXT NOT NULL,
+      value TEXT NOT NULL,
+      active INTEGER
+    )`);
+    const insert = db.prepare("INSERT INTO credential (integration_id, value, active) VALUES (?, ?, ?)");
+    for (const row of rows) insert.run(row.integration, JSON.stringify(row.value), row.active);
+    db.close();
   }
 
   function stubFetch(status: number, body: unknown): void {
@@ -162,12 +196,54 @@ describe("opencodeGoAdapter.poll", () => {
     expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-shared");
   });
 
-  it("env OPENCODE_API_KEY wins over the file", async () => {
+  it("env OPENCODE_API_KEY wins over the file and the v2 database", async () => {
     authHome({ "opencode-go": { type: "api", key: "sk-file" } });
+    seedDb([{ integration: "opencode", active: 1, value: { type: "oauth", access: "db-access" } }]);
     process.env.OPENCODE_API_KEY = "sk-env";
     stubFetch(200, LIVE_BODY);
     await opencodeGoAdapter.poll();
     expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer sk-env");
+  });
+
+  it("uses the v2 database access token ahead of a stale auth.json key", async () => {
+    authHome({ "opencode-go": { type: "api", key: "sk-stale" } });
+    seedDb([{
+      integration: "opencode",
+      active: 1,
+      value: { type: "oauth", access: "session-access", refresh: "do-not-send" },
+    }]);
+    stubFetch(200, LIVE_BODY);
+    await opencodeGoAdapter.poll();
+    expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer session-access");
+  });
+
+  it("prefers an active opencode-go API key over the console session", async () => {
+    authHome({});
+    seedDb([
+      { integration: "opencode", active: 1, value: { type: "oauth", access: "session-access" } },
+      { integration: "opencode-go", active: 1, value: { type: "api", key: "oc_sk_go" } },
+    ]);
+    stubFetch(200, LIVE_BODY);
+    await opencodeGoAdapter.poll();
+    expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer oc_sk_go");
+  });
+
+  it("ignores an inactive credential and a legacy key that does not start with sk-", async () => {
+    authHome({ "opencode": { type: "api", key: "oc_sk_legacy" } });
+    seedDb([
+      { integration: "opencode-go", active: 0, value: { type: "api", key: "oc_sk_inactive" } },
+      { integration: "opencode", active: 1, value: { type: "oauth", access: "session-access" } },
+    ]);
+    stubFetch(200, LIVE_BODY);
+    await opencodeGoAdapter.poll();
+    expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer session-access");
+  });
+
+  it("accepts a legacy oc_sk_ key when v2 has no usable credential", async () => {
+    authHome({ "opencode-go": { type: "api", key: "oc_sk_legacy" } });
+    stubFetch(200, LIVE_BODY);
+    await opencodeGoAdapter.poll();
+    expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe("Bearer oc_sk_legacy");
   });
 
   it("missing or malformed entries fail closed without leaking the key", async () => {
@@ -191,9 +267,7 @@ describe("opencodeGoAdapter.poll", () => {
   });
 
   it("a malformed auth file and a missing auth file both fail closed with the fixed subject", async () => {
-    mockHome = fs.mkdtempSync(path.join(os.tmpdir(), "qc-ocgo-"));
-    process.env.HOME = mockHome;
-    vi.spyOn(os, "homedir").mockReturnValue(mockHome);
+    useMockHome();
     // no auth file at all:
     stubFetch(200, LIVE_BODY);
     await expect(opencodeGoAdapter.poll()).rejects.toThrow("opencode-go: missing API key in auth file");
@@ -215,9 +289,13 @@ describe("opencodeGoAdapter.poll", () => {
 });
 
 describe("opencodeGoDetected", () => {
-  it("is true when the auth file exists and false when it does not, without reading it", () => {
+  it("is true when the auth file or the v2 database exists, without reading either", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "qc-ocgo-det-"));
     const origHome = process.env.HOME;
+    const origDb = process.env.OPENCODE_DB;
+    const origXdg = process.env.XDG_DATA_HOME;
+    delete process.env.OPENCODE_DB;
+    delete process.env.XDG_DATA_HOME;
     process.env.HOME = home;
     vi.spyOn(os, "homedir").mockReturnValue(home);
     const readSpy = vi.spyOn(fs, "readFileSync");
@@ -225,11 +303,19 @@ describe("opencodeGoDetected", () => {
       expect(opencodeGoDetected()).toBe(false);
       const dir = path.join(home, ".local", "share", "opencode");
       fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "opencode.db"), "");
+      expect(opencodeGoDetected()).toBe(true);
+      fs.rmSync(path.join(dir, "opencode.db"));
+      expect(opencodeGoDetected()).toBe(false);
       fs.writeFileSync(path.join(dir, "auth.json"), "{}");
       expect(opencodeGoDetected()).toBe(true);
       expect(readSpy).not.toHaveBeenCalled();
     } finally {
       process.env.HOME = origHome;
+      if (origDb === undefined) delete process.env.OPENCODE_DB;
+      else process.env.OPENCODE_DB = origDb;
+      if (origXdg === undefined) delete process.env.XDG_DATA_HOME;
+      else process.env.XDG_DATA_HOME = origXdg;
       vi.restoreAllMocks();
       fs.rmSync(home, { recursive: true, force: true });
     }
@@ -239,6 +325,8 @@ describe("opencodeGoDetected", () => {
 describe("OPENCODE_GO_CONSENT_NOTICE", () => {
   it("carries the consent contract", () => {
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode auth login -p opencode-go");
+    expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode.db");
+    expect(OPENCODE_GO_CONSENT_NOTICE).toContain("auth.json");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("https://opencode.ai/zen/go/v1/usage");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("quotacap providers disable opencode-go");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("OPENCODE_API_KEY");
