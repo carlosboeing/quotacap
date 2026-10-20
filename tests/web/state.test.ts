@@ -55,18 +55,18 @@ describe("state mapping", () => {
     expect(displayPlan("Plus")).toBe("Plus");
     expect(displayPlan("SuperGrok")).toBe("SuperGrok");
   });
-  it("names each short window as 5h Limit", () => {
-    expect(shortWindowLabel("codex")).toBe("5h Limit");
-    expect(shortWindowLabel("kimi")).toBe("5h Limit");
-    expect(shortWindowLabel("agy")).toBe("5h Limit");
-    expect(shortWindowLabel("agy:3p")).toBe("5h Limit");
-    expect(shortWindowLabel("claude")).toBe("5h Limit");
-    expect(shortWindowLabel("muse")).toBe("5h Limit");
+  it("names each short window as 5h limit", () => {
+    expect(shortWindowLabel("codex")).toBe("5h limit");
+    expect(shortWindowLabel("kimi")).toBe("5h limit");
+    expect(shortWindowLabel("agy")).toBe("5h limit");
+    expect(shortWindowLabel("agy:3p")).toBe("5h limit");
+    expect(shortWindowLabel("claude")).toBe("5h limit");
+    expect(shortWindowLabel("muse")).toBe("5h limit");
     expect(shortWindowLabel("grok")).toBeNull();
     expect(shortWindowLabel("manual")).toBeNull();
   });
   it("labels the opencode-go short window like the other 5h providers", () => {
-    expect(shortWindowLabel("opencode-go")).toBe("5h Limit");
+    expect(shortWindowLabel("opencode-go")).toBe("5h limit");
   });
   it("normalizes detectedProviders with an empty default for older daemons", () => {
     const vm = toViewModel({ asOf: "x", runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "t" } as any, providers: [], recommendation: {} as any });

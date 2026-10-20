@@ -244,13 +244,13 @@ function App() {
         <SettingsDrawer
           open={settingsOpen}
           providers={snapshot.providers}
-          onRefresh={() => void refresh()}
           refreshing={refreshing}
           onSetProviderEnabled={handleSetProviderEnabled}
           onClose={() => setSettingsOpen(false)}
         />
         {consentOpen && (
           <ConsentModal
+            loginCommand={snapshot?.runtime.opencodeLoginCommand}
             busy={consentBusy}
             onCancel={() => setConsentOpen(false)}
             onConfirm={() =>
@@ -328,6 +328,7 @@ function App() {
             onRepoll={() => void refresh()}
             repolling={refreshing}
             polling={snapshot.runtime.polling}
+            opencodeLoginCommand={snapshot.runtime.opencodeLoginCommand}
           />
         )}
         {snapshot && showOpenCodeGoBanner(snapshot.runtime, snapshot.providers, goSuppressed) && (
@@ -370,6 +371,7 @@ function App() {
       </ErrorBoundary>
       {consentOpen && (
         <ConsentModal
+          loginCommand={snapshot?.runtime.opencodeLoginCommand}
           busy={consentBusy}
           onCancel={() => setConsentOpen(false)}
           onConfirm={() =>
@@ -396,12 +398,15 @@ function App() {
           providers={snapshot.providers}
           asOf={snapshot.asOf}
           onClose={() => setAdviceOpen(false)}
+          onSelectProvider={(id) => {
+            setAdviceOpen(false);
+            setSelectedProvider(id);
+          }}
         />
       )}
       <SettingsDrawer
         open={settingsOpen}
         providers={snapshot?.providers ?? []}
-        onRefresh={() => void refresh()}
         refreshing={refreshing}
         onSetProviderEnabled={handleSetProviderEnabled}
         onClose={() => setSettingsOpen(false)}

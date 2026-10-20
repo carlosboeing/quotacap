@@ -42,6 +42,7 @@ describe("parseKimiTui", () => {
     expect(q.provider).toBe("kimi");
     expect(q.weeklyPct).toBe(7);
     expect(q.fiveHourPct).toBe(33);
+    expect(new Date(q.fiveHourResetsAt!).getTime()).toBe(Date.parse("2026-09-01T00:57:00.000Z"));
     expect(q.plan).toBe("unknown");
     // source is tui (cast)
     expect((q as unknown as { source: string }).source).toBe("tui");
@@ -506,6 +507,7 @@ describe("parseKimiApiUsage", () => {
     expect(q.plan).toBe("allegretto");
     expect(q.weeklyPct).toBe(1);
     expect(q.fiveHourPct).toBe(6);
+    expect(q.fiveHourResetsAt).toBe("2026-09-22T11:25:17.281Z");
     expect(q.resetsAt).toBe("2026-09-29T00:25:17.281Z");
     expect(new Date(q.periodStart).getTime()).toBe(new Date(q.resetsAt).getTime() - 7 * 86400000);
     expect(q.fetchedAt).toBe(now.toISOString());
@@ -522,6 +524,7 @@ describe("parseKimiApiUsage", () => {
     expect(q.plan).toBe("unknown");
     expect(q.weeklyPct).toBe(15);
     expect(q.fiveHourPct).toBe(42);
+    expect(q.fiveHourResetsAt).toBe("2026-09-22T14:00:00.000Z");
     expect(q.resetsAt).toBe("2026-09-29T10:00:00.000Z");
   });
 

@@ -38,7 +38,7 @@ export function closeResetStamp(resetsAt: string): string | null {
 
 type EarlyUnit = "s" | "m" | "h" | "d";
 
-/** One floored duration for both the compact cell line and the strip note. */
+/** One floored duration for both the compact label and the word form. */
 function earlyParts(ms: number): { n: number; unit: EarlyUnit } {
   if (ms < 60_000) return { n: Math.max(1, Math.floor(ms / 1000)), unit: "s" };
   const minutes = Math.floor(ms / 60_000);
@@ -65,18 +65,34 @@ function earlyWords(ms: number): string {
   return `${n} ${EARLY_UNIT_WORDS[unit]}${n === 1 ? "" : "s"}`;
 }
 
-/** Four-cell strip of closed weekly windows, oldest left. Fill is used at
- * close, the hatch is the stored leftover. One cell per real close, never a
- * placeholder. Stale samples name their reading on the cell and under the
- * strip. */
-export function ClosedWeeks({ closes }: { closes: WindowCloseView[] }) {
+/** Bar chart of closed quota windows, oldest left. The solid segment is
+ * used at close, the hatched cap is the stored leftover; a cap under 3% is
+ * label-only. One bar per real close, never a placeholder. Stale samples
+ * name their earliness on the label; exact stamps stay in the tooltip. */
+export function ClosedWeeks({
+  closes,
+  windowName,
+}: {
+  closes: WindowCloseView[];
+  windowName?: "Weekly" | "Monthly";
+}) {
   if (!Array.isArray(closes) || closes.length === 0) return null;
   const cells = [...closes].reverse();
   const labels = cells.map((c) => closeDateLabel(c.resetsAt));
   return (
-    <section className="dsec" aria-label="Closed weeks">
-      <h3>Closed weeks</h3>
-      <div className="weeks" data-testid="closed-weeks">
+    <section className="dsec" aria-label="History">
+      {windowName ? (
+        <div className="burn-head">
+          <h3>History</h3>
+          <span className="burn-win">{windowName} quota window</span>
+        </div>
+      ) : (
+        <h3>History</h3>
+      )}
+      <div className="hchart" data-testid="closed-weeks">
+        <div className="hgrid">
+          <span>100%</span>
+        </div>
         {cells.map((c, i) => {
           const used = Math.min(100, Math.max(0, c.usedPct));
           const leftover = Math.min(100, Math.max(0, c.leftoverPct));
@@ -94,46 +110,24 @@ export function ClosedWeeks({ closes }: { closes: WindowCloseView[] }) {
             .filter(Boolean)
             .join(", ");
           return (
-            <div className="week" key={`${c.detectedAt}-${c.sampledAt}`} title={title}>
-              <div className="track" role="img" aria-label={title}>
-                <div className="fill" style={{ width: `${used}%` }} />
-                {leftover > 0 && (
-                  <div className="band band-waste" style={{ left: `${used}%`, width: `${leftover}%` }} />
-                )}
+            <div className="hcol" key={`${c.detectedAt}-${c.sampledAt}`} title={title}>
+              <div className="hbars">
+                <div className="hbar">
+                  {leftover >= 3 && <span className="hatch" style={{ height: `${leftover}%` }} />}
+                  <span className="solid" style={{ height: `${used}%` }} />
+                </div>
               </div>
-              <div className="lab">
-                <span>{labels[i] ?? "date unknown"}</span>
+              <div className="hlab">
+                {labels[i] ?? "date unknown"}
                 <b>
                   {c.leftoverPct}% leftover{est}
                 </b>
-                {stale && Number.isFinite(earlyMs) && earlyMs > 0 && (
-                  <span className="stale-note">read {earlyCompact(earlyMs)} early</span>
-                )}
+                {stale && Number.isFinite(earlyMs) && earlyMs > 0 && <>read {earlyCompact(earlyMs)} early</>}
               </div>
             </div>
           );
         })}
       </div>
-      {cells.map((c, i) => {
-        const resetMs = c.resetsAt ? Date.parse(c.resetsAt) : NaN;
-        const sampledMs = Date.parse(c.sampledAt);
-        const sampled = closeSampleStamp(c.sampledAt);
-        if (
-          !closeIsStale(c) ||
-          !sampled ||
-          !Number.isFinite(resetMs) ||
-          !Number.isFinite(sampledMs) ||
-          resetMs <= sampledMs
-        ) {
-          return null;
-        }
-        return (
-          <p className="cell-s stale-note" key={`note-${c.detectedAt}-${c.sampledAt}`}>
-            {labels[i] ?? "Date unknown"} leftover is from the {sampled} reading, {earlyWords(resetMs - sampledMs)}{" "}
-            before that reset.
-          </p>
-        );
-      })}
     </section>
   );
 }

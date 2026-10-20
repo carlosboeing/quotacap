@@ -170,7 +170,7 @@ export const GO_MONTHLY_RESETS_AT = "2026-09-15T12:00:00.000Z"; // Tuesday
 function addGo(db: any, status: "ok" | "exhausted"): void {
   upsertQuota(db, {
     provider: "opencode-go", plan: "unknown", source: "api",
-    weeklyPct: 44, fiveHourPct: 12,
+    weeklyPct: 44, fiveHourPct: 12, fiveHourResetsAt: "2026-09-07T00:30:00.000Z",
     resetsAt: "2026-09-10T00:00:00.000Z", periodStart: "2026-09-03T00:00:00.000Z",
     fetchedAt: FIXED_NOW.toISOString(),
     monthlyKind: "included", monthlyStatus: status,

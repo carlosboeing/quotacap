@@ -28,12 +28,15 @@ export function authInstruction(
  * a re-poll. Service start/install is covered by the service-unavailable
  * panel when the daemon itself is down.
  */
-export function repairFor(provider: ProviderView): Repair {
+export function repairFor(provider: ProviderView, opencodeLoginCommand?: string | null): Repair {
   const name = provider.displayName;
   if (provider.lastAttempt?.failureCategory === "auth") {
     if (provider.id === "opencode-go") {
+      const run = opencodeLoginCommand
+        ? `Run \`${opencodeLoginCommand}\`, then re-poll.`
+        : "Run the login command for your OpenCode CLI version — v2 `opencode auth login opencode` or v1 `opencode console login` — then re-poll.";
       return {
-        text: "Run `opencode auth login -p opencode-go`, then re-poll. QuotaCap reads that key only because you enabled OpenCode Go — `quotacap providers disable opencode-go` stops it.",
+        text: `${run} QuotaCap reads that key only because you enabled OpenCode Go — \`quotacap providers disable opencode-go\` stops it.`,
       };
     }
     return { text: authInstruction(name, provider.lastAttempt) };
@@ -84,11 +87,13 @@ export function FaultBanner({
   onRepoll,
   repolling,
   polling,
+  opencodeLoginCommand,
 }: {
   providers: ProviderView[];
   onRepoll: () => void;
   repolling: boolean;
   polling?: "idle" | "in-progress" | "degraded" | string;
+  opencodeLoginCommand?: string | null;
 }) {
   const isPolling = repolling || polling === "in-progress";
   const faulted = providers.filter((p) => {
@@ -103,7 +108,7 @@ export function FaultBanner({
     <div>
       {faulted.map((p) => {
         const age = ageDuration(p.ageMs);
-        const repair = repairFor(p);
+        const repair = repairFor(p, opencodeLoginCommand);
         return (
           <div
             key={p.id}

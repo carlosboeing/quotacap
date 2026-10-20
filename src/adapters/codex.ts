@@ -110,7 +110,9 @@ function parseCodexCleaned(cleaned: string, now: Date): ParsedQuota {
     weeklyIso = new Date(now.getTime() + 7 * 86400000).toISOString();
     estimated = true;
   }
-  if (!fiveIso) fiveIso = new Date(now.getTime() + 5 * 3600000).toISOString();
+  // The 5h reset is display-only: expose it only when actually parsed,
+  // never the synthesized fallback a garbled timestamp would produce.
+  const fiveHourResetsAt = fiveIso ?? undefined;
   const usedPct = 100 - weeklyLeft;
   const sessionPct = 100 - fiveLeft;
   // The /status panel carries "Account: <email> (<plan>)" above the limits.
@@ -124,6 +126,7 @@ function parseCodexCleaned(cleaned: string, now: Date): ParsedQuota {
     plan,
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt: weeklyIso,
     periodStart,
     source: "tui",

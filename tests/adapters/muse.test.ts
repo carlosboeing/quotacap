@@ -71,6 +71,7 @@ describe("parseMuseTui", () => {
     expect(q.plan).toBe("High Usage");
     expect(q.weeklyPct).toBe(35);
     expect(q.fiveHourPct).toBe(11);
+    expect(q.fiveHourResetsAt).toBe("2026-09-12T05:51:00.000Z");
     expect(q.resetsAt).toBe("2026-09-14T10:00:00+10:00");
     expect(new Date(q.periodStart).getTime()).toBe(new Date(q.resetsAt).getTime() - 7 * 86400000);
     expect(q.source).toBe("tui");

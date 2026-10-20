@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ProviderView } from "../state.js";
-import { paceBadge, resetClock, resetCountdown, timeLeft } from "./PaceBar.js";
+import { isMonthlyBound, paceBadge, quotaResetEstimated, quotaResetsAt, quotaUsedPct, resetClock, resetCountdown, resetDateClock, timeLeft } from "./PaceBar.js";
 
 export const RAIL_DAYS = 7;
 const RAIL_MS = RAIL_DAYS * 24 * 60 * 60 * 1000;
@@ -292,7 +292,7 @@ function ClusterPopover({
               >
                 <b>{name}</b>
                 <span>
-                  {provider?.quota ? `${provider.quota.weeklyPct}% · ` : ""}
+                  {provider?.quota ? `${quotaUsedPct(provider)}% · ` : ""}
                   {provider ? resetCountdown(provider, asOfMs) : ""}
                 </span>
               </button>
@@ -340,8 +340,10 @@ function pinPace(provider: ProviderView | undefined): { cls: string; color: stri
   }
 }
 
-function pinWhen(resetsAt: string): string {
-  return resetClock(resetsAt) ?? "";
+function pinWhen(provider: ProviderView): string {
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return "";
+  return (isMonthlyBound(provider) ? resetDateClock(resetIso) : resetClock(resetIso)) ?? "";
 }
 
 function dayLabels(asOfMs: number): string[] {
@@ -404,8 +406,8 @@ export function ResetRail({
     .map((p) => ({
       id: p.id,
       label: p.displayName ?? p.id,
-      resetsAt: p.quota!.resetsAt,
-      estimated: !!p.quota!.resetsAtEstimated,
+      resetsAt: quotaResetsAt(p),
+      estimated: quotaResetEstimated(p),
     }));
   const placement = placePins(rows, new Date(asOfMs), { grouped: mode === "grouped", railWidthPx: railWidth });
   const labels = dayLabels(asOfMs);
@@ -464,9 +466,10 @@ export function ResetRail({
 
           {placement.placed.map((pin) => {
             const provider = byId.get(pin.id);
-            const when = provider?.quota ? pinWhen(provider.quota.resetsAt) : provider ? resetCountdown(provider, asOfMs) : "";
+            const when = provider?.quota ? pinWhen(provider) : provider ? resetCountdown(provider, asOfMs) : "";
             const pace = provider ? paceBadge(provider) : "";
-            const left = provider?.quota ? timeLeft(provider.quota.resetsAt, asOfMs) : null;
+            const quotaReset = provider ? quotaResetsAt(provider) : null;
+            const left = quotaReset ? timeLeft(quotaReset, asOfMs) : null;
             const name = provider?.displayName ?? pin.id;
             const { cls: paceCls, color: paceColor } = pinPace(provider);
             const alignClass = pin.positionPct < 12 ? "pin-start" : pin.positionPct > 88 ? "pin-end" : "";
@@ -511,7 +514,7 @@ export function ResetRail({
                 <span className="pin-tooltip" role="tooltip">
                   <b>{name}</b>
                   <span className="pt-sep">·</span>
-                  {provider?.quota ? `${provider.quota.weeklyPct}% used` : "no readings"}
+                  {provider?.quota ? `${quotaUsedPct(provider)}% used` : "no readings"}
                   <span className="pt-sep">·</span>
                   {left ? `${left} left` : when}
                   {pin.estimated ? " (est.)" : ""}

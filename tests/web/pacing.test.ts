@@ -10,7 +10,7 @@ import {
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock, resetDateClock, resetDay } from "../../web/src/components/PaceBar.js";
+import { Badge, PaceBar, PaceStats, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock, resetDateClock, resetDay } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -185,7 +185,7 @@ describe("pace figures", () => {
         ...over,
       },
     });
-    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2.1d at current pace");
+    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at current pace");
     expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at current pace");
     expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
   });
@@ -340,5 +340,30 @@ describe("monthly headline", () => {
     const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
     expect(badge).toContain("pace-cap");
     expect(badge).toContain("Monthly exhausted");
+  });
+
+  it("drives main bar, PaceStats, and table row from the monthly quota window, not weekly", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const provider = s.providers.find((p) => p.id === "opencode-go")!;
+    const barHtml = bar(monthlyStateSnapshotJson);
+    expect(barHtml).toContain("95% used");
+    expect(barHtml).not.toContain("44% used");
+
+    const statsHtml = renderToString(
+      React.createElement(PaceStats, { provider, asOf: s.asOf }),
+    ).replace(/<!-- -->/g, "");
+    expect(statsHtml).toContain("8d 16h");
+    expect(statsHtml).not.toContain("3d 4h");
+    expect(statsHtml).toContain("4.3%/day");
+    expect(statsHtml).toContain("0.6%/day");
+
+    const lines = paceLines(provider.advisory, provider, Date.parse(s.asOf));
+    expect(lines.map((l) => `${l.label}:${l.value}`)).toEqual(["Avg:4.3%/day", "Ideal:0.6%/day"]);
+
+    const rowHtml = renderToString(
+      React.createElement(ProviderRow, { provider, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ).replace(/<!-- -->/g, "");
+    expect(rowHtml).toContain("in 8d 16h");
+    expect(rowHtml).not.toContain("in 3d 4h");
   });
 });

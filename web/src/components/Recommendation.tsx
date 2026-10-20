@@ -7,7 +7,7 @@ import type {
   Urgency,
 } from "../state.js";
 import { ageLabel } from "../state.js";
-import { timeLeft } from "./PaceBar.js";
+import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export type Lane = "use-more" | "ease-off";
@@ -90,9 +90,12 @@ function LaneSection({
       </span>
       <div className="items">
         {members.map((m) => {
-          const quota = byId.get(m.provider)?.quota;
-          const left = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
-          const name = byId.get(m.provider)?.displayName ?? m.provider;
+          const memberProvider = byId.get(m.provider);
+          const quota = memberProvider?.quota;
+          const resetIso = memberProvider ? quotaResetsAt(memberProvider) : null;
+          const left = resetIso ? timeLeft(resetIso, asOfMs) : null;
+          const usedPct = memberProvider ? quotaUsedPct(memberProvider) : null;
+          const name = memberProvider?.displayName ?? m.provider;
           return (
             <div key={m.provider} className="rsub">
               <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
@@ -111,7 +114,7 @@ function LaneSection({
               <span className="rnum">
                 {quota ? (
                   <>
-                    <b>{quota.weeklyPct}%</b> used
+                    <b>{usedPct}%</b> used
                     {left ? (
                       <>
                         {" · "}
@@ -165,7 +168,8 @@ export function Recommendation({
       : "tint-ahead";
   const easeLane = easeTint === "tint-cap" ? "l-cap" : easeTint === "tint-watch" ? "l-watch" : "l-ahead";
   const pick = providers.find((p) => p.id === recommendation.use);
-  const pickLeft = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
+  const pickReset = pick ? quotaResetsAt(pick) : null;
+  const pickLeft = pickReset ? timeLeft(pickReset, asOfMs) : null;
   const openAdvice = () => {
     onViewAdvice?.();
   };
@@ -272,7 +276,7 @@ export function Recommendation({
             type="button"
             className="btn"
             data-testid="view-advice"
-            title="Open recommended provider"
+            title="Open quota advice"
             onClick={openAdvice}
           >
             View advice

@@ -29,6 +29,9 @@ function mapRow(row:any){
     delete out.fiveHourPct;
     delete out.sessionPct;
   }
+  out.fiveHourResetsAt = row.five_hour_resets_at ?? row.fiveHourResetsAt ?? undefined;
+  delete out.five_hour_resets_at;
+  if (out.fiveHourResetsAt == null) delete out.fiveHourResetsAt;
   // A junk monthly percent means no usable monthly reading. It never
   // invalidates the provider; only a bad weekly percent does (snapshot.ts).
   const m = row.monthly_pct;
@@ -94,7 +97,7 @@ export function upsertQuota(db:any, q:any){
           .run(prev.provider, prev.plan ?? null, prev.weeklyPct, Math.max(0, 100 - prev.weeklyPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
       }
     }
-    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null);
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind, five_hour_resets_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null, q.fiveHourResetsAt ?? null);
     const day = new Date().toISOString().slice(0,10);
     db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, weeklyPct);
     db.exec("COMMIT");
@@ -104,7 +107,21 @@ export function upsertQuota(db:any, q:any){
   }
 }
 
-export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
+function monthlyPeriodStart(resetIso: string | null | undefined): string | null {
+  if (!resetIso) return null;
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(resetMs)) return null;
+  const start = new Date(resetMs);
+  start.setMonth(start.getMonth() - 1);
+  return start.toISOString();
+}
+
+export function getWindowCloses(
+  db: any,
+  provider: string,
+  limit = 4,
+  window: "weekly" | "monthly" = "weekly",
+): Array<{
   provider: string;
   plan: string | null;
   usedPct: number;
@@ -116,6 +133,72 @@ export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
   detectedAt: string;
   reason: "usage-drop" | "resets-at-rolled" | "both";
 }> {
+  if (window === "monthly") {
+    let qRows: any[] = [];
+    try {
+      qRows = db
+        .prepare(
+          `SELECT id, provider, plan, monthly_pct, monthly_resets_at, monthly_kind, fetched_at FROM quotas WHERE provider=? ORDER BY fetched_at ASC, id ASC`,
+        )
+        .all(provider) as any[];
+    } catch (e: any) {
+      if (!/no such table|no such column/i.test(String(e?.message ?? ""))) throw e;
+    }
+    const valid = qRows.filter(
+      (r) =>
+        r.monthly_kind === "included" &&
+        typeof r.monthly_pct === "number" &&
+        Number.isFinite(r.monthly_pct) &&
+        r.monthly_pct >= 0 &&
+        r.monthly_pct <= 100 &&
+        typeof r.monthly_resets_at === "string" &&
+        Number.isFinite(Date.parse(r.monthly_resets_at)) &&
+        Number.isFinite(Date.parse(r.fetched_at)),
+    );
+    const closes: Array<{
+      provider: string;
+      plan: string | null;
+      usedPct: number;
+      leftoverPct: number;
+      sampledAt: string;
+      periodStart: string | null;
+      resetsAt: string | null;
+      resetsAtEstimated: boolean;
+      detectedAt: string;
+      reason: CycleBreakReason;
+    }> = [];
+    for (let i = 1; i < valid.length; i++) {
+      const prev = valid[i - 1];
+      const cur = valid[i];
+      const reason = cycleBreakReason(
+        {
+          usedPct: prev.monthly_pct,
+          t: Date.parse(prev.fetched_at),
+          resetsAt: prev.monthly_resets_at ?? null,
+        },
+        {
+          usedPct: cur.monthly_pct,
+          t: Date.parse(cur.fetched_at),
+          resetsAt: cur.monthly_resets_at ?? null,
+        },
+      );
+      if (reason) {
+        closes.push({
+          provider: prev.provider,
+          plan: prev.plan ?? null,
+          usedPct: prev.monthly_pct,
+          leftoverPct: Math.max(0, 100 - prev.monthly_pct),
+          sampledAt: prev.fetched_at,
+          periodStart: monthlyPeriodStart(prev.monthly_resets_at),
+          resetsAt: prev.monthly_resets_at ?? null,
+          resetsAtEstimated: false,
+          detectedAt: cur.fetched_at,
+          reason,
+        });
+      }
+    }
+    return closes.reverse().slice(0, limit);
+  }
   let rows: any[] = [];
   try {
     rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];

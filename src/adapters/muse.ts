@@ -118,11 +118,31 @@ function parseMuseCleaned(cleaned: string, now: Date): ParsedQuota {
   const planMatch = cleaned.match(/Subscription\s*·\s*Muse Code\s+(.+?)\s{2,}/i);
   if (planMatch) plan = planMatch[1].trim();
 
-  // The Current-window reset ("Resets at 3:51 PM") is a bare clock time with
-  // no date, and Quota has no session-reset field — discarded, as claude and
-  // kimi already do. A missing or unparseable Weekly reset degrades to an
-  // estimate (grok precedent): the percents are the critical fields, and the
-  // estimate flag keeps advisory and scheduler honest.
+  // The Current-window reset ("Resets at 3:51 PM") is a bare clock time
+  // with no date: resolve it against the panel's Brisbane date, rolling to
+  // tomorrow once today's time has passed. Display-only; a missing or
+  // unparseable Weekly reset degrades to an estimate (grok precedent): the
+  // percents are the critical fields, and the estimate flag keeps advisory
+  // and scheduler honest.
+  const currentReset = cleaned.match(
+    /Current\s+\d+%\s+used[\s\S]{0,120}?Resets at\s+(\d{1,2}):(\d{2})\s*([AP]M)/i,
+  );
+  let fiveHourResetsAt: string | undefined;
+  if (currentReset) {
+    let hour = parseInt(currentReset[1], 10) % 12;
+    if (/pm/i.test(currentReset[3])) hour += 12;
+    const brisbaneNow = new Date(now.getTime() + 10 * 3600000);
+    let candidate =
+      Date.UTC(
+        brisbaneNow.getUTCFullYear(),
+        brisbaneNow.getUTCMonth(),
+        brisbaneNow.getUTCDate(),
+        hour - 10,
+        parseInt(currentReset[2], 10),
+      );
+    if (candidate <= now.getTime()) candidate += 86400000;
+    fiveHourResetsAt = new Date(candidate).toISOString();
+  }
   const resetMatch = cleaned.match(
     /Weekly[\s\S]{0,400}?Resets\s+([A-Za-z]{3}\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)/i,
   );
@@ -139,6 +159,7 @@ function parseMuseCleaned(cleaned: string, now: Date): ParsedQuota {
     plan,
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt,
     periodStart,
     source: "tui",

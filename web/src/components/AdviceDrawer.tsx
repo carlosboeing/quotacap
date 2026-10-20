@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderView, RecommendationView } from "../state.js";
-import { paceBadge, timeLeft } from "./PaceBar.js";
+import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lanesFor } from "./Recommendation.js";
+import { CopyButton } from "./CopyButton.js";
 
 export function AdviceDrawer({
   open,
@@ -10,12 +11,14 @@ export function AdviceDrawer({
   providers,
   asOf,
   onClose,
+  onSelectProvider,
 }: {
   open: boolean;
   recommendation: RecommendationView;
   providers: ProviderView[];
   asOf: string;
   onClose: () => void;
+  onSelectProvider?: (id: string) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<Element | null>(null);
@@ -62,8 +65,12 @@ export function AdviceDrawer({
   const pick = pickId ? providers.find((p) => p.id === pickId) : undefined;
   const pickName = pick ? pick.displayName : null;
   const remaining =
-    pick?.advisory?.remaining !== null && pick?.advisory?.remaining !== undefined
-      ? Math.round(pick.advisory.remaining)
+    pick?.advisory
+      ? Math.round(
+          pick.advisory.bindingWindow === "monthly"
+            ? pick.advisory.bindingRemaining
+            : pick.advisory.remaining,
+        )
       : null;
   // A monthly-bound pick's leftover is unusable until the month resets, so
   // the weekly expiry sentence would restate issue 109; show the reason.
@@ -75,7 +82,8 @@ export function AdviceDrawer({
       : pick?.advisory?.wastePct !== null && pick?.advisory?.wastePct !== undefined
         ? Math.round(pick.advisory.wastePct)
         : null;
-  const left = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
+  const pickReset = pick ? quotaResetsAt(pick) : null;
+  const left = pickReset ? timeLeft(pickReset, asOfMs) : null;
   const basis =
     pick?.advisory?.paceSource === "window-average" ? "window-average pace" : "current 24h pace";
   const othersMore = useMore.filter((a) => a.provider !== pickId);
@@ -116,7 +124,7 @@ export function AdviceDrawer({
           </span>
           <div style={{ flex: 1 }}>
             <h2 id={titleId}>Quota Advice &amp; Pacing</h2>
-            <span className="sub">Actionable recommendations based on quota pacing &amp; reset schedules</span>
+            <span className="sub">Which quota to burn next, and why</span>
           </div>
           <button
             className="drawer-close"
@@ -165,15 +173,25 @@ export function AdviceDrawer({
                 )}
               </div>
               <p className="advice-card-body">
-                {remaining !== null && left && waste !== null ? (
+                {remaining !== null && left && !monthlyBound ? (
                   <>
-                    <b>{pickName}</b> has {remaining}% quota remaining with its reset window closing in {left}.
-                    At the {basis}, {waste}% unused quota is projected at reset. Using this subscription now avoids unused quota expiration.
+                    <b>{pickName}</b> has {remaining}% quota remaining with {left} to reset, forecast at the {basis}.
                   </>
                 ) : (
                   recommendation.reason
                 )}
               </p>
+              {onSelectProvider && (
+                <div>
+                  <button
+                    type="button"
+                    className="goto-link"
+                    onClick={() => onSelectProvider(pick.id)}
+                  >
+                    View {pickName} details →
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <p className="advice-card-body">{recommendation.reason}</p>
@@ -182,36 +200,46 @@ export function AdviceDrawer({
 
         <div className="dsec">
           <h3>Fleet Pacing Breakdown</h3>
-          <dl className="dkv">
-            <dt>Use more</dt>
+          <dl className="lane-group">
+            <dt className="um">
+              <span aria-hidden="true">↑</span> Use more
+            </dt>
             <dd>
               {othersMore.length
-                ? othersMore.map((a, i) => {
+                ? othersMore.map((a) => {
                     const p = providers.find((x) => x.id === a.provider);
-                    const w = a.wastePct !== null ? `${Math.round(a.wastePct)}% unused` : null;
-                    const t = p?.quota ? timeLeft(p.quota.resetsAt, asOfMs) : null;
-                    const bits = [w, t ? `resets in ${t}` : null].filter(Boolean).join(" · ");
-                      return (
-                      <span key={a.provider}>
-                        {i > 0 ? ", " : ""}
-                        <b>{p?.displayName ?? a.provider}</b>
-                        {bits ? ` (${bits})` : ""}
-                      </span>
-                      );
+                    const name = p?.displayName ?? a.provider;
+                    const unused = a.wastePct !== null ? `${Math.round(a.wastePct)}% unused` : null;
+                    const resetIso = p ? quotaResetsAt(p) : null;
+                    const t = resetIso ? timeLeft(resetIso, asOfMs) : null;
+                    const meta = [unused, t ? `resets in ${t}` : null].filter(Boolean).join(" · ");
+                    return (
+                      <div key={a.provider} className="lane-row">
+                        <span className="nm">{name}</span>
+                        <span className="meta">{meta}</span>
+                      </div>
+                    );
                   })
                 : "None"}
             </dd>
-            <dt>Ease off</dt>
+            <dt className="eo">
+              <span aria-hidden="true">↓</span> Ease off
+            </dt>
             <dd>
               {easeOff.length
-                ? easeOff.map((a, i) => {
+                ? easeOff.map((a) => {
                     const p = providers.find((x) => x.id === a.provider);
-                    const badge = p ? paceBadge(p) : a.urgency;
+                    const name = p?.displayName ?? a.provider;
+                    const usedRaw = p ? quotaUsedPct(p) : null;
+                    const used = usedRaw !== null ? `${Math.round(usedRaw)}% used` : null;
+                    const resetIso2 = p ? quotaResetsAt(p) : null;
+                    const t = resetIso2 ? timeLeft(resetIso2, asOfMs) : null;
+                    const meta = [used, t ? `resets in ${t}` : null].filter(Boolean).join(" · ");
                     return (
-                      <span key={a.provider}>
-                        {i > 0 ? ", " : ""}
-                        <b>{p?.displayName ?? a.provider}</b> ({badge})
-                      </span>
+                      <div key={a.provider} className="lane-row">
+                        <span className="nm">{name}</span>
+                        <span className="meta">{meta}</span>
+                      </div>
                     );
                   })
                 : "None"}
@@ -221,12 +249,12 @@ export function AdviceDrawer({
 
         <div className="dsec">
           <h3>CLI Command</h3>
-          <p style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)", marginBottom: 8 }}>
-            Equivalent terminal command:
-          </p>
-          <pre className="advice-cli">
-            <code>$ quotacap advise</code>
-          </pre>
+          <div className="cli-wrap">
+            <pre className="advice-cli">
+              <code>$ quotacap advise</code>
+            </pre>
+            <CopyButton text="quotacap advise" />
+          </div>
         </div>
       </aside>
     </>
