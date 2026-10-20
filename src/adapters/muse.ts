@@ -5,7 +5,7 @@ import { parseResetText } from "./parse.js";
 import { runPty } from "./pty.js";
 import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal, trackedExecFile } from "../runtime/spawn.js";
-import { attachEvidence } from "../diagnostics/failure.js";
+import { attachEvidence, getErrorEvidence } from "../diagnostics/failure.js";
 import type { ParsedQuota } from "./types.js";
 
 /** Canonical unavailability error: parseMuseTui throws it, poll() recognises it
@@ -63,6 +63,19 @@ export async function recoverSubscription(deps: RecoveryDeps): Promise<ParsedQuo
       await deps.warmTurn(Math.min(WARM_EXEC_TIMEOUT_MS, remaining()));
     } catch (warmError) {
       if (aborted()) throw warmError;
+      const ev = getErrorEvidence(warmError);
+      const text = [
+        (warmError as Error)?.message,
+        ev?.stdout,
+        ev?.stderr,
+      ].filter(Boolean).join("\n");
+      const unavailEv = getErrorEvidence(unavailable);
+      const plan = parseMusePlan(unavailEv?.stdout ?? "");
+      const quota = parseMuseQuotaExhausted(text, plan, new Date(now()));
+      if (quota) {
+        log(`subscription exhausted; parsed 100% quota from warm turn (resets ${quota.resetsAt})`);
+        return quota;
+      }
       log(`warm attempt ${attempt} failed: ${(warmError as Error)?.message}`);
       continue;
     }
@@ -87,6 +100,33 @@ export async function recoverSubscription(deps: RecoveryDeps): Promise<ParsedQuo
 // never runs in $HOME or a user project — an empty dir grants nothing.
 export function museProbeDir(): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "muse-probe");
+}
+
+export function parseMusePlan(cleaned: string): string {
+  const planMatch = cleaned.match(/Subscription\s*·\s*Muse Code\s+(.+?)(?:\s{2,}|\r?\n|$)/i);
+  return planMatch ? planMatch[1].trim() : "unknown";
+}
+
+export function parseMuseQuotaExhausted(text: string, plan = "unknown", now = new Date()): ParsedQuota | null {
+  const match = text.match(/Subscription quota exhausted\.?\s+Your usage window resets at\s+(\S+?)(?:\.|\s|$)/i);
+  if (!match) return null;
+  const resetIso = match[1];
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(resetMs) || resetMs <= now.getTime()) return null;
+
+  const resetsAt = new Date(resetMs).toISOString();
+  const periodStart = new Date(resetMs - 7 * 86400000).toISOString();
+  return {
+    provider: "muse",
+    plan,
+    weeklyPct: 100,
+    fiveHourPct: 0,
+    resetsAt,
+    periodStart,
+    source: "tui",
+    fetchedAt: now.toISOString(),
+    raw: text.slice(0, 4096),
+  };
 }
 
 export function parseMuseTui(text: string, now = new Date(), dims?: Partial<GridDims>): ParsedQuota {
@@ -114,9 +154,7 @@ function parseMuseCleaned(cleaned: string, now: Date): ParsedQuota {
   // First match wins; overdrawn transcripts carry two identical copies.
   // Vendor casing preserved (grok precedent: SuperGrok); the Muse Code
   // product prefix is stripped because the product is already the row label.
-  let plan = "unknown";
-  const planMatch = cleaned.match(/Subscription\s*·\s*Muse Code\s+(.+?)\s{2,}/i);
-  if (planMatch) plan = planMatch[1].trim();
+  const plan = parseMusePlan(cleaned);
 
   // The Current-window reset ("Resets at 3:51 PM") is a bare clock time
   // with no date: resolve it against the panel's Brisbane date, rolling to

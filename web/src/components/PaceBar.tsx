@@ -581,17 +581,38 @@ export interface PaceHeadline {
   hatch: boolean;
 }
 
+export function isQuotaExhaustedBeforeReset(provider: ProviderView, asOfMs?: number): boolean {
+  if (provider.resetPassed) return false;
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return false;
+  const resetMs = Date.parse(resetIso);
+  if (Number.isFinite(resetMs) && asOfMs !== undefined && resetMs <= asOfMs) return false;
+  const used = quotaUsedPct(provider);
+  if (used !== null && used >= 100) return true;
+  if (isMonthlyBound(provider) && provider.quota?.monthlyStatus === "exhausted") return true;
+  return false;
+}
+
 /**
  * Headline forecast shared by the card bar and the drawer quota row:
  * "expires unused" wording when a waste hatch applies, otherwise the
  * one-line forecast. Null when there is nothing to forecast.
  */
-export function paceHeadline(provider: ProviderView): PaceHeadline | null {
+export function paceHeadline(provider: ProviderView, asOfMs?: number): PaceHeadline | null {
   const badge = paceBadge(provider);
   const monthlyBinds = provider.advisory?.bindingWindow === "monthly";
   const wastePct = provider.advisory?.wastePct;
   const hatch =
     !monthlyBinds && wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
+  const is100Exhausted = isQuotaExhaustedBeforeReset(provider, asOfMs);
+  if (provider.exclusionReason !== null && is100Exhausted) {
+    const line = forecastLine(provider);
+    return {
+      text: line ? `Exhausted · ${line}` : "Exhausted · quota fully used",
+      kind: "cap",
+      hatch: false,
+    };
+  }
   const text =
     hatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
   if (!text) return null;
@@ -620,13 +641,16 @@ export function PaceBar({
   const asOfMs = Date.parse(asOf);
   const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
   const wastePct = provider.advisory?.wastePct;
-  const headline = paceHeadline(provider);
+  const headline = paceHeadline(provider, asOfMs);
   // A weekly-sized hatch under a month-bound card restates issue 109.
   const showHatch = headline?.hatch ?? false;
   const quotaUsed = quotaUsedPct(provider);
   const label = provider.quota
     ? `${provider.id}: ${quotaUsed ?? provider.quota.weeklyPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
+  const is100Exhausted = isQuotaExhaustedBeforeReset(provider, asOfMs);
+  const fillBg = is100Exhausted ? "var(--fill-cap)" : fillToken(badge);
+  const edgeBg = is100Exhausted ? "var(--edge-cap)" : edgeToken(badge);
   return (
     <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
       {showHeadline && provider.quota && (
@@ -645,8 +669,8 @@ export function PaceBar({
           className="fill"
           style={{
             width: `${usedPct}%`,
-            background: fillToken(badge),
-            ["--fill-edge" as string]: edgeToken(badge),
+            background: fillBg,
+            ["--fill-edge" as string]: edgeBg,
           }}
         />
         {showHatch && (

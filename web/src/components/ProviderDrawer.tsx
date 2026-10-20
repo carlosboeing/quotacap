@@ -18,6 +18,7 @@ import {
   forecastLine,
   isEstimated,
   isMonthlyBound,
+  isQuotaExhaustedBeforeReset,
   monthlyWindowStartIso,
   paceBadge,
   paceHeadline,
@@ -132,7 +133,8 @@ export function drawerModel(provider: ProviderView): DrawerModel {
     lastSuccessAt: provider.lastSuccessAt,
     ageMs: provider.ageMs,
     failureCategory: provider.lastAttempt?.failureCategory ?? null,
-    failureWords: failureWords(provider.lastAttempt?.failureCategory ?? null),
+    failureWords:
+      provider.lastAttempt?.summary ?? failureWords(provider.lastAttempt?.failureCategory ?? null),
     evidence: [...provider.evidence],
     exclusionReason: provider.exclusionReason,
     exclusionWords: exclusionWords(provider.exclusionReason),
@@ -678,6 +680,12 @@ export function ProviderDrawer({
   const wastePct = provider.advisory?.wastePct ?? null;
   const weeklyHatchPct = !monthlyPrimary && headline?.hatch ? wastePct : null;
 
+  const isWeekly100 =
+    provider.quota &&
+    !provider.resetPassed &&
+    provider.quota.weeklyPct >= 100 &&
+    (!provider.quota.resetsAt || Date.parse(provider.quota.resetsAt) > asOfMs);
+
   const weeklyRow = provider.quota ? (
     <LimitRow
       name="Weekly limit"
@@ -689,11 +697,17 @@ export function ProviderDrawer({
       fillStyle={
         monthlyPrimary
           ? limitFill(provider.quota.weeklyPct)
-          : {
-              width: `${Math.min(100, Math.max(0, provider.quota.weeklyPct))}%`,
-              background: fillToken(model.badge),
-              ["--fill-edge" as string]: edgeToken(model.badge),
-            }
+          : isWeekly100
+            ? {
+                width: `${Math.min(100, Math.max(0, provider.quota.weeklyPct))}%`,
+                background: "var(--fill-cap)",
+                ["--fill-edge" as string]: "var(--edge-cap)",
+              }
+            : {
+                width: `${Math.min(100, Math.max(0, provider.quota.weeklyPct))}%`,
+                background: fillToken(model.badge),
+                ["--fill-edge" as string]: edgeToken(model.badge),
+              }
       }
       elapsedPct={weeklyElapsed}
     />
@@ -717,16 +731,21 @@ export function ProviderDrawer({
         testId="drawer-monthly"
       />
     ) : null;
+  const fiveResetPassed =
+    model.fiveHourResetsAt !== undefined &&
+    Number.isFinite(Date.parse(model.fiveHourResetsAt)) &&
+    Date.parse(model.fiveHourResetsAt) <= asOfMs;
+  const effectiveFivePct = fiveResetPassed ? 0 : model.fiveHourPct;
   const fiveRow =
     model.fiveHourPct !== undefined &&
     model.fiveHourPct !== null &&
     Number.isFinite(model.fiveHourPct) ? (
       <LimitRow
         name={shortWindowLabel(provider.id) ?? "5h limit"}
-        pct={model.fiveHourPct}
+        pct={effectiveFivePct ?? 0}
         resetLine={fiveResetLineNode}
-        fillStyle={limitFill(model.fiveHourPct)}
-        elapsedPct={fiveElapsed}
+        fillStyle={limitFill(effectiveFivePct ?? 0)}
+        elapsedPct={fiveResetPassed ? null : fiveElapsed}
       />
     ) : null;
   const anyElapsed = [weeklyElapsed, monthlyElapsed, fiveElapsed].some((v) => v !== null);

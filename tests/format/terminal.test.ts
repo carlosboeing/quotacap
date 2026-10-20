@@ -223,6 +223,19 @@ describe("rail geometry (D9)", () => {
       }
     }
   });
+  it("exhausted 100% provider still renders used rail and elapsed tick when not reporting before reset", () => {
+    const p = ps({
+      id: "muse",
+      quota: quota({ weeklyPct: 100, periodStart: "2026-09-01T00:00:00Z", resetsAt: "2026-09-08T00:00:00Z" }),
+      reporting: false,
+      exclusionReason: "provider-failed",
+      resetPassed: false,
+      advisory: advisory(),
+    });
+    const cells = railCells(p, new Date("2026-09-04T12:00:00Z"));
+    expect(cells.filter((c) => c === "used")).toHaveLength(19);
+    expect(cells.filter((c) => c === "tick")).toHaveLength(1);
+  });
   it("reporting rows with unknown elapsed have fill but no tick", () => {
     const p = ps({
       id: "x",

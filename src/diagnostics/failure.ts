@@ -232,18 +232,18 @@ function matchPrecedence(
     return { code: "trust_prompt", phrase: "trust prompt" };
   }
 
-  // Order 5: rate_limit — rate limit, rate_limit, too many requests, quota exceeded, or explicit HTTP status 429
+  // Order 5: rate_limit — rate limit, rate_limit, rate_limit_error, too many requests, quota exceeded/exhausted, or explicit HTTP/API status 429
   // A bare number 429 is insufficient
-  if (/\brate[ _]limit\b/i.test(text)) {
+  if (/\brate[ _]limit(?:_error)?\b/i.test(text)) {
     return { code: "rate_limit", phrase: "rate limit" };
   }
   if (/\btoo many requests\b/i.test(text)) {
     return { code: "rate_limit", phrase: "too many requests" };
   }
-  if (/\bquota exceeded\b/i.test(text)) {
+  if (/\bquota (?:exceeded|exhausted)\b/i.test(text)) {
     return { code: "rate_limit", phrase: "quota exceeded" };
   }
-  if (/\b(?:status|code|http)\s*:?\s*429\b/i.test(text) || /\b429\s+too many requests\b/i.test(text)) {
+  if (/\b(?:status|code|http|api error)\s*:?\s*429\b/i.test(text) || /\b429\s+too many requests\b/i.test(text)) {
     return { code: "rate_limit", phrase: "HTTP 429" };
   }
 

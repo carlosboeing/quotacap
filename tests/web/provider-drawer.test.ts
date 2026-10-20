@@ -45,6 +45,53 @@ describe("provider drawer", () => {
     expect(kimi.burnRate).toBeNull();
     expect(kimi.wastePct).toBeNull();
   });
+  it("drawerModel uses lastAttempt summary when failureCategory is unknown", () => {
+    const p = {
+      id: "muse",
+      displayName: "Muse",
+      evidence: [],
+      exclusionReason: "provider-failed",
+      lastAttempt: {
+        provider: "muse",
+        attemptedAt: "2026-10-20T04:43:00Z",
+        completedAt: "2026-10-20T04:43:00Z",
+        succeededAt: null,
+        success: false,
+        failureCategory: "unknown",
+        summary: "Muse usage currently unavailable",
+      },
+    } as any;
+    const m = drawerModel(p);
+    expect(m.failureWords).toBe("Muse usage currently unavailable");
+  });
+  it("drawer renders 0% for 5h limit when fiveHourResetsAt has passed and red cap for 100% weekly", () => {
+    const asOf = "2026-10-20T04:43:00.000Z";
+    const p = {
+      id: "muse",
+      displayName: "Muse",
+      evidence: [],
+      exclusionReason: "provider-failed",
+      lastAttempt: null,
+      quota: {
+        provider: "muse",
+        weeklyPct: 100,
+        fiveHourPct: 82,
+        fiveHourResetsAt: "2026-10-20T02:56:00.000Z",
+        resetsAt: "2026-10-26T00:00:00.000Z",
+        source: "tui",
+        fetchedAt: "2026-10-20T02:46:00.000Z",
+      },
+    } as any;
+    const html = renderToString(React.createElement(ProviderDrawer, {
+      provider: p,
+      asOf,
+      recommendation: null,
+      onClose: () => {},
+    })).replace(/<!-- -->/g, "");
+    expect(html).toContain("0% used");
+    expect(html).not.toContain("82% used");
+    expect(html).toContain("var(--fill-cap)");
+  });
   it("labels adapter source without inventing credential paths", () => {
     expect(sourceLabel("cli")).toBe("Live CLI");
     expect(sourceLabel("tui")).toBe("Live TUI");
