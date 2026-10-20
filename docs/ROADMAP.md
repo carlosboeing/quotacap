@@ -1,5 +1,11 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.52 — 2026-10-20 (drawer revamp, quota-window alignment, opencode.db & error boundaries)
+
+* Drawer revamp & quota-window alignment — provider, advice, and settings drawers reorganized with verdict bands, `Pace` burn-down charts, and dynamic `Weekly`/`Monthly` history bars; cards, rows, `Quota resets` rail, CLI, and MCP align to each provider's binding quota reset window while keeping `5h` and `7d` rate limits distinct (#154)
+* OpenCode v2 `opencode.db` bearer — OpenCode Go reads the active `opencode-go` or `opencode` credential from `opencode.db` before falling back to `auth.json`, without reading the refresh token (#153)
+* Dashboard error boundaries — each card, row, and drawer isolates render throws to fallback UI with automatic retry on fresh data or selection (#149)
+
 ## Recently shipped — 0.0.51 — 2026-10-03 (drawer forecast pace)
 
 * Drawer forecast pace — Inspect on a fresh window with a history baseline no longer blanks the dashboard; the ranking rationale names the forecast pace when both pace figures are unknown (#147)
