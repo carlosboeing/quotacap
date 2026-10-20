@@ -3,23 +3,25 @@ import type { ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 import {
   Badge,
-  PACE_TIPS,
   PaceBar,
-  isEstimated,
-  paceCells,
+  PaceStats,
+  isMonthlyBound,
+  quotaResetEstimated,
+  quotaResetsAt,
   resetClock,
   resetCountdown,
-  timeLeft,
+  resetDateClock,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lastClose } from "./ClosedWeeks.js";
 import { WindowsRow } from "./WindowsRow.js";
 
 function resetsDate(provider: ProviderView): string | null {
-  if (!provider.quota) return null;
-  const clock = resetClock(provider.quota.resetsAt);
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return null;
+  const clock = isMonthlyBound(provider) ? resetDateClock(resetIso) : resetClock(resetIso);
   if (!clock) return null;
-  return `Resets ${clock}${isEstimated(provider) ? " (est.)" : ""}`;
+  return `Resets ${clock}${quotaResetEstimated(provider) ? " (est.)" : ""}`;
 }
 
 export function ProviderCard({
@@ -33,12 +35,8 @@ export function ProviderCard({
   asOf: string;
   onSelect: (id: string) => void;
 }) {
-  const quota = provider.quota;
-  const advisory = provider.advisory;
-  const pace = paceCells(advisory);
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(provider.ageMs);
-  const resetsIn = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
   const name = provider.displayName;
   const last = lastClose(provider);
   return (
@@ -81,28 +79,7 @@ export function ProviderCard({
         <PaceBar provider={provider} asOf={asOf} />
         <WindowsRow provider={provider} asOf={asOf} variant="card" />
 
-        <div className="pstats">
-          <div title={PACE_TIPS.avg}>
-            <span className="l">Avg pace</span>
-            <span className="v">{pace.avg}</span>
-          </div>
-          <div title={PACE_TIPS.recent}>
-            <span className="l">24h pace</span>
-            <span className="v">{pace.recent}</span>
-          </div>
-          <div title={PACE_TIPS.ideal}>
-            <span className="l">Ideal pace</span>
-            <span className="v">
-              {advisory ? `${advisory.idealRate.toFixed(1)}%/day` : "—"}
-            </span>
-          </div>
-          <div>
-            <span className="l">Resets in</span>
-            <span className="v">
-              {resetsIn ? `${resetsIn}${isEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
-            </span>
-          </div>
-        </div>
+        <PaceStats provider={provider} asOf={asOf} />
       </div>
 
       <div className="pcard-foot">
@@ -110,7 +87,7 @@ export function ProviderCard({
           <span>{resetsDate(provider) ?? resetCountdown(provider, asOfMs)}</span>
           {last && (
             <span className="last-week">
-              Last week {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
+              Last {isMonthlyBound(provider) ? "month" : "week"} {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
             </span>
           )}
         </div>

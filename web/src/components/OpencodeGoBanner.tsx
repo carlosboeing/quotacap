@@ -1,14 +1,21 @@
 import React, { useEffect } from "react";
 import type { ProviderView, RuntimeView } from "../state.js";
 
-export const OPENCODE_GO_CONSENT_COPY = [
-  "• What is read: bearer OpenCode already stored when you ran `opencode auth login -p opencode-go` (v2 `~/.local/share/opencode/opencode.db` active credential, else legacy `~/.local/share/opencode/auth.json`; `opencode-go` then `opencode`).",
-  "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
-  "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
-  "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
-  "• Revocation instructions: revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling.",
-  "• Optional environment override: if you prefer no file access, set `OPENCODE_API_KEY` instead.",
-].join("\n");
+export function openCodeGoConsentCopy(loginCommand?: string | null): string {
+  const loginClause = loginCommand
+    ? `when you ran \`${loginCommand}\``
+    : "with the command for your CLI version: v2 `opencode auth login opencode` or v1 `opencode console login`";
+  return [
+    `• What is read: Bearer [REDACTED] already stored ${loginClause} (v2 \`~/.local/share/opencode/opencode.db\` active credential, else legacy \`~/.local/share/opencode/auth.json\`; \`opencode-go\` then \`opencode\`).`,
+    "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
+    "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
+    "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
+    "• Revocation instructions: revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling.",
+    "• Optional environment override: if you prefer no file access, set `OPENCODE_API_KEY` instead.",
+  ].join("\n");
+}
+
+export const OPENCODE_GO_CONSENT_COPY = openCodeGoConsentCopy();
 
 export function showOpenCodeGoBanner(
   runtime: Pick<RuntimeView, "detectedProviders"> | undefined,
@@ -43,10 +50,12 @@ export function ConsentModal({
   onConfirm,
   onCancel,
   busy,
+  loginCommand,
 }: {
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  loginCommand?: string | null;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,7 +93,7 @@ export function ConsentModal({
           Enable OpenCode Go?
         </h2>
         <p style={{ fontSize: "var(--t-2)", color: "var(--ink-soft)", margin: "0 0 var(--s4)", whiteSpace: "pre-line" }}>
-          {OPENCODE_GO_CONSENT_COPY}
+          {openCodeGoConsentCopy(loginCommand)}
         </p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--s2)" }}>
           <button type="button" className="btn btn-quiet" onClick={onCancel} disabled={busy}>

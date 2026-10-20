@@ -8,6 +8,7 @@ import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { adapterSignal } from "../runtime/spawn.js";
+import { getCliVersion } from "../diagnostics/bundle.js";
 import type { ParsedQuota } from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -15,14 +16,49 @@ const require = createRequire(import.meta.url);
 const USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
 const POLL_TIMEOUT_MS = 8000;
 
-export const OPENCODE_GO_CONSENT_NOTICE = [
-  "• What is read: bearer OpenCode already stored when you ran `opencode auth login -p opencode-go` (v2 `~/.local/share/opencode/opencode.db` active credential, else legacy `~/.local/share/opencode/auth.json`; `opencode-go` then `opencode`).",
+export const OPENCODE_LOGIN_COMMAND_V2 = "opencode auth login opencode";
+export const OPENCODE_LOGIN_COMMAND_V1 = "opencode console login";
+
+/** Login command for the installed OpenCode CLI major version, or null
+ *  when the version text carries no readable major. */
+export function openCodeLoginCommandForVersion(
+  versionText: string | null | undefined,
+): string | null {
+  if (!versionText) return null;
+  const m = versionText.match(/(?:^|\s)v?(\d+)\.\d+/);
+  if (!m) return null;
+  const major = parseInt(m[1], 10);
+  if (major >= 2) return OPENCODE_LOGIN_COMMAND_V2;
+  if (major === 1) return OPENCODE_LOGIN_COMMAND_V1;
+  return null;
+}
+
+/** Best-effort local detection: `<opencode> --version`, never throws. */
+export async function detectOpenCodeLoginCommand(
+  versionReader: () => Promise<string | null> = () => getCliVersion("opencode"),
+): Promise<string | null> {
+  try {
+    return openCodeLoginCommandForVersion(await versionReader());
+  } catch {
+    return null;
+  }
+}
+
+export function openCodeGoConsentNotice(loginCommand?: string | null): string {
+  const loginClause = loginCommand
+    ? `when you ran \`${loginCommand}\``
+    : `with the command for your CLI version: v2 \`${OPENCODE_LOGIN_COMMAND_V2}\` or v1 \`${OPENCODE_LOGIN_COMMAND_V1}\``;
+  return [
+  `• What is read: Bearer [REDACTED] already stored ${loginClause} (v2 \`~/.local/share/opencode/opencode.db\` active credential, else legacy \`~/.local/share/opencode/auth.json\`; \`opencode-go\` then \`opencode\`).`,
   "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
   "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
   "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
   "• Revocation instructions: revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling.",
   "• Optional environment override: if you prefer no file access, set `OPENCODE_API_KEY` instead.",
-].join("\n");
+  ].join("\n");
+}
+
+export const OPENCODE_GO_CONSENT_NOTICE = openCodeGoConsentNotice();
 
 export function openCodeGoAuthPath(env: NodeJS.Dict<string> = process.env, home = os.homedir()): string {
   return path.join(openCodeDataDir(env, home), "auth.json");
@@ -197,12 +233,17 @@ export function parseOpencodeGoUsage(body: unknown, now = new Date()): ParsedQuo
   if (typeof sessionPct !== "number" || !Number.isFinite(sessionPct) || sessionPct < 0 || sessionPct > 100) {
     throw new Error("opencode-go: bad rolling pct");
   }
+  const rollingResetsMs = Date.parse(String((rolling as Record<string, unknown>).resetsAt ?? ""));
+  const fiveHourResetsAt = Number.isFinite(rollingResetsMs)
+    ? new Date(rollingResetsMs).toISOString()
+    : undefined;
   const monthly = parseMonthly(usage as Record<string, unknown>);
   return {
     provider: "opencode-go",
     plan: "unknown",
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt: new Date(resetsMs).toISOString(),
     periodStart: new Date(resetsMs - 7 * 86400000).toISOString(),
     source: "api",
@@ -213,7 +254,7 @@ export function parseOpencodeGoUsage(body: unknown, now = new Date()): ParsedQuo
 
 export const opencodeGoAdapter = {
   id: "opencode-go",
-  requiresAuth: "opencode auth login -p opencode-go (read only after you enable opencode-go)",
+  requiresAuth: "OpenCode CLI login for your version (read only after you enable opencode-go)",
   async poll(): Promise<ParsedQuota> {
     const bearer = readBearerToken();
     const adapter = adapterSignal("opencode-go");

@@ -113,7 +113,7 @@ describe("window closes", () => {
     expect(getWindowCloses(db, "agy")[0].resetsAtEstimated).toBe(true);
   });
 
-  it("a monthly reset writes no window_closes row", () => {
+  it("a monthly reset writes no weekly window_closes row, and resolves under monthly window", () => {
     const db = openDb(":memory:"); migrate(db);
     const base = { provider: "opencode-go", plan: "unknown", source: "api", weeklyPct: 44,
       resetsAt: "2026-09-28T00:00:00.000Z", periodStart: "2026-09-21T00:00:00.000Z",
@@ -121,5 +121,18 @@ describe("window closes", () => {
     upsertQuota(db, { ...base, monthlyStatus: "exhausted", monthlyPct: 100, fetchedAt: "2026-09-22T12:00:00.000Z" });
     upsertQuota(db, { ...base, monthlyStatus: "ok", monthlyPct: 0, monthlyResetsAt: "2026-10-22T13:05:15.904Z", fetchedAt: "2026-09-22T14:00:00.000Z" });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM window_closes`).get()).toMatchObject({ n: 0 });
+    expect(getWindowCloses(db, "opencode-go", 4, "weekly")).toEqual([]);
+    const monthly = getWindowCloses(db, "opencode-go", 4, "monthly");
+    expect(monthly).toHaveLength(1);
+    expect(monthly[0]).toMatchObject({
+      provider: "opencode-go",
+      usedPct: 100,
+      leftoverPct: 0,
+      sampledAt: "2026-09-22T12:00:00.000Z",
+      resetsAt: "2026-09-22T13:05:15.904Z",
+      resetsAtEstimated: false,
+      detectedAt: "2026-09-22T14:00:00.000Z",
+      reason: "both",
+    });
   });
 });

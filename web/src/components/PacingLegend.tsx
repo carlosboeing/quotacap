@@ -69,7 +69,7 @@ export function PacingLegend() {
             ))}
           </div>
           <div className="legend-foot">
-            <code>█</code> allowance used · <code>│</code> time elapsed · <code>░</code> projected waste
+            <code>█</code> quota used · <code>│</code> time elapsed · <code>░</code> projected waste
           </div>
           <div className="legend-foot">
             Avg = used ÷ days elapsed · 24h = burn over the last day · Ideal = remaining ÷ days left

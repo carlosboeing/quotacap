@@ -16,8 +16,8 @@ export function windowCountdown(resetsAt: string, asOfMs: number): string | null
 }
 
 export interface WindowUnit {
-  win: "five" | "month";
-  tag: "5h" | "Mth";
+  win: "five" | "month" | "week";
+  tag: "5h" | "Mth" | "Wk";
   cardLabel: string;
   rowLabel: string;
   pct: number;
@@ -34,17 +34,34 @@ function heatOf(pct: number, exhausted: boolean): WindowUnit["heat"] {
   return pct >= 80 ? "hot" : "";
 }
 
-/** Present windows only; a unit with no data is not rendered at all. */
+/**
+ * Secondary (rate-limit) windows only. The quota window already owns the
+ * main bar, so it never repeats here: weekly-bound providers show 5h and
+ * monthly; monthly-bound providers show weekly and 5h, with the weekly
+ * reset kept as rate-limit detail.
+ */
 export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[] {
   const q = provider.quota;
   if (!q) return [];
+  const monthlyBound =
+    provider.advisory?.bindingWindow === "monthly" &&
+    q.monthlyKind === "included" &&
+    typeof q.monthlyPct === "number" &&
+    !!q.monthlyResetsAt;
   const units: WindowUnit[] = [];
+  if (monthlyBound && typeof q.weeklyPct === "number" && Number.isFinite(q.weeklyPct)) {
+    const left = windowCountdown(q.resetsAt, asOfMs);
+    units.push({ win: "week", tag: "Wk", cardLabel: "Weekly", rowLabel: "Week",
+      pct: q.weeklyPct, heat: heatOf(q.weeklyPct, false),
+      time: left ? `in ${left}` : null,
+      reset: left ? `in ${left}` : null });
+  }
   if (typeof q.fiveHourPct === "number" && Number.isFinite(q.fiveHourPct)) {
     // No adapter reports a 5h reset, so the 5h tag carries no time.
     units.push({ win: "five", tag: "5h", cardLabel: "5h limit", rowLabel: "5h",
       pct: q.fiveHourPct, heat: heatOf(q.fiveHourPct, false), time: null, reset: null });
   }
-  if (q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
+  if (!monthlyBound && q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
     const exhausted = q.monthlyStatus === "exhausted";
     const left = windowCountdown(q.monthlyResetsAt, asOfMs);
     const clock = resetDateClock(q.monthlyResetsAt);
@@ -56,13 +73,21 @@ export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[
   return units;
 }
 
-function trackFill(u: WindowUnit): React.CSSProperties {
-  const cap = u.pct >= 80 || u.heat === "full";
+/** Shared severity fill: cap colour at >= 80 (or exhausted/full), ontrack below. */
+export function trackFillForPct(pct: number, exhausted = false): React.CSSProperties {
+  const cap = exhausted || pct >= 80;
   return {
-    width: `${Math.min(100, Math.max(0, u.pct))}%`,
+    width: `${Math.min(100, Math.max(0, pct))}%`,
     background: cap ? "var(--fill-cap)" : "var(--fill-ontrack)",
     ["--fill-edge" as string]: cap ? "var(--edge-cap)" : "var(--edge-ontrack)",
   };
+}
+
+export const severityFill = trackFillForPct;
+export const windowTrackFill = trackFillForPct;
+
+export function trackFill(u: WindowUnit): React.CSSProperties {
+  return trackFillForPct(u.pct, u.heat === "full");
 }
 
 /**

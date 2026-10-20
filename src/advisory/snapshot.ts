@@ -32,6 +32,7 @@ export interface SnapshotOptions {
       checkedAt: string | null;
     };
     detectedProviders?: string[];
+    opencodeLoginCommand?: string | null;
   };
 }
 
@@ -204,6 +205,13 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
     }
 
     const catalog = catalogMap.get(id) ?? emptyCatalog();
+    const closeWindow =
+      advisory?.bindingWindow === "monthly" &&
+      quota?.monthlyKind === "included" &&
+      typeof quota?.monthlyPct === "number" &&
+      !!quota?.monthlyResetsAt
+        ? "monthly"
+        : "weekly";
 
     providerSnapshots.push({
       id,
@@ -219,7 +227,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence,
       exclusionReason,
       advisory,
-      lastCloses: getWindowCloses(db, id, 4),
+      lastCloses: getWindowCloses(db, id, 4, closeWindow),
       catalog,
     });
   }

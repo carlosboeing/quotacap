@@ -5,7 +5,7 @@ import { lanesFor } from "./Recommendation.js";
 import { ProviderCard } from "./ProviderCard.js";
 import { ProviderRow } from "./ProviderRow.js";
 import { CardErrorFallback, ErrorBoundary, RowErrorFallback } from "./ErrorBoundary.js";
-import { resetCountdown } from "./PaceBar.js";
+import { quotaResetsAt, quotaUsedPct, resetCountdown } from "./PaceBar.js";
 
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
 export type Density = "cards" | "table";
@@ -39,8 +39,14 @@ export function sortProviders(
     const excluded = list.filter(blocked);
     return [...ranked, ...rest, ...excluded];
   }
-  const resetMs = (p: ProviderView): number => (p.quota ? Date.parse(p.quota.resetsAt) : NaN);
-  const used = (p: ProviderView): number => (p.quota ? p.quota.weeklyPct : NaN);
+  const resetMs = (p: ProviderView): number => {
+    const iso = quotaResetsAt(p);
+    return iso ? Date.parse(iso) : NaN;
+  };
+  const used = (p: ProviderView): number => {
+    const pct = quotaUsedPct(p);
+    return pct !== null ? pct : NaN;
+  };
   const withInvalidLast = (cmp: (a: number, b: number) => number, value: (p: ProviderView) => number) =>
     list.sort((a, b) => {
       const va = value(a);

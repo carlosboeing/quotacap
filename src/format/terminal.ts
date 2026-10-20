@@ -5,6 +5,7 @@ import type { StateSnapshot } from "../advisory/types.js";
 import {
   buildRow,
   compactSuffix,
+  isMonthlyBound,
   sortProviders,
   weeklyPctOf,
   type RailCell,
@@ -123,7 +124,8 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const leftoverLine = (p: (typeof sorted)[number]): string | null => {
     const close = p.lastCloses?.[0];
     if (!close) return null;
-    const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+    const unit = isMonthlyBound(p) ? "month" : "week";
+    const tail = `last ${unit} ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
     return `${resetsIndent}${paint(tail, DIM)}`;
   };
   const header = [
@@ -188,7 +190,8 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
     const close = p.lastCloses?.[0];
     if (close) {
       const indent = " ".repeat(row.railCells.length + " resets ".length);
-      const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+      const unit = isMonthlyBound(p) ? "month" : "week";
+      const tail = `last ${unit} ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
       lines.push(`${indent}${color ? `${DIM}${tail}${RESET}` : tail}`);
     }
   }

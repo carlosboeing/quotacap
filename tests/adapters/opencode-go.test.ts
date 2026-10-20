@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   OPENCODE_GO_CONSENT_NOTICE,
+  openCodeGoConsentNotice,
+  openCodeLoginCommandForVersion,
   opencodeGoAdapter,
   opencodeGoDetected,
   parseOpencodeGoUsage,
@@ -26,6 +28,7 @@ describe("parseOpencodeGoUsage", () => {
     expect(q.plan).toBe("unknown");
     expect(q.weeklyPct).toBe(8);
     expect(q.fiveHourPct).toBe(5);
+    expect(q.fiveHourResetsAt).toBe("2026-09-17T10:54:52.662Z");
     expect(q.resetsAt).toBe("2026-09-21T00:00:00.662Z");
     expect(q.periodStart).toBe("2026-09-14T00:00:00.662Z");
     expect(q.source).toBe("api");
@@ -322,9 +325,25 @@ describe("opencodeGoDetected", () => {
   });
 });
 
+describe("OpenCode CLI login command", () => {
+  it("selects the command for the detected CLI major version", () => {
+    expect(openCodeLoginCommandForVersion("opencode v2.0.15")).toBe("opencode auth login opencode");
+    expect(openCodeLoginCommandForVersion("opencode 1.4.2")).toBe("opencode console login");
+    expect(openCodeLoginCommandForVersion("opencode unknown")).toBeNull();
+    expect(openCodeLoginCommandForVersion(null)).toBeNull();
+  });
+
+  it("renders a version-specific consent notice when the command is known", () => {
+    expect(openCodeGoConsentNotice("opencode console login")).toContain("`opencode console login`");
+    expect(openCodeGoConsentNotice("opencode console login")).not.toContain("opencode auth login opencode");
+  });
+});
+
 describe("OPENCODE_GO_CONSENT_NOTICE", () => {
   it("carries the consent contract", () => {
-    expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode auth login -p opencode-go");
+    expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode auth login opencode");
+    expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode console login");
+    expect(OPENCODE_GO_CONSENT_NOTICE).not.toContain("opencode auth login -p opencode-go");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("opencode.db");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("auth.json");
     expect(OPENCODE_GO_CONSENT_NOTICE).toContain("https://opencode.ai/zen/go/v1/usage");

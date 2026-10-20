@@ -115,6 +115,16 @@ describe("monthly columns", () => {
     for (const k of MONTHLY_COLS) expect(k in got).toBe(false);
   });
 
+  it("round-trips the reported 5h reset and reads NULL as absent", () => {
+    const db = openDb(":memory:"); migrate(db);
+    expect(colsOf(db)).toContain("five_hour_resets_at");
+    upsertQuota(db, { ...GO, fiveHourResetsAt: "2026-09-21T13:00:00.000Z" });
+    expect((getLatestByProvider(db, "opencode-go") as any).fiveHourResetsAt)
+      .toBe("2026-09-21T13:00:00.000Z");
+    upsertQuota(db, { ...GO, fetchedAt: "2026-09-21T09:00:00.000Z" });
+    expect("fiveHourResetsAt" in (getLatestByProvider(db, "opencode-go") as any)).toBe(false);
+  });
+
   it("a NULL monthly reads as absent, never 0", () => {
     const db = openDb(":memory:"); migrate(db);
     upsertQuota(db, GO);

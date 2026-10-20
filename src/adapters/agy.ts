@@ -44,12 +44,16 @@ function parseGroup(
   const sessionPct = fiveHour
     ? usedPctFromRemaining(fiveHour.remaining_fraction) ?? undefined
     : undefined;
+  const fiveResetDate = fiveHour?.reset_time ? new Date(fiveHour.reset_time) : null;
+  const fiveHourResetsAt =
+    fiveResetDate && !Number.isNaN(fiveResetDate.getTime()) ? fiveResetDate.toISOString() : undefined;
 
   return {
     provider,
     plan: "unknown",
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt,
     periodStart,
     source: "cli",

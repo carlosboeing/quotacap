@@ -216,7 +216,7 @@ describe("snapshot", () => {
     const db = openDb(":memory:");
     // Do NOT call migrate(db). Create only the pre-catalog tables (no model_catalogs).
     db.exec(`
-      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT);
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT, five_hour_resets_at TEXT);
       CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
       CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
       CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);

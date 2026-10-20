@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson, boardMonthlyStateSnapshotJson } from "../fixtures/stable-state.js";
 import { laneOf, lanesFor } from "../../web/src/components/Recommendation.js";
-import { forecastLine } from "../../web/src/components/PaceBar.js";
+import { daysToDuration, forecastLine } from "../../web/src/components/PaceBar.js";
 import { toViewModel } from "../../web/src/state.js";
 import { Recommendation } from "../../web/src/components/Recommendation.js";
 import { sortProviders as webSort } from "../../web/src/components/SubscriptionList.js";
@@ -38,7 +38,7 @@ describe("recommendation lanes", () => {
     const pick = s.providers.find((p: any) => p.id === s.recommendation.use);
     expect(pick.advisory.wastePct).toBe(s.recommendation.wastePct);
     expect(forecastLine(pick)).toContain(`${Math.round(pick.advisory.wastePct)}%`);
-    expect(forecastLine(pick)).toContain(`${pick.advisory.daysLeft.toFixed(1)}d`);
+    expect(forecastLine(pick)).toContain(daysToDuration(pick.advisory.daysLeft));
   });
 });
 

@@ -34,6 +34,103 @@ function msOf(iso: string | null | undefined): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/**
+ * Quota-window resolution, mirroring the dashboard helpers: the advisory
+ * binding window rations the account, so standalone resets, usage,
+ * elapsed, and pace read it. Weekly-bound rows fall back to the weekly
+ * fields unchanged; rate-limit windows never drive these figures.
+ */
+export function isMonthlyBound(ps: ProviderSnapshot): boolean {
+  return (
+    ps.advisory?.bindingWindow === "monthly" &&
+    ps.quota?.monthlyKind === "included" &&
+    typeof ps.quota?.monthlyPct === "number" &&
+    !!ps.quota?.monthlyResetsAt
+  );
+}
+
+/** Reset instant of the quota window, or null without a quota reading. */
+export function bindingResetsAt(ps: ProviderSnapshot): string | null {
+  if (!ps.quota) return null;
+  if (isMonthlyBound(ps)) return ps.quota.monthlyResetsAt ?? null;
+  return ps.quota.resetsAt ?? null;
+}
+
+/** Used percent of the quota window. Null without a quota reading. */
+export function bindingUsedPct(ps: ProviderSnapshot): number | null {
+  if (!ps.quota) return null;
+  if (isMonthlyBound(ps)) {
+    const m = ps.quota.monthlyPct;
+    return typeof m === "number" && Number.isFinite(m) ? Math.round(m) : null;
+  }
+  const u = weeklyPctOf(ps.quota);
+  return typeof u === "number" && Number.isFinite(u) ? Math.round(u) : null;
+}
+
+/** Start of the monthly window: one calendar month before its reported reset. */
+function monthlyStartMs(resetMs: number): number {
+  const start = new Date(resetMs);
+  start.setMonth(start.getMonth() - 1);
+  return start.getTime();
+}
+
+/**
+ * Binding leftover for a raw quota without an advisory (model catalogs):
+ * the same scarcer-headroom rule the engine applies, so the catalog
+ * leftover and reset name the quota window, not always the week.
+ */
+export function bindingLeftover(
+  quota: {
+    weeklyPct?: number;
+    resetsAt?: string;
+    monthlyKind?: string;
+    monthlyPct?: number;
+    monthlyResetsAt?: string;
+    monthlyStatus?: string;
+  } | null | undefined,
+  now: Date,
+): { leftoverPct: number | null; resetsAt: string | null } {
+  if (!quota || typeof quota.weeklyPct !== "number") {
+    return { leftoverPct: null, resetsAt: quota?.resetsAt ?? null };
+  }
+  const weeklyRemaining = 100 - quota.weeklyPct;
+  const weeklyDays = Math.max(0.1, (new Date(quota.resetsAt ?? "").getTime() - now.getTime()) / DAY_MS);
+  if (
+    quota.monthlyKind === "included" &&
+    typeof quota.monthlyPct === "number" &&
+    quota.monthlyResetsAt
+  ) {
+    const monthlyRemaining =
+      quota.monthlyStatus === "exhausted" ? 0 : Math.max(0, 100 - quota.monthlyPct);
+    const monthlyDays = Math.max(
+      0.1,
+      (new Date(quota.monthlyResetsAt).getTime() - now.getTime()) / DAY_MS,
+    );
+    if (monthlyRemaining / monthlyDays < weeklyRemaining / weeklyDays || monthlyRemaining === 0) {
+      return {
+        leftoverPct: Math.round(monthlyRemaining * 10) / 10,
+        resetsAt: quota.monthlyResetsAt,
+      };
+    }
+  }
+  return {
+    leftoverPct: Math.round(weeklyRemaining * 10) / 10,
+    resetsAt: quota.resetsAt ?? null,
+  };
+}
+
+/** Window-average pace of the quota window; monthly divides monthly used by elapsed monthly days. */
+export function bindingAvgPace(ps: ProviderSnapshot, now: Date): number | null {
+  if (!isMonthlyBound(ps)) return ps.advisory?.avgPace ?? null;
+  const used = ps.quota?.monthlyPct;
+  const resetMs = msOf(ps.quota?.monthlyResetsAt);
+  if (typeof used !== "number" || !Number.isFinite(used) || resetMs === null) return null;
+  const elapsedDays = (now.getTime() - monthlyStartMs(resetMs)) / DAY_MS;
+  if (elapsedDays < 0.25) return null;
+  const pace = used / elapsedDays;
+  return Number.isFinite(pace) ? Math.max(0, pace) : null;
+}
+
 // The CLI talks HTTP to a daemon that may predate the rename, which sent only
 // `usedPct`. Read both for one release; drop the fallback with the aliases.
 export function weeklyPctOf(q: { weeklyPct?: number; usedPct?: number } | null | undefined): number | undefined {
@@ -59,32 +156,35 @@ export function dayOf(iso: string | undefined): string {
 }
 
 export function countdownText(ps: ProviderSnapshot, now: Date): string {
-  const resetsMs = msOf(ps.quota?.resetsAt);
+  const resetsMs = msOf(bindingResetsAt(ps));
   let text: string;
   if (resetsMs === null) text = "—";
   else if (resetsMs <= now.getTime()) text = "passed";
   else text = fmtDuration(resetsMs - now.getTime());
-  if (ps.quota?.resetsAtEstimated) text += " (est.)";
+  if (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated) text += " (est.)";
   return text;
 }
 
 export function elapsedPct(ps: ProviderSnapshot, now: Date): number | null {
-  const startMs = msOf(ps.quota?.periodStart);
-  const resetsMs = msOf(ps.quota?.resetsAt);
+  const resetsMs = msOf(bindingResetsAt(ps));
+  const startMs = isMonthlyBound(ps)
+    ? resetsMs === null
+      ? null
+      : monthlyStartMs(resetsMs)
+    : msOf(ps.quota?.periodStart);
   if (startMs === null || resetsMs === null || resetsMs <= startMs) return null;
   const pct = ((now.getTime() - startMs) / (resetsMs - startMs)) * 100;
   return Math.round(Math.min(100, Math.max(0, pct)));
 }
 
 export function usedPctOf(ps: ProviderSnapshot): number | null {
-  const u = weeklyPctOf(ps.quota);
-  return typeof u === "number" && Number.isFinite(u) ? Math.round(u) : null;
+  return bindingUsedPct(ps);
 }
 
 export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
   const cells: RailCell[] = new Array<RailCell>(RAIL_CELLS).fill("unused");
   if (ps.exclusionReason !== null) return cells;
-  const u = weeklyPctOf(ps.quota);
+  const u = bindingUsedPct(ps);
   const used =
     typeof u === "number" && Number.isFinite(u)
       ? Math.min(RAIL_CELLS, Math.max(0, Math.round((u / 100) * RAIL_CELLS)))
@@ -176,7 +276,8 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
     text = "Exhausts before reset";
   }
   // Engine estimate vocabulary, mirroring the snapshot reason transform.
-  if (ps.quota?.resetsAtEstimated) {
+  // A monthly quota forecast never carries the weekly estimate flag.
+  if (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated) {
     if (text.includes("waste in")) text = text.replace("waste in", "estimated waste in");
     else if (text.includes("until reset")) text = text.replace("until reset", "until estimated reset");
     else if (!text.includes("estimated")) text = `${text} (estimated)`;
@@ -192,7 +293,7 @@ export function compactSuffix(ps: ProviderSnapshot): CompactSuffix {
   if (!adv || adv.paceSource === "unknown") return "?";
   if (adv.status === "at risk") return "!";
   if (adv.status === "watch") return "~";
-  if (adv.urgency !== "on track" || ps.quota?.resetsAtEstimated) return "~";
+  if (adv.urgency !== "on track" || (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated)) return "~";
   return "";
 }
 
@@ -208,8 +309,7 @@ function wasteOf(p: ProviderSnapshot): number | null {
 }
 
 function finiteUsed(p: ProviderSnapshot): number | null {
-  const u = weeklyPctOf(p.quota);
-  return typeof u === "number" && Number.isFinite(u) ? u : null;
+  return bindingUsedPct(p);
 }
 
 export function sortProviders(
@@ -245,8 +345,8 @@ export function sortProviders(
     case "reset-desc": {
       const dir = key === "reset-asc" ? 1 : -1;
       indexed.sort((a, b) => {
-        const ra = msOf(a.p.quota?.resetsAt);
-        const rb = msOf(b.p.quota?.resetsAt);
+        const ra = msOf(bindingResetsAt(a.p));
+        const rb = msOf(bindingResetsAt(b.p));
         if (ra === null && rb === null) return a.i - b.i;
         if (ra === null) return 1;
         if (rb === null) return -1;
@@ -272,17 +372,19 @@ export function sortProviders(
   }
 }
 
-// Compact pace pair: window average first, 24h rate alongside. A pair that
-// renders identically at display precision collapses to one figure.
-export function paceText(ps: ProviderSnapshot): string {
+// Compact pace pair: quota-window average first, 24h rate alongside. A pair
+// that renders identically at display precision collapses to one figure.
+// The 24h rate is weekly-only: a monthly-bound row shows its monthly
+// average alone.
+export function paceText(ps: ProviderSnapshot, now: Date = new Date()): string {
   const adv = ps.advisory;
   if (!adv) return "—";
-  // avgPace is absent on advisories from a daemon older than the split.
-  const avg = adv.avgPace ?? null;
+  const avg = bindingAvgPace(ps, now);
   // The 24h figure is the measured recentRate, never the blended forecast
   // input; an older daemon omits the field and burnRate was the raw rate then.
-  const recent =
-    adv.recentRate !== undefined
+  const recent = isMonthlyBound(ps)
+    ? null
+    : adv.recentRate !== undefined
       ? adv.recentRate
       : adv.paceSource === "recent"
         ? adv.burnRate
@@ -304,6 +406,6 @@ export function buildRow(ps: ProviderSnapshot, now: Date): Row {
     elapsedPct: elapsedPct(ps, now),
     usedPct: usedPctOf(ps),
     railCells: railCells(ps, now),
-    pace: paceText(ps),
+    pace: paceText(ps, now),
   };
 }

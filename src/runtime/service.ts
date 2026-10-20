@@ -21,7 +21,7 @@ import { buildApp } from "../http/server.js";
 import { detectChannel, refreshUpdateCache } from "./updates.js";
 import { VERSION } from "../version.js";
 import { claudeAdapter } from "../adapters/claude.js";
-import { opencodeGoDetected } from "../adapters/opencode-go.js";
+import { detectOpenCodeLoginCommand, opencodeGoDetected } from "../adapters/opencode-go.js";
 import { classifyFailure } from "../diagnostics/failure.js";
 import { ensureCatalogs, catalogProviders } from "../catalog/index.js";
 
@@ -222,12 +222,13 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
         }).catch(() => {});
       },
     });
-    app = buildApp({
+    const appCtx = {
       db,
       token,
       coordinator,
       enabledProviders: config.enabledProviders,
       detectedProviders: opencodeGoDetected() ? ["opencode-go"] : [],
+      opencodeLoginCommand: null as string | null,
       providerNames: config.providerNames,
       catalogTtlHours: config.catalogTtlHours,
       version: VERSION,
@@ -239,7 +240,17 @@ export async function startService(opts?: StartServiceOptions): Promise<ServiceH
       // hoisted declaration below; it can only fire after listen, so the
       // shutdown bindings it closes over are initialized by then).
       onRestart: () => onSignal(),
-    });
+    };
+    app = buildApp(appCtx);
+    // Version-specific OpenCode login command for the fault banner:
+    // detected once, in the background, never blocking readiness.
+    if (config.enabledProviders.includes("opencode-go") || appCtx.detectedProviders.length > 0) {
+      void detectOpenCodeLoginCommand()
+        .then((cmd) => {
+          appCtx.opencodeLoginCommand = cmd;
+        })
+        .catch(() => {});
+    }
 
     // 6. Bind; unwind on failure without polling.
     await app.listen({ port, host: "127.0.0.1" });

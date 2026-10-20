@@ -2,22 +2,27 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect } from "vitest";
-import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson } from "../fixtures/stable-state.js";
+import { exampleStateSnapshotJson, staleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson } from "../fixtures/stable-state.js";
 import { providerSubtitle, toViewModel } from "../../web/src/state.js";
 import {
-  compactSnapshot,
+  compactLimitForecast,
   credentialLabel,
   drawerModel,
+  fiveHourElapsedPct,
+  fiveHourResetLine,
+  monthlyElapsedPct,
   monthlyMeta,
   paceBasis,
-  rankingCopy,
   sourceLabel,
+  verdictFor,
+  windowElapsedPct,
 } from "../../web/src/components/ProviderDrawer.js";
 import {
   ProviderDrawer,
   submitProviderRename,
 } from "../../web/src/components/ProviderDrawer.js";
 import { closeDateLabel, closeResetStamp, closeSampleStamp } from "../../web/src/components/ClosedWeeks.js";
+import { BurnDown, burnGeometry } from "../../web/src/components/BurnDown.js";
 import { renameProvider } from "../../web/src/api.js";
 
 describe("provider drawer", () => {
@@ -26,7 +31,7 @@ describe("provider drawer", () => {
     const m = drawerModel(s.providers.find((p: any) => p.id === "codex"));
     expect(m.estimatedReset).toBe(true);
     expect(m.evidence).toContain("estimated-reset");
-    expect(m.sessionReset).toBeUndefined(); // never synthesized
+    expect(m.fiveHourResetsAt).toBeUndefined(); // absent unless reported
   });
   it("marks unknown pace and exclusion reasons in plain words", () => {
     const s = JSON.parse(exampleStateSnapshotJson);
@@ -53,9 +58,11 @@ describe("provider drawer", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     expect(paceBasis(kimi, Date.parse(s.asOf))).toMatch(/averaged over|Window avg|Measured/);
-    const why = rankingCopy(kimi, s.recommendation);
-    expect(why.known).toMatch(/Kimi reports 22%/);
-    expect(why.pace).toMatch(/%\/day/);
+    expect(verdictFor(kimi, Date.parse(s.asOf))).toEqual({
+      tone: "use-more",
+      label: "↑ Use more",
+      detail: "56% waste forecast · resets in 7d 0h",
+    });
     const html = renderToString(
       React.createElement(ProviderDrawer, {
         provider: kimi,
@@ -64,21 +71,35 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
+    expect(html).toContain("Limits");
     expect(html).toContain("Weekly limit");
-    expect(html).toContain("Adapter and provenance");
-    expect(html).toContain("Ranking rationale");
-    expect(html).toMatch(/averaged over|Window avg|Measured/);
+    expect(html).not.toContain("Adapter and provenance");
+    expect(html).not.toContain("Ranking rationale");
+    expect(html).not.toContain("Raw JSON");
+    expect(html).not.toContain("Copy JSON");
+    expect(html).toContain('class="verdict use-more"');
+    expect(html).toContain("↑ Use more");
+    expect(html).toContain("56% waste forecast");
+    expect(html).toContain('class="drawer-desc"');
+    expect(html).toContain('class="winrow-sub reset-line"');
+    expect(html).toContain("<strong>");
+    // The projected-waste forecast rides the quota row, wording as on the card.
+    const limitsSlice = html.slice(html.indexOf("<h3>Limits</h3>"), html.indexOf("prov-foot"));
+    expect(limitsSlice).toContain("expires unused");
+    // The quota bar hatches the projected-unused share, like the card bar.
+    expect(limitsSlice).toContain('data-testid="limit-hatch"');
+    expect(limitsSlice).toContain('class="band band-waste"');
+    expect(html).toContain('class="prov-foot"');
     expect(html).toContain("Live CLI");
-    expect(html).toContain("Credential");
-    expect(html).toContain("handled by Kimi");
+    expect(html).toContain("Updated 1m ago");
+    expect(html).not.toContain("Credential");
+    expect(html).not.toContain("handled by Kimi");
     expect(html).not.toContain("kimi-code.json");
     expect(html).not.toContain("Burn rate");
-    const snap = compactSnapshot(kimi, Date.parse(s.asOf));
-    expect(snap.provider).toBe("kimi");
-    expect(snap.source).toBe("cli");
-    expect(snap.pacingStatus).toMatch(/behind|ontrack|ahead|cap|out/);
+    // Healthy providers render no Notes section.
+    expect(html).not.toContain('aria-label="Notes"');
   });
-  it("displays the 5h Limit section in the drawer", () => {
+  it("displays the 5h limit row inside the merged Limits section", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const claude = s.providers.find((p) => p.id === "claude")!;
     const html = renderToString(
@@ -89,11 +110,60 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(html).toContain("Weekly limit");
-    expect(html).toContain("5h Limit");
-    expect(html.replace(/<!-- -->/g, "")).toContain("22% used");
+    expect(html).toContain("Limits");
+    expect(html).toContain("5h limit");
+    expect(html).toContain('class="limit-row"');
+    expect(html.replace(/<!-- -->/g, "")).toContain("22%");
+    const windows = html.slice(html.indexOf('aria-label="Limits"'), html.indexOf("prov-foot"));
+    expect(windows).toContain("5h limit");
+    // Rolling-limit fills stay neutral below the cap threshold: green
+    // would imply a pace judgement the drawer does not make for them.
+    const fiveRow = windows.slice(windows.indexOf("5h limit"), windows.indexOf("limit-legend"));
+    expect(fiveRow).toContain("background:var(--fill-out)");
+    // Without a reported 5h reset, the row says so instead of a reset line.
+    expect(fiveRow).toContain("Reset not reported");
+    expect(fiveRow).not.toContain("Resets");
+    // No row carries a "Rate limit" label; the quota row alone is tagged.
+    expect(windows).not.toContain("Rate limit");
+    expect(windows.match(/quota-tag/g)).toHaveLength(1);
+    expect(windows).toContain("Quota reset");
+    // The legend, divided from the rows, explains the bar marks.
+    expect(windows).toContain('class="mark"');
+    expect(windows).toContain('class="limit-legend"');
+    expect(windows).toContain("Legend");
+    expect(windows).toContain("Time elapsed");
+    expect(windows).toContain("Projected waste");
+    expect(windows).toContain('class="legend-hatch"');
   });
-  it("renders 5h Limit even when 0% used, and omits it when provider reports no short window", () => {
+
+  it("shows a reported 5h reset as a quieter sub-line", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const base = s.providers.find((p) => p.id === "claude")!;
+    const asOfMs = Date.parse(s.asOf);
+    const withReset = {
+      ...base,
+      quota: {
+        ...base.quota!,
+        fiveHourResetsAt: new Date(asOfMs + (3 * 60 + 24) * 60000).toISOString(),
+      },
+    };
+    expect(fiveHourResetLine(withReset as any, asOfMs)).toMatch(/Resets .* · in 3h 24m/);
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: withReset,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      }),
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain('class="winrow-sub reset-line"');
+    expect(html).toMatch(/Resets <strong>.*<\/strong> · in <strong>3h 24m<\/strong>/);
+    // The 5h bar carries the elapsed mark derived from the reported reset.
+    expect(html).toContain('title="Time elapsed: 32%"');
+    expect(drawerModel({ ...base, quota: withReset.quota } as any).fiveHourResetsAt)
+      .toBe(withReset.quota.fiveHourResetsAt);
+  });
+  it("renders 5h limit even when 0% used, and omits it when provider reports no short window", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const zeroSession = {
       ...s.providers.find((p) => p.id === "claude")!,
@@ -107,8 +177,9 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(htmlZero).toContain("5h Limit");
-    expect(htmlZero.replace(/<!-- -->/g, "")).toContain("0% used");
+    expect(htmlZero).toContain("5h limit");
+    expect(htmlZero).toContain('class="limit-row"');
+    expect(htmlZero.replace(/<!-- -->/g, "")).toContain("0%");
 
     const grok = s.providers.find((p) => p.id === "grok")!;
     const htmlGrok = renderToString(
@@ -119,32 +190,51 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(htmlGrok).not.toContain("5h Limit");
+    expect(htmlGrok).not.toContain("5h limit");
   });
-  it("explains both paces against the target in ranking rationale", () => {
+  it("derives the ease-off verdict with the shared duration formatter", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
-    const flat = {
-      ...kimi,
-      advisory: { ...kimi.advisory!, burnRate: 0, recentRate: 0, avgPace: 10.6, paceSource: "recent", status: "on track" },
-    };
-    expect(rankingCopy(flat as any, s.recommendation).pace).toBe(
-      "10.6%/day window average and 0.0%/day over the last 24h. The ideal pace to finish is 11.1%/day."
-    );
     const risky = {
       ...kimi,
-      advisory: { ...kimi.advisory!, burnRate: 24, recentRate: 24, avgPace: 10.6, paceSource: "recent", status: "at risk" },
+      advisory: { ...kimi.advisory!, status: "at risk", urgency: "slow down", daysToExhaust: 2.4 },
     };
-    expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
-      "10.6%/day window average and 24.0%/day over the last 24h, against an ideal pace of 11.1%/day."
+    expect(verdictFor(risky as any, Date.parse(s.asOf))).toEqual({
+      tone: "ease-off",
+      label: "↓ Ease off",
+      detail: "exhausts in 2d 10h at current pace",
+    });
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: risky as any,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
     );
+    expect(html).toContain('class="verdict ease-off"');
+    expect(html).toContain("exhausts in 2d 10h at current pace");
+    // The limit line keeps only the outcome, without the status prefix.
+    const limits = html.slice(html.indexOf("<h3>Limits</h3>"), html.indexOf("prov-foot")).replace(/<!-- -->/g, "");
+    expect(limits).toContain("→ exhausts in 2d 10h");
+    expect(limits).not.toContain("Cap risk ·");
+    expect(compactLimitForecast(risky as any)?.text).toBe("exhausts in 2d 10h");
+    // A status-only headline and an on-track headline stay off the row.
+    const noClock = { ...risky, advisory: { ...risky.advisory, daysToExhaust: null } };
+    expect(compactLimitForecast(noClock as any)).toBeNull();
+    const onTrack = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, status: "on track", urgency: "on track", wastePct: null, daysToExhaust: null },
+    };
+    expect(compactLimitForecast(onTrack as any)).toBeNull();
   });
-  it("names the forecast pace when both figures are unknown but a forecast exists", () => {
+  it("renders a fresh window where both pace figures are unknown", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     // Fresh window with a history baseline: burnRate set, avgPace null
-    // (<6h elapsed), recentRate null (no 24h span). rankingCopy used to
-    // call toFixed on the null figure and blank the dashboard on Inspect.
+    // (<6h elapsed), recentRate null (no 24h span). The old rationale
+    // called toFixed on the null figure and blanked the dashboard on
+    // Inspect; the verdict band is the new surface for this provider.
     const fresh = {
       ...kimi,
       advisory: {
@@ -158,13 +248,7 @@ describe("provider drawer", () => {
         status: "on track",
       },
     };
-    expect(rankingCopy(fresh as any, s.recommendation).pace).toBe(
-      "5.2%/day forecast pace. The ideal pace to finish is 11.1%/day."
-    );
-    const risky = { ...fresh, advisory: { ...fresh.advisory, status: "at risk" } };
-    expect(rankingCopy(risky as any, s.recommendation).pace).toBe(
-      "5.2%/day forecast pace, against an ideal pace of 11.1%/day."
-    );
+    expect(verdictFor(fresh as any, Date.parse(s.asOf)).tone).toBe("use-more");
     const html = renderToString(
       React.createElement(ProviderDrawer, {
         provider: fresh as any,
@@ -173,25 +257,26 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    expect(html).toContain("forecast pace");
+    expect(html).toContain('class="verdict use-more"');
+    expect(html).toContain("waste forecast");
+    expect(html).not.toContain("NaN");
   });
-  it("names Watch rows as near the cap instead of on-track or save copy", () => {
+  it("names Watch rows as ease-off instead of on-track copy", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     const watchOnTrack = {
       ...kimi,
-      advisory: { ...kimi.advisory!, status: "watch", urgency: "on track" },
+      advisory: { ...kimi.advisory!, status: "watch", urgency: "on track", daysToExhaust: 2.1 },
     };
-    const why = rankingCopy(watchOnTrack as any, null);
-    expect(why.decision).toBe("Near the cap — position or reset clock uncertain.");
-    expect(why.decision).not.toMatch(/Pace matches the window|Unused quota/);
-    // A Watch row carrying save urgency used to fall through to the unused-quota copy.
-    const watchSave = { ...watchOnTrack, advisory: { ...watchOnTrack.advisory, urgency: "save" } };
-    expect(rankingCopy(watchSave as any, null).decision).toBe(
-      "Near the cap — position or reset clock uncertain."
-    );
+    expect(verdictFor(watchOnTrack as any, Date.parse(s.asOf))).toEqual({
+      tone: "ease-off",
+      label: "↓ Ease off",
+      detail: "exhausts in 2d 2h at current pace",
+    });
+    const watchNoClock = { ...watchOnTrack, advisory: { ...watchOnTrack.advisory, daysToExhaust: null } };
+    expect(verdictFor(watchNoClock as any, Date.parse(s.asOf)).detail).toBe("Watch");
   });
-  it("names exhausted windows in ranking rationale", () => {
+  it("names exhausted windows in the verdict", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
     const capped = {
@@ -208,14 +293,127 @@ describe("provider drawer", () => {
         daysToExhaust: 0,
       },
     };
-    expect(rankingCopy(capped as any, s.recommendation).pace).toMatch(/^Exhausted at 100% used\. Resets /);
+    const verdict = verdictFor(capped as any, Date.parse(s.asOf));
+    expect(verdict.tone).toBe("ease-off");
+    expect(verdict.label).toBe("↓ Ease off");
   });
-  it("matches concept JSON snapshot type and does not clip the block", () => {
+  it("derives excluded, monthly-bound, monthly-exhausted, and on-track verdicts", () => {
+    const stale = toViewModel(JSON.parse(staleStateSnapshotJson));
+    const staleKimi = stale.providers.find((p) => p.id === "kimi")!;
+    expect(verdictFor(staleKimi, Date.parse(stale.asOf))).toEqual({
+      tone: "neutral",
+      label: "• Not ranked",
+      detail: "stale · last read 3h 0m ago",
+    });
+    const monthly = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const go = monthly.providers.find((p) => p.id === "opencode-go")!;
+    expect(verdictFor(go, Date.parse(monthly.asOf))).toEqual({
+      tone: "use-more",
+      label: "↑ Use more",
+      detail: "5% of month left",
+    });
+    const exhausted = toViewModel(JSON.parse(monthlyExhaustedStateSnapshotJson));
+    const goEx = exhausted.providers.find((p) => p.id === "opencode-go")!;
+    expect(verdictFor(goEx, Date.parse(exhausted.asOf))).toEqual({
+      tone: "neutral",
+      label: "• Not ranked",
+      detail: "unused until Tue Sep 15",
+    });
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const onTrack = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, status: "on track", urgency: "on track", wastePct: null },
+    };
+    expect(verdictFor(onTrack as any, Date.parse(s.asOf))).toEqual({
+      tone: "neutral",
+      label: "• On track",
+      detail: "On track.",
+    });
+  });
+  it("shows Notes above Windows only when exclusion, failure, or estimated reset is present", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const codex = s.providers.find((p) => p.id === "codex")!;
+    const codexHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: codex,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(codexHtml).toContain('aria-label="Notes"');
+    expect(codexHtml).toContain("Reset time is estimated.");
+    expect(codexHtml.indexOf('aria-label="Notes"')).toBeLessThan(codexHtml.indexOf('aria-label="Limits"'));
+    const stale = toViewModel(JSON.parse(staleStateSnapshotJson));
+    const staleKimi = stale.providers.find((p) => p.id === "kimi")!;
+    const staleHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: staleKimi,
+        asOf: stale.asOf,
+        recommendation: stale.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(staleHtml).toContain('aria-label="Notes"');
+    expect(staleHtml).toContain("Stale");
+    expect(staleHtml.indexOf('aria-label="Notes"')).toBeLessThan(staleHtml.indexOf('aria-label="Limits"'));
+  });
+  it("renders the provenance footer with the credential line only for opencode-go api", () => {
+    const monthly = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const go = monthly.providers.find((p) => p.id === "opencode-go")!;
+    const goHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: go,
+        asOf: monthly.asOf,
+        recommendation: monthly.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(goHtml).toContain('class="prov-foot"');
+    expect(goHtml).toContain("Live API");
+    expect(goHtml).toContain("Updated 1m ago");
+    expect(goHtml).toContain("read in-memory from OpenCode auth (opt-in), never stored");
+    expect(goHtml).not.toContain("Adapter and provenance");
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const kimiHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: kimi,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(kimiHtml).not.toContain("read in-memory from OpenCode auth");
+    // Stale footer appends the failure words.
+    const stale = toViewModel(JSON.parse(staleStateSnapshotJson));
+    const staleKimi = stale.providers.find((p) => p.id === "kimi")!;
+    const failed = {
+      ...staleKimi,
+      lastAttempt: { ...staleKimi.lastAttempt!, failureCategory: "timeout" as const, success: false },
+    };
+    const failedHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: failed as any,
+        asOf: stale.asOf,
+        recommendation: stale.recommendation,
+        onClose: () => {},
+      })
+    );
+    const foot = failedHtml.slice(failedHtml.indexOf('class="prov-foot"'));
+    expect(foot).toContain("Timed out");
+  });
+  it("ports the verdict, limit rows, notes, footer, and rename CSS from the mock", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
-    expect(css).toMatch(/\.draw-code \{[^}]*font-size: var\(--t-2\)/);
-    expect(css).toMatch(/\.draw-code \{[^}]*line-height: 1\.6/);
-    expect(css).toMatch(/\.draw-code \{[^}]*white-space: pre;/);
-    expect(css).not.toMatch(/\.draw-code \{[^}]*max-height:/);
+    expect(css).toMatch(/\.verdict \{[^}]*display: flex/);
+    expect(css).toMatch(/\.verdict\.use-more \{[^}]*background: var\(--warn-soft\)/);
+    expect(css).toMatch(/\.verdict\.ease-off \{[^}]*background: var\(--danger-soft\)/);
+    expect(css).toMatch(/\.verdict\.neutral \{[^}]*background: var\(--surface-raised\)/);
+    expect(css).toMatch(/\.limit-head \{[^}]*display: flex/);
+    expect(css).toMatch(/\.notes-list \{[^}]*display: grid/);
+    expect(css).toMatch(/\.prov-foot \{[^}]*font-size: var\(--t-2\)/);
+    expect(css).toMatch(/\.rename-btn \{[^}]*width: 28px/);
   });
   it("adds the derived subtitle and the authored description", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
@@ -243,11 +441,9 @@ describe("provider drawer", () => {
         onClose: () => {},
       })
     );
-    // The raw JSON block is data, not copy: it carries explicit null monthly
-    // fields by design. No stray null/undefined may reach the rendered words.
-    const copy = bare.replace(/<pre class="draw-code">[\s\S]*?<\/pre>/, "");
-    expect(copy).not.toContain("undefined");
-    expect(copy).not.toContain("null");
+    // No stray null/undefined may reach the rendered words.
+    expect(bare).not.toContain("undefined");
+    expect(bare).not.toContain("null");
   });
 
   it("renders Built-in: label when provider has an active override", () => {
@@ -312,7 +508,8 @@ describe("provider drawer", () => {
       })
     );
     expect(html).toContain("Rename Kimi");
-    expect(html).toContain("title=\"Click to rename\"");
+    expect(html).toContain('class="rename-btn"');
+    expect(html).not.toContain("Click to rename");
     expect(html).toMatch(/aria-labelledby="(provider-drawer-title)"/);
     const match = html.match(/aria-labelledby="([^"]+)"/);
     const titleId = match ? match[1] : "";
@@ -422,26 +619,41 @@ describe("closed weeks drawer", () => {
   // Cell labels render in the machine's timezone; derive them like the drawer does.
   const label = (resetsAt: string) => closeDateLabel(resetsAt) ?? "";
 
-  it("renders Closed weeks after the live 5h window, with dated cells", () => {
+  it("renders History bars after the live 5h window, with dated bars", () => {
     const { s, claude } = claudeWith([closeRow()]);
     const html = render(claude, s);
-    expect(html).toContain("Closed weeks");
-    expect(html.indexOf("Weekly limit")).toBeLessThan(html.indexOf("Closed weeks"));
-    expect(html.indexOf("5h Limit")).toBeLessThan(html.indexOf("Closed weeks"));
+    expect(html).toContain("History");
+    expect(html).not.toContain("Closed weeks");
+    expect(html.indexOf("Limits")).toBeLessThan(html.indexOf("History"));
+    expect(html.indexOf("5h limit")).toBeLessThan(html.indexOf("History"));
+    expect(html).toContain('class="hchart"');
+    expect(html).toContain('data-testid="closed-weeks"');
+    expect(html).toContain('class="hgrid"');
+    expect(html).toContain("100%");
+    expect(html).toContain('class="hcol"');
+    expect(html).toContain('class="hbars"');
+    expect(html).toContain('class="hbar"');
+    expect(html).toContain('class="solid"');
+    expect(html).toContain("height:88%");
+    expect(html).toContain('class="hatch"');
+    expect(html).toContain("height:12%");
+    expect(html).not.toContain('class="weeks"');
     expect(html).toContain(label("2026-09-10T12:25:00+10:00"));
     expect(html).toContain("12% leftover");
     expect(html).toContain(`88% used, 12% leftover, reset ${closeResetStamp("2026-09-10T12:25:00+10:00")}`);
-    const weeks = html.slice(html.indexOf("Closed weeks"), html.indexOf("Adapter and provenance"));
-    expect(weeks).not.toMatch(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}:\d{2}/);
+    const history = html.slice(html.indexOf("History"), html.indexOf("prov-foot"));
+    expect(history).not.toContain("band band-waste");
+    expect(history).not.toMatch(/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}:\d{2}/);
   });
 
-  it("omits Closed weeks when there is no close", () => {
+  it("omits History when there is no close", () => {
     const { s, claude } = claudeWith([]);
     const html = render(claude, s);
-    expect(html).not.toContain("Closed weeks");
+    expect(html).not.toContain("History");
+    expect(html).not.toContain('class="hchart"');
   });
 
-  it("orders cells oldest left and newest right", () => {
+  it("orders bars oldest left and newest right", () => {
     const { s, claude } = claudeWith([
       closeRow({ resetsAt: "2026-09-10T12:25:00+10:00", sampledAt: "2026-09-10T12:20:00+10:00", detectedAt: "2026-09-10T12:40:00+10:00" }),
       closeRow({ resetsAt: "2026-09-03T12:25:00+10:00", sampledAt: "2026-09-03T12:20:00+10:00", detectedAt: "2026-09-03T12:40:00+10:00" }),
@@ -454,38 +666,65 @@ describe("closed weeks drawer", () => {
     expect(html.indexOf(label("2026-09-03T12:25:00+10:00"))).toBeLessThan(html.indexOf(label("2026-09-10T12:25:00+10:00")));
   });
 
-  it("names an early reading on its cell and under the strip", () => {
+  it("names an early reading on its bar label, with exact stamps only in the tooltip", () => {
     const { s, claude } = claudeWith([closeRow()]);
     const html = render(claude, s);
     expect(html).toContain("read 3d early");
     expect(html).toContain(closeSampleStamp("2026-09-07T09:04:00+10:00")!);
-    expect(html).toContain("3 days before that reset");
-    expect(html).toContain(`${label("2026-09-10T12:25:00+10:00")} leftover is from the`);
+    expect(html).not.toContain("leftover is from the");
+    expect(html).not.toContain("before that reset");
+    expect(html).not.toContain("3 days before");
+    expect(html).not.toContain("stale-note");
   });
 
-  it("reads a one-hour-early sample in singular words on both lines", () => {
+  it("reads a one-hour-early sample in the compact label", () => {
     const resetsAt = "2026-09-10T12:25:00+10:00";
     const sampledAt = new Date(Date.parse(resetsAt) - 60 * 60_000).toISOString();
     const { s, claude } = claudeWith([closeRow({ sampledAt, resetsAt })]);
     const html = render(claude, s);
     expect(html).toContain("read 1h early");
-    expect(html).toContain("1 hour before that reset");
+    expect(html).not.toContain("1 hour before that reset");
     expect(html).not.toContain("1 hours");
   });
 
-  it("floors the cell and the strip note the same way", () => {
+  it("floors the bar label earliness", () => {
     const resetsAt = "2026-09-10T12:25:00+10:00";
     const sampledAt = new Date(Date.parse(resetsAt) - 90 * 60_000).toISOString();
     const { s, claude } = claudeWith([closeRow({ sampledAt, resetsAt })]);
     const html = render(claude, s);
     expect(html).toContain("read 1h early");
-    expect(html).toContain("1 hour before that reset");
+    expect(html).not.toContain("read 2h early");
     expect(html).not.toContain("2 hours");
   });
 
-  it("spaces every stale note under the strip", () => {
+  it("ports the history bar CSS from the mock", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
-    expect(css).toMatch(/\.weeks ~ \.cell-s \{[^}]*margin-top: var\(--s2\)/);
+    expect(css).toMatch(/\.hchart \{[^}]*display: flex/);
+    expect(css).toMatch(/\.hgrid \{[^}]*border-top: 1px dashed var\(--line-strong\)/);
+    expect(css).toMatch(/\.hbars \{[^}]*height: 84px/);
+    expect(css).toMatch(/\.hbar \.hatch \{[^}]*repeating-linear-gradient/);
+    expect(css).toMatch(/\.hbar \.solid \{[^}]*background: var\(--fill-out\)/);
+    expect(css).toMatch(/\.hlab b \{[^}]*display: block/);
+    expect(css).not.toContain(".weeks");
+  });
+
+  it("renders the hatched cap at 3% and omits it under 3% while the label keeps the leftover", () => {
+    const resetsAt = "2026-09-10T12:25:00+10:00";
+    const sampledAt = "2026-09-10T12:20:00+10:00";
+    const { s, claude: atCap } = claudeWith([
+      closeRow({ usedPct: 97, leftoverPct: 3, sampledAt, resetsAt }),
+    ]);
+    const capHtml = render(atCap, s);
+    expect(capHtml).toContain('class="hatch"');
+    expect(capHtml).toContain("height:3%");
+    expect(capHtml).toContain("height:97%");
+    const { s: s2, claude: underCap } = claudeWith([
+      closeRow({ usedPct: 98, leftoverPct: 2, sampledAt, resetsAt }),
+    ]);
+    const underHtml = render(underCap, s2);
+    expect(underHtml).not.toContain('class="hatch"');
+    expect(underHtml).toContain("height:98%");
+    expect(underHtml).toContain("2% leftover");
   });
 
   it("marks estimated closes and leaves on-time closes unmarked", () => {
@@ -497,6 +736,7 @@ describe("closed weeks drawer", () => {
     const html = render(onTime, s2);
     expect(html).not.toContain("read 3d early");
     expect(html).not.toContain("12% leftover (est.)");
+    expect(html).not.toContain("last reading");
   });
 });
 
@@ -515,22 +755,74 @@ describe("drawer windows", () => {
     })).replace(/<!-- -->/g, "");
   };
 
-  it("renders the badge once, in the header, and none in the Weekly section", () => {
+  it("renders the badge once, in the header, and none in the Limits section", () => {
     const html = render(monthlyStateSnapshotJson, "opencode-go");
     expect(html.match(/data-testid="pace-badge"/g)).toHaveLength(1);
     expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("Close provider details"));
-    expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("Weekly limit"));
+    expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("Limits"));
   });
 
-  it("stacks Weekly, 5h and Monthly for OpenCode Go and has no Monthly for Claude", () => {
+  it("keeps a long provider name and a long badge from crowding the header", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    const renamed = { ...go, displayName: "OpenCode Go — Personal Workspace Overflow" };
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: renamed,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      }),
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain('class="who"');
+    expect(html).toContain("OpenCode Go — Personal Workspace Overflow");
+    // The badge sits top-right on the title row, compact: "Not reporting"
+    // alone, with the reason kept out of the header (verdict and Notes
+    // carry it). The subtitle reads on its own line under the title.
+    expect(html).not.toContain('class="head-badge"');
+    expect(html.indexOf('data-testid="pace-badge"')).toBeGreaterThan(html.indexOf('class="sub"'));
+    expect(html.indexOf('data-testid="pace-badge"')).toBeLessThan(html.indexOf("drawer-close"));
+    const badgeSpan = html.slice(html.indexOf('data-testid="pace-badge"'));
+    expect(badgeSpan.slice(0, badgeSpan.indexOf("</span>"))).not.toContain("provider failed");
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.drawer-head \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.drawer-head \.pace \{[^}]*max-width: 100%/);
+  });
+
+  it("stacks monthly first inside one Limits section for OpenCode Go", () => {
     const go = render(monthlyStateSnapshotJson, "opencode-go");
-    const w = go.indexOf("<h3>Weekly limit</h3>");
-    const f = go.indexOf("<h3>5h Limit</h3>");
-    const m = go.indexOf("<h3>Monthly limit</h3>");
+    expect(go.match(/<h3>Limits<\/h3>/g)).toHaveLength(1);
+    expect(go).toContain("Monthly limit");
+    expect(go).toContain("Weekly limit");
+    // The quota tag rides the monthly title line; no "Rate limit" text.
+    expect(go).toContain("Quota reset");
+    expect(go).not.toContain("Rate limit");
+    expect(go.match(/quota-tag/g)).toHaveLength(1);
+    const w = go.indexOf("<h3>Limits</h3>");
+    const m = go.indexOf("Monthly limit");
+    const wk = go.indexOf("Weekly limit");
+    const f = go.indexOf("5h limit");
     expect(w).toBeGreaterThan(-1);
-    expect(f).toBeGreaterThan(w);
-    expect(m).toBeGreaterThan(f);
-    expect(render(exampleStateSnapshotJson, "claude")).not.toContain("Monthly limit");
+    // Monthly binds for Go, so it leads; weekly and 5h follow as secondary.
+    expect(m).toBeGreaterThan(w);
+    expect(wk).toBeGreaterThan(m);
+    expect(f).toBeGreaterThan(wk);
+    // Every row carries its reset line under the title, and every bar
+    // carries the elapsed mark (monthly, weekly, and reported 5h).
+    expect(go.match(/class="winrow-sub reset-line"/g)).toHaveLength(3);
+    expect(go.match(/class="mark"/g)).toHaveLength(3);
+    expect(go).toContain("95% used");
+    // The monthly forecast sits on the monthly row inside Limits.
+    const goLimits = go.slice(go.indexOf("<h3>Limits</h3>"), go.indexOf("prov-foot"));
+    expect(goLimits).toContain("5% of month left");
+    // A month-bound bar never hatches weekly-sized waste, and the legend
+    // drops the Projected waste entry with it.
+    expect(goLimits).not.toContain('data-testid="limit-hatch"');
+    expect(goLimits).not.toContain("Projected waste");
+    expect(goLimits).toContain("Time elapsed");
+    const claudeHtml = render(exampleStateSnapshotJson, "claude");
+    expect(claudeHtml).not.toContain("Monthly");
+    expect(claudeHtml).not.toContain('data-testid="drawer-monthly"');
   });
 
   it("names the binding month in the meta line", () => {
@@ -538,7 +830,7 @@ describe("drawer windows", () => {
     expect(monthlyMeta(near)).toBe(`Resets ${dateClockOf(near.quota.monthlyResetsAt)} · 5% of month left`);
     const full = JSON.parse(monthlyExhaustedStateSnapshotJson).providers[0];
     expect(monthlyMeta(full)).toBe(`Resets ${dateClockOf(full.quota.monthlyResetsAt)} · weekly leftover unused until then`);
-    expect(render(monthlyExhaustedStateSnapshotJson, "opencode-go")).toContain("100% used");
+    expect(render(monthlyExhaustedStateSnapshotJson, "opencode-go")).toContain("100%");
   });
 
   it("shows the calendar date for a monthly reset weeks out, not a bare weekday", () => {
@@ -550,19 +842,219 @@ describe("drawer windows", () => {
     expect(line).toMatch(/· 5% of month left$/);
   });
 
-  it("the copyable snapshot explains the badge it shows", () => {
+  it("the verdict explains the badge it shows for a monthly provider", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    expect(go.quota?.monthlyPct).toBe(95);
+    expect(go.quota?.monthlyStatus).toBe("ok");
+    expect(go.advisory?.bindingWindow).toBe("monthly");
+    expect(verdictFor(go, Date.parse(s.asOf)).detail).toBe("5% of month left");
+    const exhausted = toViewModel(JSON.parse(monthlyExhaustedStateSnapshotJson));
+    const goEx = exhausted.providers.find((p) => p.id === "opencode-go")!;
+    expect(verdictFor(goEx, Date.parse(exhausted.asOf))).toEqual({
+      tone: "neutral",
+      label: "• Not ranked",
+      detail: "unused until Tue Sep 15",
+    });
+  });
+
+  it("computes elapsed shares for the limit bars", () => {
+    const asOf = Date.parse("2026-09-06T06:00:00.000Z");
+    expect(windowElapsedPct("2026-09-01T00:00:00.000Z", "2026-09-11T00:00:00.000Z", asOf)).toBeCloseTo(52.5, 0);
+    expect(windowElapsedPct(null, "2026-09-11T00:00:00.000Z", asOf)).toBeNull();
+    expect(windowElapsedPct("2026-09-11T00:00:00.000Z", "2026-09-01T00:00:00.000Z", asOf)).toBeNull();
+    // Monthly: start is one calendar month before the reported reset.
     const go = JSON.parse(monthlyStateSnapshotJson).providers[0];
-    const snap = compactSnapshot(go, Date.parse(JSON.parse(monthlyStateSnapshotJson).asOf));
-    expect(snap).toMatchObject({ monthlyPct: 95, monthlyStatus: "ok", bindingWindow: "monthly" });
-    expect(snap.monthlyResetsAt).toBe("2026-09-15T12:00:00.000Z");
+    const monthly = monthlyElapsedPct(go, Date.parse(JSON.parse(monthlyStateSnapshotJson).asOf));
+    expect(monthly).not.toBeNull();
+    expect(monthly!).toBeGreaterThan(0);
+    expect(monthly!).toBeLessThan(100);
+    // 5h: derived from the reported reset only; absent reset means no mark.
+    const withReset = { quota: { fiveHourResetsAt: new Date(asOf + 2.5 * 3_600_000).toISOString() } };
+    expect(fiveHourElapsedPct(withReset as any, asOf)).toBeCloseTo(50, 0);
+    expect(fiveHourElapsedPct({ quota: {} } as any, asOf)).toBeNull();
   });
 
   it("drawerModel copies fiveHourPct and the monthly fields without synthesizing any", () => {
     const m = drawerModel(JSON.parse(monthlyStateSnapshotJson).providers[0]);
     expect(m.fiveHourPct).toBe(12);
+    expect(m.fiveHourResetsAt).toBe("2026-09-07T00:30:00.000Z");
     expect(m.monthlyPct).toBe(95);
     const claude = drawerModel(JSON.parse(exampleStateSnapshotJson).providers.find((p: any) => p.id === "claude"));
     expect("monthlyPct" in claude).toBe(false);
+  });
+});
+
+describe("burn-down pace chart", () => {
+  it("projects waste at reset when exhaustion lands after reset", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const geo = burnGeometry(kimi, Date.parse(s.asOf))!;
+    expect(geo).not.toBeNull();
+    expect(geo.exhaustsBeforeReset).toBe(false);
+    expect(geo.projXPct).toBe(100);
+    // 22% used + 3.142%/day * 7 days left lands at 44%.
+    expect(geo.projYPct).toBeCloseTo(44, 1);
+    expect(geo.usedPct).toBe(22);
+    expect(geo.elapsedPct).toBeCloseTo(50, 1);
+  });
+
+  it("projects exhaustion at 100% before reset when burn outruns the window", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const fast = {
+      ...kimi,
+      advisory: {
+        ...kimi.advisory!,
+        burnRate: 20,
+        daysToExhaust: 78 / 20,
+        status: "at risk" as const,
+        urgency: "slow down" as const,
+      },
+    };
+    const geo = burnGeometry(fast as any, Date.parse(s.asOf))!;
+    expect(geo.exhaustsBeforeReset).toBe(true);
+    expect(geo.projYPct).toBe(100);
+    expect(geo.projXPct).toBeGreaterThan(geo.elapsedPct);
+    expect(geo.projXPct).toBeLessThan(100);
+    // 7 days elapsed + 3.9 days to exhaust over a 14-day window.
+    expect(geo.projXPct).toBeCloseTo(((7 + 3.9) / 14) * 100, 1);
+  });
+
+  it("renders the Pace section between Windows and History with the shared pace grid", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: kimi,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      })
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain('aria-label="Pace"');
+    expect(html).toContain('class="burn"');
+    expect(html).toContain('class="pacecap"');
+    expect(html.indexOf('aria-label="Limits"')).toBeLessThan(html.indexOf('aria-label="Pace"'));
+    expect(html.indexOf('aria-label="Pace"')).toBeLessThan(html.indexOf("prov-foot"));
+    expect(html).toMatch(/Burn-down: 22 percent used at 50 percent elapsed/);
+    expect(html).toContain("forecast lands at 44 percent");
+    // The four-cell grid matches the card: labels and values in cells.
+    expect(html).toContain('class="pstats"');
+    expect(html).toContain("Avg pace");
+    expect(html).toContain("24h pace");
+    expect(html).toContain("Ideal pace");
+    expect(html).toContain("Resets in");
+    expect(html).toContain("3.1%/day");
+    expect(html).toContain("7d 0h");
+    // Axis titles, legend note, and elapsed readout on the now-line.
+    expect(html).toContain("Quota used (%)");
+    expect(html).toContain("Time elapsed in window (%)");
+    expect(html).toContain("Dot is now");
+    expect(html).toContain("Dashed is forecast");
+    expect(html).toContain("Weekly quota window");
+    expect(html).toContain("now · 50% elapsed");
+    expect(html).toContain("start · 0%");
+    expect(html).toContain("quota reset · 100%");
+    expect(html).toContain("hollow");
+    // Basis line keeps the pace wording under the grid.
+    expect(html).toMatch(/averaged over|Window avg|Measured/);
+  });
+
+  it("omits the hollow forecast ring when already at 100% used so the now dot stays solid", () => {
+    const s = toViewModel(JSON.parse(monthlyExhaustedStateSnapshotJson));
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    const html = renderToString(
+      React.createElement(BurnDown, { provider: go, asOf: s.asOf }),
+    );
+    expect(html).toContain('class="dot cap"');
+    expect(html).not.toContain("hollow");
+  });
+
+  it("plots the monthly quota window for monthly-bound OpenCode Go", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    const geo = burnGeometry(go, Date.parse(s.asOf))!;
+    expect(geo).not.toBeNull();
+    expect(geo.usedPct).toBe(95);
+    expect(geo.elapsedPct).toBeCloseTo(72, 0);
+    expect(geo.exhaustsBeforeReset).toBe(true);
+
+    const html = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: go,
+        asOf: s.asOf,
+        recommendation: s.recommendation,
+        onClose: () => {},
+      }),
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("Monthly quota window");
+    expect(html).toContain("now · 72% elapsed");
+    expect(html).toContain("8d 16h");
+    expect(html).toContain("averaged over 22.3 days of this window");
+  });
+
+  it("paints cap and ontrack tones with the mock classes plus ahead token", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const behindHtml = renderToString(
+      React.createElement(BurnDown, { provider: kimi, asOf: s.asOf })
+    );
+    expect(behindHtml).toContain('class="burn"');
+    expect(behindHtml).toMatch(/actual (behind|ontrack)/);
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.burn \{[^}]*width: 100%/);
+    expect(css).toMatch(/\.burn \.actual\.cap \{[^}]*stroke: var\(--danger\)/);
+    expect(css).toMatch(/\.burn \.actual\.behind \{[^}]*stroke: var\(--warn\)/);
+    expect(css).toMatch(/\.burn \.actual\.ontrack \{[^}]*stroke: var\(--ahead\)/);
+    expect(css).toMatch(/\.pacecap \.basis \{[^}]*display: block/);
+    expect(css).toMatch(/\.pstats \{[^}]*grid-template-columns: repeat\(4, 1fr\)/);
+  });
+
+  it("omits the entire Pace section when pace is unknown or the provider is excluded", () => {
+    const unknown = toViewModel(JSON.parse(unknownPaceStateSnapshotJson));
+    const unknownKimi = unknown.providers.find((p) => p.id === "kimi")!;
+    expect(burnGeometry(unknownKimi, Date.parse(unknown.asOf))).toBeNull();
+    const unknownHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: unknownKimi,
+        asOf: unknown.asOf,
+        recommendation: unknown.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(unknownHtml).not.toContain('aria-label="Pace"');
+    expect(unknownHtml).not.toContain('class="burn"');
+
+    const stale = toViewModel(JSON.parse(staleStateSnapshotJson));
+    const staleKimi = stale.providers.find((p) => p.id === "kimi")!;
+    expect(staleKimi.exclusionReason).toBe("stale");
+    expect(burnGeometry(staleKimi, Date.parse(stale.asOf))).toBeNull();
+    const staleHtml = renderToString(
+      React.createElement(ProviderDrawer, {
+        provider: staleKimi,
+        asOf: stale.asOf,
+        recommendation: stale.recommendation,
+        onClose: () => {},
+      })
+    );
+    expect(staleHtml).not.toContain('aria-label="Pace"');
+
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const noBurn = {
+      ...kimi,
+      advisory: { ...kimi.advisory!, burnRate: null, paceSource: "window-average" as const },
+    };
+    expect(burnGeometry(noBurn as any, Date.parse(s.asOf))).toBeNull();
+    const noElapsed = {
+      ...kimi,
+      quota: { ...kimi.quota!, periodStart: "not-a-date", resetsAt: "also-bad" },
+    };
+    expect(burnGeometry(noElapsed as any, Date.parse(s.asOf))).toBeNull();
+    expect(
+      renderToString(React.createElement(BurnDown, { provider: unknownKimi, asOf: unknown.asOf }))
+    ).toBe("");
   });
 });
 

@@ -481,6 +481,39 @@ describe("macos login service", () => {
     expect(order).toEqual(["bootout", "wait-released", "bootstrap", "enable"]);
   });
 
+  // Regression: bootout returns while the old record is still clearing.
+  // start() mistook that dying record for an already-loaded job (error 5 +
+  // print loaded), skipped the bootstrap, and readiness then timed out
+  // against a daemon that was never restarted. Restart must keep retrying
+  // the bootstrap until the record clears and the replacement loads.
+  it("restart does not mistake the dying record for a loaded job", async () => {
+    const home = mkHome();
+    let bootstraps = 0;
+    let prints = 0;
+    const run = (args: string[]): string => {
+      if (args[0] === "bootstrap") {
+        bootstraps += 1;
+        if (bootstraps === 1)
+          throw new Error("launchctl bootstrap failed: Bootstrap failed: 5: Input/output error");
+        return "";
+      }
+      if (args[0] === "print") {
+        prints += 1;
+        if (prints <= 2) return "state = running";
+        throw new Error("Could not find service");
+      }
+      return "";
+    };
+    await restart(
+      depsFor(home, run, {
+        waitReady: async () => true,
+        waitReleased: async () => true,
+        sleep: async () => {},
+      }),
+    );
+    expect(bootstraps).toBe(2);
+  });
+
   it("restart starts anyway, with a warning, when the port never frees", async () => {
     const home = mkHome();
     const rec = recorder();

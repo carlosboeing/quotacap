@@ -49,86 +49,45 @@ export function providerStatus(provider: ProviderView): SettingsStatus {
   }
 }
 
+export function statusPillClass(status: SettingsStatus): string {
+  if (status === "Ready") return "pill pill-ready";
+  if (status === "Failed" || status === "Invalid") return "pill pill-danger";
+  return "pill pill-warn";
+}
+
 export function ProvidersPanel({
   providers,
-  onRefresh,
   refreshing,
   onSetProviderEnabled,
 }: {
   providers: ProviderView[];
-  onRefresh: () => void;
   refreshing: boolean;
   onSetProviderEnabled?: (id: string, enabled: boolean) => void;
 }) {
   const listed = adapterProviders(providers);
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--s3)" }}>
-        <h3 style={{ fontSize: "var(--t-3)", fontWeight: 700, margin: 0 }}>Active Tool Connections</h3>
-        <button
-          type="button"
-          className="btn btn-quiet"
-          onClick={onRefresh}
-          disabled={refreshing}
-          style={{ fontSize: "var(--t-1)", padding: "4px 8px" }}
-        >
-          {refreshing ? "Polling…" : "Re-poll adapters"}
-        </button>
-      </div>
+      <h3 className="settings-h3">Active Tool Connections</h3>
 
-      <div
-        style={{
-          border: "1px solid var(--line)",
-          borderRadius: "var(--r-md)",
-          overflow: "hidden",
-          background: "var(--surface)",
-          marginBottom: "var(--s5)",
-        }}
-      >
-        {listed.map((p, i) => {
+      <div className="settings-list">
+        {listed.map((p) => {
           const status = providerStatus(p);
-          const isReady = status === "Ready";
           return (
-            <div
-              key={p.id}
-              style={{
-                padding: "10px 14px",
-                borderBottom: i < listed.length - 1 ? "1px solid var(--line)" : "none",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
+            <div key={p.id} className="settings-row">
               <div>
-                <b style={{ fontSize: "var(--t-3)" }}>{connectionName(p.id)}</b>
-                <span style={{ display: "block", fontSize: "var(--t-1)", color: "var(--ink-soft)" }}>
-                  {sourceLabel(p.quota?.source)}
-                </span>
+                <b className="settings-row-name">{connectionName(p.id)}</b>
+                <span className="settings-row-source">{sourceLabel(p.quota?.source)}</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", flex: "none" }}>
-                <span
-                  className={isReady ? "st-ready" : "st-todo"}
-                  style={{
-                    fontSize: "var(--t-1)",
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: isReady ? "var(--good-soft)" : "var(--warn-soft)",
-                    border: `1px solid ${isReady ? "var(--good)" : "var(--warn)"}`,
-                    color: isReady ? "var(--good)" : "var(--warn)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {connectionBadge(p)}
-                </span>
+              <div className="settings-row-actions">
+                <span className={statusPillClass(status)}>{connectionBadge(p)}</span>
                 {/* agy:3p shares the agy adapter and has no enablement of its own */}
                 {onSetProviderEnabled && p.id !== "agy:3p" && (
                   <button
                     type="button"
-                    className="btn btn-quiet"
+                    className="btn btn-quiet btn-sm"
                     aria-label={`${p.enabled ? "Disable" : "Enable"} ${connectionName(p.id)}`}
                     onClick={() => onSetProviderEnabled(p.id, !p.enabled)}
                     disabled={refreshing}
-                    style={{ fontSize: "var(--t-1)", padding: "4px 8px", flex: "none", marginLeft: "8px" }}
                   >
                     {p.enabled ? "Disable" : "Enable"}
                   </button>
@@ -141,4 +100,3 @@ export function ProvidersPanel({
     </div>
   );
 }
-

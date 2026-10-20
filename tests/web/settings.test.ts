@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect, vi } from "vitest";
@@ -8,7 +9,10 @@ import {
   connectionName,
   providerStatus,
   ProvidersPanel,
+  statusPillClass,
 } from "../../web/src/components/settings/ProvidersPanel.js";
+import { CliIntegrationPanel } from "../../web/src/components/settings/CliIntegrationPanel.js";
+import { DaemonPanel } from "../../web/src/components/settings/DaemonPanel.js";
 
 /** The unit harness has no DOM: find the row button in the element tree and invoke it. */
 function findRowButton(node: any, label: string): any {
@@ -61,7 +65,6 @@ describe("settings", () => {
     ];
     const props = {
       providers: providers as any,
-      onRefresh: () => {},
       refreshing: false,
       onSetProviderEnabled,
     };
@@ -80,7 +83,6 @@ describe("settings", () => {
     ];
     const props = {
       providers: providers as any,
-      onRefresh: () => {},
       refreshing: false,
       onSetProviderEnabled,
     };
@@ -90,5 +92,67 @@ describe("settings", () => {
     const tree = (ProvidersPanel as any)(props);
     expect(findRowButton(tree, "Disable Antigravity 3P")).toBeNull();
     expect(findRowButton(tree, "Disable Claude Code")).toBeTruthy();
+  });
+
+  it("paints Failed/Invalid pills red and keeps Stale/Reset passed amber, with no Re-poll button", () => {
+    expect(statusPillClass("Failed")).toContain("pill-danger");
+    expect(statusPillClass("Invalid")).toContain("pill-danger");
+    expect(statusPillClass("Stale")).toContain("pill-warn");
+    expect(statusPillClass("Reset passed")).toContain("pill-warn");
+    expect(statusPillClass("Ready")).toContain("pill-ready");
+    const base = {
+      displayName: "X",
+      harness: "H",
+      vendor: "V",
+      enabled: true,
+      quota: { source: "cli", weeklyPct: 10, resetsAt: "2026-09-14T06:00:00+10:00" },
+      lastAttempt: null,
+      ageMs: 60_000,
+    };
+    const providers = [
+      { ...base, id: "kimi", exclusionReason: "provider-failed" },
+      { ...base, id: "grok", exclusionReason: "invalid" },
+      { ...base, id: "claude", exclusionReason: "stale" },
+      { ...base, id: "codex", exclusionReason: "reset-passed" },
+    ] as any;
+    const html = renderToString(
+      React.createElement(ProvidersPanel, { providers, refreshing: false, onSetProviderEnabled: () => {} })
+    );
+    expect(html).toMatch(/pill pill-danger[^>]*>Failed/);
+    expect(html).toMatch(/pill pill-danger[^>]*>Invalid/);
+    expect(html).toMatch(/pill pill-warn[^>]*>Stale/);
+    expect(html).toMatch(/pill pill-warn[^>]*>Reset passed/);
+    expect(html).not.toContain("Re-poll adapters");
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.pill-danger \{[^}]*var\(--danger\)/);
+    expect(css).toMatch(/\.pill-warn \{[^}]*var\(--warn\)/);
+    // onRefresh is gone from the panel, drawer, and App call sites.
+    expect(fs.readFileSync("web/src/components/settings/ProvidersPanel.tsx", "utf8")).not.toContain("onRefresh");
+    expect(fs.readFileSync("web/src/components/settings/ProvidersPanel.tsx", "utf8")).not.toContain("Re-poll");
+    expect(fs.readFileSync("web/src/components/settings/SettingsDrawer.tsx", "utf8")).not.toContain("onRefresh");
+    expect(fs.readFileSync("web/src/App.tsx", "utf8")).not.toMatch(/<SettingsDrawer[^>]*onRefresh/);
+  });
+
+  it("CLI panel has copy buttons on snippets at t-2 and no CLI Status Commands block", () => {
+    const html = renderToString(React.createElement(CliIntegrationPanel));
+    expect(html).toContain("cli-wrap");
+    expect(html).toContain(">Copy<");
+    expect(html).toContain('aria-live="polite"');
+    expect(html).not.toContain("CLI Status Commands");
+    expect(html).not.toContain("quotacap status --sort");
+    expect(html).not.toContain("quotacap status --ascii");
+    const css = fs.readFileSync("web/src/theme.css", "utf8");
+    expect(css).toMatch(/\.cli-snippet \{[^}]*font-size: var\(--t-2\)/);
+  });
+
+  it("Daemon panel shows port/cadence as read-only rows with no disabled inputs or Storage Engine row", () => {
+    const html = renderToString(React.createElement(DaemonPanel)).replace(/<!-- -->/g, "");
+    expect(html).toContain("HTTP Service");
+    expect(html).toContain("Polling Cadence");
+    expect(html).toContain("Database File");
+    expect(html).toContain("127.0.0.1:8787");
+    expect(html).not.toContain("Storage Engine");
+    expect(html).not.toContain("<input");
+    expect(html).not.toContain("disabled");
   });
 });

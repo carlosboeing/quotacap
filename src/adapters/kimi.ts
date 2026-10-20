@@ -46,6 +46,7 @@ function parseKimiCleaned(cleaned: string, now: Date): ParsedQuota {
   // Degrade, don't fail (grok precedent): the percents are the critical
   // fields; an unparseable timestamp degrades to an estimate.
   let weeklyIso = parseResetText(`resets ${weeklyRaw}`, now);
+  const fiveHourResetsAt = f ? parseResetText(`resets ${f[2].trim()}`, now) ?? undefined : undefined;
   let estimated = false;
   if (!weeklyIso) {
     weeklyIso = new Date(now.getTime() + 7 * 86400000).toISOString();
@@ -89,6 +90,7 @@ function parseKimiCleaned(cleaned: string, now: Date): ParsedQuota {
     plan,
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt: weeklyIso,
     periodStart,
     source: "tui",
@@ -200,6 +202,7 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
 
   // 2. 5-hour window (from limits array)
   let sessionPct: number | null = null;
+  let fiveHourResetsAt: string | undefined;
   if (Array.isArray(u.limits)) {
     for (const item of u.limits) {
       if (item && typeof item === "object") {
@@ -209,6 +212,10 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
           const limit = Number(detail.limit);
           if (Number.isFinite(used) && Number.isFinite(limit) && limit > 0) {
             sessionPct = Math.round((used / limit) * 100);
+            if (typeof detail.resetTime === "string") {
+              const parsed = Date.parse(detail.resetTime);
+              if (Number.isFinite(parsed)) fiveHourResetsAt = new Date(parsed).toISOString();
+            }
             break;
           }
         }
@@ -233,6 +240,10 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
       const l5h = legacyUsages.limit_5h as Record<string, unknown> | undefined;
       if (l5h && typeof l5h.used_ratio === "number") {
         sessionPct = Math.round(l5h.used_ratio * 100);
+      }
+      if (l5h && typeof l5h.reset_time === "string" && !fiveHourResetsAt) {
+        const parsed = Date.parse(l5h.reset_time);
+        if (Number.isFinite(parsed)) fiveHourResetsAt = new Date(parsed).toISOString();
       }
     }
   }
@@ -272,6 +283,7 @@ export function parseKimiApiUsage(usagesBody: unknown, meBody?: unknown, now = n
     plan,
     weeklyPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt,
     periodStart,
     source: "api",

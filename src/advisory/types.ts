@@ -129,6 +129,9 @@ export interface StateSnapshot {
     /** Auth detected for these provider ids (detection-only; consumers intersect with the enabled set).
      *  Empty on daemons predating the field. */
     detectedProviders?: string[];
+    /** Login command for the locally detected OpenCode CLI version, or
+     *  null when the version could not be read. */
+    opencodeLoginCommand?: string | null;
   };
   providers: ProviderSnapshot[];
   recommendation: Recommendation;

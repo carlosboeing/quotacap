@@ -680,7 +680,7 @@ test("fault banner per excluded provider carries last-read age", async ({ page }
   await page.goto(stub.url);
   const banners = page.getByTestId("fault-banner");
   await expect(banners).toHaveCount(2);
-  await expect(banners.filter({ hasText: "Antigravity 3P" })).toContainText("Last read 3h ago");
+  await expect(banners.filter({ hasText: "Antigravity 3P" })).toContainText("Last read 3h 0m ago");
   await expect(banners.filter({ hasText: "Grok" })).toContainText("invalid reading");
   await expect(banners.filter({ hasText: "manual" })).toHaveCount(0);
 });
@@ -805,7 +805,7 @@ test("error states render from server fields", async ({ browser }) => {
   }
   // Fixture variants and the balanced state.
   const variants: Array<[string, unknown, RegExp]> = [
-    ["stale", JSON.parse(staleStateSnapshotJson), /Last read 3h ago/],
+    ["stale", JSON.parse(staleStateSnapshotJson), /Last read 3h 0m ago/],
     ["reset-passed", JSON.parse(resetPassedStateSnapshotJson), /awaiting fresh window/],
     ["balanced", balancedState(), /No subscription needs priority/],
   ];
@@ -844,7 +844,9 @@ test("windows row: one line, per-card chevron, never opens the drawer", async ({
   const tops = await line.locator(".unit").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
   expect(tops).toHaveLength(2);
   expect(new Set(tops).size).toBe(1);
-  await expect(line).toContainText("Mth");
+  await expect(line).toContainText("Wk");
+  await expect(line).toContainText("5h");
+  await expect(line).not.toContainText("Mth");
   await expect(page.getByTestId("provider-card-grok").locator(".wline")).toHaveCount(0);
   await expect(page.getByTestId("provider-card-claude").locator('[data-win="month"]')).toHaveCount(0);
   await expect(go).toContainText("→ 5% of month left");

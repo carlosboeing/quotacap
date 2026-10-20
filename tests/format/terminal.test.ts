@@ -7,6 +7,7 @@ import type {
   StateSnapshot,
 } from "../../src/advisory/types.js";
 import {
+  bindingLeftover,
   buildRow,
   compactSuffix,
   countdownText,
@@ -26,7 +27,9 @@ import {
 import {
   FIXED_NOW,
   RT,
+  boardMonthlyStateSnapshot,
   exampleStateSnapshot,
+  monthlyStateSnapshot,
   resetPassedStateSnapshot,
   staleStateSnapshot,
   unknownPaceStateSnapshot,
@@ -509,6 +512,31 @@ describe("buildRow composes one presentation row", () => {
     expect(row.countdown).toBe("—");
     expect(row.elapsedPct).toBeNull();
     expect(row.usedPct).toBe(30);
+  });
+  it("reads the monthly quota window for monthly-bound OpenCode Go across row, sort, and catalog leftover", () => {
+    const go = monthlyStateSnapshot.providers[0]!;
+    const row = buildRow(go, FIXED_NOW);
+    expect(row.usedPct).toBe(95);
+    expect(row.countdown).toBe("8d");
+    expect(row.elapsedPct).toBe(72);
+    expect(row.pace).toBe("4.3 avg");
+    expect(row.forecast).toBe("5% of month left");
+
+    const byUsed = sortProviders(boardMonthlyStateSnapshot.providers, "used-desc", "none").map((p) => p.id);
+    expect(byUsed[0]).toBe("opencode-go");
+    const byReset = sortProviders(boardMonthlyStateSnapshot.providers, "reset-asc", "none").map((p) => p.id);
+    expect(byReset.indexOf("opencode-go")).toBeGreaterThan(byReset.indexOf("kimi"));
+
+    expect(bindingLeftover(go.quota, FIXED_NOW)).toEqual({
+      leftoverPct: 5,
+      resetsAt: "2026-09-15T12:00:00.000Z",
+    });
+    expect(
+      bindingLeftover({ ...go.quota!, weeklyPct: 90, monthlyPct: 10 }, FIXED_NOW),
+    ).toEqual({
+      leftoverPct: 10,
+      resetsAt: "2026-09-10T00:00:00.000Z",
+    });
   });
 });
 

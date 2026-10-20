@@ -8,6 +8,7 @@ import { getAllLatest } from "../store/quotas.js";
 import { providerIdentity } from "../advisory/provider-names.js";
 import { readToken } from "../runtime/token.js";
 import { createServiceClient } from "../runtime/client.js";
+import { bindingLeftover } from "../format/rows.js";
 import { OFFLINE_LABEL } from "./snapshot-source.js";
 import { phase } from "./progress.js";
 import type { ClientCommandDeps, CreateClientOptions } from "./clients.js";
@@ -16,19 +17,20 @@ function projectModels(
   catalogs: Map<string, any>,
   quotaMap: Map<string, any>,
   providerNames?: Record<string, string>,
+  now: Date = new Date(),
 ) {
   const out: any[] = [];
   for (const [id, catalog] of catalogs) {
     const identity = providerIdentity(id, providerNames);
     const quota = quotaMap.get(id);
-    const leftoverPct = quota?.weeklyPct != null ? Math.round((100 - quota.weeklyPct) * 10) / 10 : null;
+    const binding = bindingLeftover(quota, now);
     out.push({
       id,
       displayName: identity.displayName,
       harness: identity.harness,
       vendor: identity.vendor,
-      leftoverPct,
-      resetsAt: quota?.resetsAt ?? null,
+      leftoverPct: binding.leftoverPct,
+      resetsAt: binding.resetsAt,
       catalog,
     });
   }

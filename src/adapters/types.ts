@@ -5,6 +5,8 @@ export interface Quota {
   weeklyPct: number;
   /** 5-hour rolling window. 0..100. Display only — never ranks. Was `sessionPct`. */
   fiveHourPct?: number;
+  /** When the 5-hour window resets, when the provider reports it. Display only. */
+  fiveHourResetsAt?: string;
   /** Included monthly envelope. 0..100. Absent means the provider has no monthly window. */
   monthlyPct?: number;
   monthlyResetsAt?: string;

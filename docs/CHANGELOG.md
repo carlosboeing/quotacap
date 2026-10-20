@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Drawer revamp and quota-window alignment: provider drawer reorganizes into verdict band, quota progress, rate limits (`5h` with recorded reset time and `7d` for monthly-bound providers), burn-down `Pace` chart (actual + forecast trajectory against ideal pace, callout lane, and legend), dynamic `History` bars (`Weekly quota window` or `Monthly quota window`), and provenance footer; Advice drawer adds provider cross-links and CLI copy button; Settings simplifies daemon and CLI panels.
+- Quota reset vs rate-limit windows: cards, table rows, reset rail (`Quota resets`), recommendation banner, CLI `status`/`advise`/`models`, and `lastCloses` history now follow each provider's binding quota reset window (`monthly` for monthly-bound providers such as OpenCode Go, `weekly` otherwise) while surfacing `fiveHourResetsAt` and `7d` rate limits separately.
 - OpenCode Go reads the bearer the v2 CLI stores in `opencode.db` (active `opencode-go` credential, else `opencode`: API key or OAuth access token) and falls back to the legacy `auth.json` key. The refresh token is not read.
 - Dashboard crash hardening: each subscription card, table row, and the provider drawer now degrades to fallback UI when its render throws, instead of blanking the whole dashboard. A fresh reading or a newly selected provider retries the render. The e2e suite fails on any uncaught page error, and the drawer canary opens every provider drawer across all fixture states.
 

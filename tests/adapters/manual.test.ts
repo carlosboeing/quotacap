@@ -25,6 +25,7 @@ describe("manual", () => {
     const q = parseManualUsage("kimi", text, now);
     expect(q.weeklyPct).toBe(16);
     expect(q.fiveHourPct).toBe(0);
+    expect(new Date(q.fiveHourResetsAt!).getTime()).toBe(now.getTime() + (3 * 3600 + 24 * 60) * 1000);
     const expected = now.getTime() + ((3 * 24 + 1) * 3600 + 24 * 60) * 1000;
     expect(new Date(q.resetsAt).getTime()).toBe(expected);
   });

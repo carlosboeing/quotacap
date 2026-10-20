@@ -30,6 +30,7 @@ import { providerIdentity } from "../advisory/provider-names.js";
 import { setProviderNameOverride, setProviderEnabled } from "../config.js";
 import { ensureCatalogs, catalogProviders, CATALOG_FAIL_COOLDOWN_MS } from "../catalog/index.js";
 import { getAllLatest } from "../store/quotas.js";
+import { bindingLeftover } from "../format/rows.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -92,6 +93,9 @@ export interface RuntimeContext {
   providerNames?: Record<string, string>;
   /** Detected-but-not-enabled opt-in providers, computed once at start. */
   detectedProviders?: string[];
+  /** Login command for the detected OpenCode CLI version, filled in
+   *  asynchronously after start; null until known. */
+  opencodeLoginCommand?: string | null;
   version: string;
   exec: string;
   now?: () => Date;
@@ -158,6 +162,7 @@ function snapshotOf(ctx: RuntimeContext): StateSnapshot {
         checkedAt: cache?.checkedAt ?? null,
       },
       detectedProviders: ctx.detectedProviders ?? [],
+      opencodeLoginCommand: ctx.opencodeLoginCommand ?? null,
     },
   });
 }
@@ -261,17 +266,18 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
 
   function projectModels(catalogs: Map<string, any>, quotaMap: Map<string, any>) {
     const out: any[] = [];
+    const now = ctx.now?.() ?? new Date();
     for (const [id, catalog] of catalogs) {
       const identity = providerIdentity(id, ctx.providerNames);
       const quota = quotaMap.get(id);
-      const leftoverPct = quota?.weeklyPct != null ? Math.round((100 - quota.weeklyPct) * 10) / 10 : null;
+      const binding = bindingLeftover(quota, now);
       out.push({
         id,
         displayName: identity.displayName,
         harness: identity.harness,
         vendor: identity.vendor,
-        leftoverPct,
-        resetsAt: quota?.resetsAt ?? null,
+        leftoverPct: binding.leftoverPct,
+        resetsAt: binding.resetsAt,
         catalog,
       });
     }
@@ -511,6 +517,7 @@ export function buildApp(ctx: RuntimeContext): FastifyInstance {
       plan: parsed.plan,
       weeklyPct: parsed.weeklyPct,
       fiveHourPct: parsed.fiveHourPct,
+      fiveHourResetsAt: parsed.fiveHourResetsAt,
       resetsAt: parsed.resetsAt,
       periodStart: parsed.periodStart,
       source: "manual",
