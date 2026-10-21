@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.54
 
-- Quota exhausted badge: providers with 100% used quota (0% remaining) display the badge `Quota exhausted` instead of `Cap risk`, distinguishing active exhaustion from an account that is burning fast but still has quota remaining.
+- Quota exhausted badge (#158): providers with 100% used quota (0% remaining) display the badge `Quota exhausted` instead of `Cap risk`, distinguishing active exhaustion from an account that is burning fast but still has quota remaining.
 
 ## 0.0.53
 

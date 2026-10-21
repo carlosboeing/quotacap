@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.54 — 2026-10-22 (quota exhausted badge)
+
+* Quota exhausted badge — 100% used quota displays the badge `Quota exhausted` across all cards, table rows, and terminal views instead of `Cap risk` (#158)
+
 ## Recently shipped — 0.0.53 — 2026-10-21 (muse quota exhaustion recovery, cap bar & expired 5h zeroing)
 
 * Muse quota exhaustion recovery — 100% weekly exhaustion error from CLI warm recovery is parsed into a 100% quota reading with its reset timestamp, bypassing doomed warm turn retries (#156)
