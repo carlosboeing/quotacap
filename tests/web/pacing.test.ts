@@ -367,3 +367,77 @@ describe("monthly headline", () => {
     expect(rowHtml).not.toContain("in 3d 4h");
   });
 });
+
+describe("non-reporting provider bar styling and headline", () => {
+  const asOf = "2026-10-20T04:43:00.000Z";
+  const baseProvider = {
+    id: "muse",
+    displayName: "Muse",
+    builtinName: null,
+    vendor: "Meta",
+    harness: "muse",
+    description: null,
+    enabled: true,
+    reporting: false,
+    stale: false,
+    resetPassed: false,
+    ageMs: 7200000,
+    evidence: [],
+    exclusionReason: "provider-failed" as const,
+    lastAttempt: {
+      provider: "muse",
+      attemptedAt: asOf,
+      completedAt: asOf,
+      succeededAt: "2026-10-20T02:46:00.000Z",
+      success: false,
+      failureCategory: "unknown" as const,
+      summary: "Muse usage currently unavailable",
+    },
+    lastSuccessAt: "2026-10-20T02:46:00.000Z",
+    advisory: null,
+    lastCloses: [],
+  };
+
+  it("100% used provider that failed poll paints cap red bar and shows Exhausted headline before reset", () => {
+    const provider = {
+      ...baseProvider,
+      quota: {
+        provider: "muse",
+        plan: "High Usage",
+        weeklyPct: 100,
+        usedPct: 100,
+        resetsAt: "2026-10-26T00:00:00.000Z", // future
+        periodStart: "2026-10-19T00:00:00.000Z",
+        source: "tui",
+        fetchedAt: "2026-10-20T02:46:00.000Z",
+      },
+    };
+    const html = renderToString(React.createElement(PaceBar, { provider, asOf })).replace(/<!-- -->/g, "");
+    expect(html).toContain("var(--fill-cap)");
+    expect(html).toContain("out-cap");
+    expect(html).toContain("Exhausted · Provider failed. Excluded from ranking.");
+  });
+
+  it("<100% used provider that failed poll stays neutral grey and unadorned failure headline", () => {
+    const provider = {
+      ...baseProvider,
+      quota: {
+        provider: "muse",
+        plan: "High Usage",
+        weeklyPct: 60,
+        usedPct: 60,
+        resetsAt: "2026-10-26T00:00:00.000Z", // future
+        periodStart: "2026-10-19T00:00:00.000Z",
+        source: "tui",
+        fetchedAt: "2026-10-20T02:46:00.000Z",
+      },
+    };
+    const html = renderToString(React.createElement(PaceBar, { provider, asOf })).replace(/<!-- -->/g, "");
+    expect(html).toContain("var(--fill-out)");
+    expect(html).not.toContain("var(--fill-cap)");
+    expect(html).toContain("out-none");
+    expect(html).toContain("→ Provider failed. Excluded from ranking.");
+    expect(html).not.toContain("Exhausted");
+  });
+});
+

@@ -183,8 +183,9 @@ export function usedPctOf(ps: ProviderSnapshot): number | null {
 
 export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
   const cells: RailCell[] = new Array<RailCell>(RAIL_CELLS).fill("unused");
-  if (ps.exclusionReason !== null) return cells;
   const u = bindingUsedPct(ps);
+  const is100Exhausted = typeof u === "number" && u >= 100 && !ps.resetPassed;
+  if (ps.exclusionReason !== null && !is100Exhausted) return cells;
   const used =
     typeof u === "number" && Number.isFinite(u)
       ? Math.min(RAIL_CELLS, Math.max(0, Math.round((u / 100) * RAIL_CELLS)))

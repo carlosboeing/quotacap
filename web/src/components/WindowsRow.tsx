@@ -57,9 +57,10 @@ export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[
       reset: left ? `in ${left}` : null });
   }
   if (typeof q.fiveHourPct === "number" && Number.isFinite(q.fiveHourPct)) {
-    // No adapter reports a 5h reset, so the 5h tag carries no time.
+    const passed = q.fiveHourResetsAt ? Date.parse(q.fiveHourResetsAt) <= asOfMs : false;
+    const effectivePct = passed ? 0 : q.fiveHourPct;
     units.push({ win: "five", tag: "5h", cardLabel: "5h limit", rowLabel: "5h",
-      pct: q.fiveHourPct, heat: heatOf(q.fiveHourPct, false), time: null, reset: null });
+      pct: effectivePct, heat: heatOf(effectivePct, false), time: null, reset: null });
   }
   if (!monthlyBound && q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
     const exhausted = q.monthlyStatus === "exhausted";

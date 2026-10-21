@@ -511,3 +511,21 @@ describe("diagnostic boundary and failure classification", () => {
     });
   });
 });
+
+describe("vendor 429 quota-exhausted wording", () => {
+  it("classifies Muse's exec 429 quota-exhausted line as rate_limit", () => {
+    const error = diagnosticError(new Error("Command failed: muse (code 1)"), {
+      source: "exec",
+      exitCode: 1,
+      stdout:
+        "agent loop failed: model failed: API error 429 [request_id=abc]: Subscription quota exhausted. Your usage window resets at 2026-10-26T00:00:00Z. (rate_limit_error)",
+    });
+    const failure = classifyFailure("muse", error);
+    expect(failure.diagnosticCode).toBe("rate_limit");
+    expect(failure.errorDetail).not.toContain("Unrecognized diagnostic text omitted");
+  });
+
+  it.each(["API error 429", "quota exhausted", "(rate_limit_error)"])("matches %s", (text) => {
+    expect(classifyFailure("muse", new Error(text)).diagnosticCode).toBe("rate_limit");
+  });
+});

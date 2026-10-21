@@ -5,6 +5,8 @@ import path from "node:path";
 import { formatInTimeZone } from "date-fns-tz";
 import {
   parseMuseTui,
+  parseMusePlan,
+  parseMuseQuotaExhausted,
   museAdapter,
   MUSE_UNAVAILABLE_MESSAGE,
   recoverSubscription,
@@ -12,6 +14,7 @@ import {
   WARM_SETTLE_MS,
   type RecoveryDeps,
 } from "../../src/adapters/muse.js";
+import { attachEvidence, diagnosticError } from "../../src/diagnostics/failure.js";
 import type { ParsedQuota } from "../../src/adapters/types.js";
 import { stripAnsi } from "../../src/adapters/pty.js";
 import * as ptyMod from "../../src/adapters/pty.js";
@@ -440,4 +443,66 @@ describe("recoverSubscription", () => {
     await expect(recoverSubscription(deps)).rejects.toThrow("muse: aborted");
     expect(usagePass).not.toHaveBeenCalled();
   });
+
+  it("recovers immediately when warmTurn returns 429 subscription quota exhausted", async () => {
+    const unavail = new Error(MUSE_UNAVAILABLE_MESSAGE);
+    attachEvidence(unavail, {
+      source: "pty",
+      stdout: "Session usage\nSubscription · Muse Code High Usage\nCurrently unavailable",
+    });
+
+    const warmError = diagnosticError(new Error("Command failed: muse exec 1+1 (code 1)"), {
+      source: "exec",
+      exitCode: 1,
+      stderr: "agent loop failed: model failed: API error 429: Subscription quota exhausted. Your usage window resets at 2026-10-26T00:00:00Z. (rate_limit_error)",
+    });
+
+    const usagePass = vi.fn();
+    const warmTurn = vi.fn().mockRejectedValue(warmError);
+    const logs: string[] = [];
+    const quota = await recoverSubscription({
+      unavailable: unavail,
+      usagePass,
+      warmTurn,
+      sleep: async () => {},
+      log: (m) => logs.push(m),
+      now: () => new Date("2026-10-20T04:43:00.000Z").getTime(),
+    });
+
+    expect(quota.provider).toBe("muse");
+    expect(quota.plan).toBe("High Usage");
+    expect(quota.weeklyPct).toBe(100);
+    expect(quota.fiveHourPct).toBe(0);
+    expect(quota.resetsAt).toBe("2026-10-26T00:00:00.000Z");
+    expect(quota.periodStart).toBe("2026-10-19T00:00:00.000Z");
+    expect(warmTurn).toHaveBeenCalledTimes(1);
+    expect(usagePass).not.toHaveBeenCalled();
+    expect(logs.some((l) => l.includes("subscription exhausted; parsed 100% quota"))).toBe(true);
+  });
 });
+
+describe("parseMuseQuotaExhausted", () => {
+  const NOW = new Date("2026-10-20T04:00:00Z");
+
+  it("parses 429 message with future ISO timestamp", () => {
+    const text =
+      "agent loop failed: model failed: API error 429: Subscription quota exhausted. Your usage window resets at 2026-10-26T00:00:00Z. (rate_limit_error)";
+    const q = parseMuseQuotaExhausted(text, "High Usage", NOW);
+    expect(q).not.toBeNull();
+    expect(q!.weeklyPct).toBe(100);
+    expect(q!.fiveHourPct).toBe(0);
+    expect(q!.plan).toBe("High Usage");
+    expect(q!.resetsAt).toBe("2026-10-26T00:00:00.000Z");
+    expect(q!.periodStart).toBe("2026-10-19T00:00:00.000Z");
+  });
+
+  it("returns null if text does not indicate exhausted quota", () => {
+    expect(parseMuseQuotaExhausted("some other error", "High Usage", NOW)).toBeNull();
+  });
+
+  it("returns null if reset timestamp is in the past", () => {
+    const text = "Subscription quota exhausted. Your usage window resets at 2026-10-19T00:00:00Z.";
+    expect(parseMuseQuotaExhausted(text, "High Usage", NOW)).toBeNull();
+  });
+});
+

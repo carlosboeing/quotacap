@@ -66,4 +66,19 @@ describe("windows row", () => {
     expect(row).toContain('class="wline"');
     expect(row).not.toContain("5h limit ·"); // the old provider-cell line is gone
   });
+
+  it("expires 5h window when fiveHourResetsAt has passed", () => {
+    const p = {
+      ...byId("claude"),
+      quota: {
+        ...byId("claude").quota!,
+        fiveHourPct: 82,
+        fiveHourResetsAt: new Date(asOfMs - 3600000).toISOString(),
+      },
+    };
+    const units = windowUnits(p, asOfMs);
+    const five = units.find((u) => u.win === "five")!;
+    expect(five.pct).toBe(0);
+    expect(five.heat).toBe("");
+  });
 });
