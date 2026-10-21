@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.0.53
 
-- Muse quota exhaustion recovery: when Muse Code weekly quota is 100% exhausted, `/usage` in the TUI becomes unavailable and CLI warm recovery returns 429 `Subscription quota exhausted. Your usage window resets at <ISO>`. The adapter parses this error directly into a 100% quota reading with its reset time instead of failing the provider and retrying doomed warm executions.
-- Exhausted window rendering: cards, tables, terminal rows, and provider drawers display 100% exhausted usage with a red cap bar even when the provider is temporarily not reporting, so long as the reset timestamp remains in the future. Non-reporting providers with `< 100%` usage remain neutral grey because unobserved usage may have changed.
-- Passed 5h rate limit window zeroing: when a provider's recorded 5h reset timestamp has passed, the secondary 5h sub-window resets to 0% used and removes red heat styling across the cards, table rows, and provider drawer.
+- Muse quota exhaustion recovery (#156): when Muse Code weekly quota is 100% exhausted, `/usage` in the TUI becomes unavailable and CLI warm recovery returns 429 `Subscription quota exhausted. Your usage window resets at <ISO>`. The adapter parses this error directly into a 100% quota reading with its reset time instead of failing the provider and retrying doomed warm executions.
+- Exhausted window rendering (#156): cards, tables, terminal rows, and provider drawers display 100% exhausted usage with a red cap bar even when the provider is temporarily not reporting, so long as the reset timestamp remains in the future. Non-reporting providers with `< 100%` usage remain neutral grey because unobserved usage may have changed.
+- Passed 5h rate limit window zeroing (#156): when a provider's recorded 5h reset timestamp has passed, the secondary 5h sub-window resets to 0% used and removes red heat styling across the cards, table rows, and provider drawer.
 
 ## 0.0.52
 

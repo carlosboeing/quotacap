@@ -1,5 +1,11 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.53 — 2026-10-21 (muse quota exhaustion recovery, cap bar & expired 5h zeroing)
+
+* Muse quota exhaustion recovery — 100% weekly exhaustion error from CLI warm recovery is parsed into a 100% quota reading with its reset timestamp, bypassing doomed warm turn retries (#156)
+* Exhausted window rendering — 100% exhausted quota displays with a red cap bar across cards, tables, terminal rows, and provider drawers even when temporarily not reporting before reset (#156)
+* Passed 5h rate limit zeroing — expired secondary 5h limits clamp to 0% used and clear heat styling across cards, table rows, and the provider drawer (#156)
+
 ## Recently shipped — 0.0.52 — 2026-10-20 (drawer revamp, quota-window alignment, opencode.db & error boundaries)
 
 * Drawer revamp & quota-window alignment — provider, advice, and settings drawers reorganized with verdict bands, `Pace` burn-down charts, and dynamic `Weekly`/`Monthly` history bars; cards, rows, `Quota resets` rail, CLI, and MCP align to each provider's binding quota reset window while keeping `5h` and `7d` rate limits distinct (#154)
