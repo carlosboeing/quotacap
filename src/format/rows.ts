@@ -4,7 +4,7 @@
 // pace rules stay in src/advisory and are never recomputed.
 import type { ProviderSnapshot } from "../advisory/types.js";
 
-export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted";
+export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted" | "Quota exhausted";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
 export type CompactSuffix = "" | "!" | "~" | "?";
@@ -210,6 +210,12 @@ export function stateWord(ps: ProviderSnapshot): StateWord {
   // A blocked month outranks every weekly verdict: weekly leftover cannot be
   // spent until the month resets.
   if (adv.bindingWindow === "monthly" && adv.bindingRemaining === 0) return "Monthly exhausted";
+  const u = bindingUsedPct(ps);
+  const isExhausted =
+    (typeof adv.bindingRemaining === "number" && adv.bindingRemaining <= 0) ||
+    (typeof adv.remaining === "number" && adv.remaining <= 0) ||
+    (typeof u === "number" && u >= 100);
+  if (isExhausted) return "Quota exhausted";
   if (adv.status === "at risk") return "Cap risk";
   if (adv.status === "watch") return "Watch";
   if (adv.status === "unknown") return "Measuring";

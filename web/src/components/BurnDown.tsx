@@ -20,6 +20,7 @@ export type BurnTone = "cap" | "behind" | "ontrack";
 export function burnTone(provider: ProviderView): BurnTone {
   const badge = paceBadge(provider);
   switch (badge) {
+    case "Quota exhausted":
     case "Cap risk":
     case "Monthly exhausted":
     case "Watch":

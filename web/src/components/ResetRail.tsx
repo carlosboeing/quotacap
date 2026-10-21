@@ -332,6 +332,7 @@ function pinPace(provider: ProviderView | undefined): { cls: string; color: stri
       return { cls: "pace-ahead", color: "var(--ahead)" };
     case "Watch":
       return { cls: "pace-watch", color: "var(--watch)" };
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return { cls: "pace-cap", color: "var(--danger)" };

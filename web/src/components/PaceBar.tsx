@@ -2,7 +2,7 @@ import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring" | "Monthly exhausted";
+export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring" | "Monthly exhausted" | "Quota exhausted";
 
 /**
  * Pace-state badge from the mapping table. Exclusion always wins; a blocked
@@ -15,6 +15,12 @@ export function paceBadge(provider: ProviderView): PaceBadge {
   const advisory = provider.advisory;
   if (!advisory) return "Not reporting";
   if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return "Monthly exhausted";
+  const quotaUsed = quotaUsedPct(provider);
+  const isExhausted =
+    (typeof advisory.bindingRemaining === "number" && advisory.bindingRemaining <= 0) ||
+    (typeof advisory.remaining === "number" && advisory.remaining <= 0) ||
+    (quotaUsed !== null && quotaUsed >= 100);
+  if (isExhausted) return "Quota exhausted";
   if (advisory.status === "at risk") return "Cap risk";
   if (advisory.status === "watch") return "Watch";
   if (advisory.status === "unknown") return "Measuring";
@@ -449,6 +455,7 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--ahead)";
     case "Watch":
       return "var(--watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--danger)";
@@ -469,6 +476,7 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-ahead)";
     case "Watch":
       return "var(--fill-watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--fill-cap)";
@@ -489,6 +497,7 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-ahead)";
     case "Watch":
       return "var(--edge-watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--edge-cap)";
@@ -505,6 +514,7 @@ export function outKind(badge: PaceBadge): "behind" | "watch" | "cap" | "ontrack
       return "behind";
     case "Watch":
       return "watch";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "cap";
@@ -529,7 +539,11 @@ export function hatchGradient(_badge?: PaceBadge): string {
  */
 export function badgeTitle(badge: PaceBadge, estimated: boolean): string | undefined {
   let title: string | undefined;
-  if (badge === "Cap risk") {
+  if (badge === "Quota exhausted") {
+    title = "Quota fully used until reset";
+  } else if (badge === "Monthly exhausted") {
+    title = "Monthly quota fully used until reset";
+  } else if (badge === "Cap risk") {
     title = "Burning faster than the window allows and ahead of elapsed time";
   } else if (badge === "Watch") {
     title = "Pace points at the cap, but position or the reset clock is uncertain";
@@ -557,7 +571,7 @@ export function Badge({
       ? "pace-ahead"
       : badge === "Watch"
       ? "pace-watch"
-      : badge === "Cap risk" || badge === "Monthly exhausted"
+      : badge === "Cap risk" || badge === "Monthly exhausted" || badge === "Quota exhausted"
       ? "pace-cap"
       : "pace-out"; // Not reporting and Measuring share the neutral style
   const title =

@@ -42,6 +42,13 @@ describe("pace badges", () => {
     expect(paceBadge({ exclusionReason: null, advisory: { status: "at risk", urgency: "on track" } } as any)).toBe(
       "Cap risk"
     );
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        quota: { weeklyPct: 100 },
+        advisory: { status: "at risk", urgency: "slow down", remaining: 0, bindingRemaining: 0 },
+      } as any),
+    ).toBe("Quota exhausted");
     expect(paceBadge({ exclusionReason: null, advisory: { status: "on track", urgency: "slow down" } } as any)).toBe(
       "Ahead of pace"
     );
