@@ -148,7 +148,16 @@ for (const [name, snap, snapJson] of FIXTURES) {
 
     it("(b) shares STATE words and compact entries per provider", async () => {
       const s = surfaces();
-      const vocab = ["On track", "Behind pace", "Ahead of pace", "Cap risk", "Measuring", "Not reporting"];
+      const vocab = [
+        "On track",
+        "Behind pace",
+        "Ahead of pace",
+        "Cap risk",
+        "Measuring",
+        "Not reporting",
+        "Monthly exhausted",
+        "Quota exhausted",
+      ];
       for (const p of snap.providers) {
         const state = stateWord(p);
         expect(vocab).toContain(state);
@@ -496,6 +505,21 @@ describe("parity: monthly windows", () => {
     p.advisory.status = "at risk";
     expect(stateWord(p)).toBe("Monthly exhausted");
     expect(paceBadge(p)).toBe("Monthly exhausted");
+    p.exclusionReason = "stale";
+    expect(stateWord(p)).toBe("Not reporting");
+    expect(paceBadge(p)).toBe("Not reporting");
+  });
+
+  it("Quota exhausted beats Cap risk and loses to Not reporting", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const p = s.providers.find((x: any) => x.id === "claude");
+    p.quota.weeklyPct = 100;
+    p.quota.usedPct = 100;
+    p.advisory.status = "at risk";
+    p.advisory.remaining = 0;
+    p.advisory.bindingRemaining = 0;
+    expect(stateWord(p)).toBe("Quota exhausted");
+    expect(paceBadge(p)).toBe("Quota exhausted");
     p.exclusionReason = "stale";
     expect(stateWord(p)).toBe("Not reporting");
     expect(paceBadge(p)).toBe("Not reporting");

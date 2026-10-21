@@ -64,6 +64,7 @@ const STATE_COLORS: Record<StateWord, string> = {
   "Ahead of pace": "\x1b[93m",
   "Watch": "\x1b[38;5;214m",
   "Cap risk": "\x1b[31m",
+  "Quota exhausted": "\x1b[31m",
   "Measuring": "\x1b[90m",
   "Not reporting": "\x1b[90m",
   "Monthly exhausted": "\x1b[31m",

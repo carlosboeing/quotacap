@@ -262,10 +262,15 @@ describe("STATE words follow the shared badge mapping", () => {
       expect(stateWord(p)).toBe("Not reporting");
     }
   });
-  it("at-risk status reads Cap risk", () => {
+  it("at-risk status reads Cap risk when quota remains", () => {
     expect(
-      stateWord(ps({ id: "x", quota: quota(), advisory: advisory({ status: "at risk", urgency: "slow down" }) })),
+      stateWord(ps({ id: "x", quota: quota(), advisory: advisory({ status: "at risk", urgency: "slow down", remaining: 40, bindingRemaining: 40 }) })),
     ).toBe("Cap risk");
+  });
+  it("exhausted remaining reads Quota exhausted", () => {
+    expect(
+      stateWord(ps({ id: "x", quota: quota({ weeklyPct: 100 }), advisory: advisory({ status: "at risk", urgency: "slow down", remaining: 0, bindingRemaining: 0 }) })),
+    ).toBe("Quota exhausted");
   });
   const urgencyCases: Array<[Advisory["urgency"], string]> = [
     ["burn now", "Behind pace"],
@@ -695,7 +700,7 @@ describe("wide table", () => {
       expect(line.slice(70, 72)).toBe("  ");
       expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
       expect(line.slice(81, 83)).toBe("  ");
-      expect(line.slice(83, 102)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting) *$/);
+      expect(line.slice(83, 102)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting|Monthly exhausted|Quota exhausted) *$/);
       expect(line.slice(98, 100)).toBe("  ");
       expect(line.slice(100).length).toBeGreaterThan(0);
     }

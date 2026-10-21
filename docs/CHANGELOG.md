@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Quota exhausted badge: providers with 100% used quota (0% remaining) display the badge `Quota exhausted` instead of `Cap risk`, distinguishing active exhaustion from an account that is burning fast but still has quota remaining.
+
 ## 0.0.53
 
 - Muse quota exhaustion recovery (#156): when Muse Code weekly quota is 100% exhausted, `/usage` in the TUI becomes unavailable and CLI warm recovery returns 429 `Subscription quota exhausted. Your usage window resets at <ISO>`. The adapter parses this error directly into a 100% quota reading with its reset time instead of failing the provider and retrying doomed warm executions.
