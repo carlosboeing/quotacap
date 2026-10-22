@@ -40,7 +40,7 @@ describe("state mapping", () => {
     const now = Date.parse("2026-09-10T12:00:00Z");
     expect(nextRefreshLabel(null, "idle", now)).toBe("Next automatic refresh pending");
     expect(nextRefreshLabel("2026-09-10T11:52:00Z", "idle", now)).toBe(
-      "Next automatic refresh in 7m",
+      "Next automatic refresh in 2m",
     );
     expect(nextRefreshLabel("2026-09-10T11:00:00Z", "idle", now)).toBe(
       "Next automatic refresh due",

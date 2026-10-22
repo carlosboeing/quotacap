@@ -481,7 +481,11 @@ describe("service lifecycle", () => {
   it("(i) logs initial poll with sanitized detail without leaking secret", async () => {
     const home = mkHome();
     const port = await getFreePort();
-    writeConfig(home, { port, enabledProviders: ["claude"] });
+    writeConfig(home, {
+      port,
+      enabledProviders: ["claude"],
+      knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
+    });
     const binDir = fakeBin(home, "claude");
     const logFile = path.join(dataDir(home), "logs", "service.log");
     const d = spawnDaemon(home, ["--port", String(port)], {

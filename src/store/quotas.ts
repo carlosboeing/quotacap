@@ -240,7 +240,7 @@ interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
 // (grok with no "Resets:" line, claude with an unparsed reset) derive
 // periodStart from the poll time, so it moves on every poll and exact equality
 // would discard every earlier reading in the same cycle.
-function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
+function currentCycle<T extends BurnPoint>(sorted: T[]): T[] {
   let start = 0;
   for (let i = 1; i < sorted.length; i++) {
     if (isWeeklyCycleBreak(sorted[i - 1], sorted[i])) start = i;
@@ -293,18 +293,26 @@ export function getExhaustedTimestamps(
   db: any,
   now = Date.now(),
 ): { weekly: Map<string, string>; monthly: Map<string, string> } {
-  const rows = db
-    .prepare(
-      `SELECT provider, used_pct, fetched_at, resets_at, monthly_pct, monthly_status FROM quotas`,
-    )
-    .all() as {
+  let rows: {
     provider: string;
     used_pct: number;
     fetched_at: string;
     resets_at: string | null;
-    monthly_pct: number | null;
-    monthly_status: string | null;
-  }[];
+    monthly_pct?: number | null;
+    monthly_status?: string | null;
+  }[] = [];
+  try {
+    rows = db
+      .prepare(
+        `SELECT provider, used_pct, fetched_at, resets_at, monthly_pct, monthly_status FROM quotas`,
+      )
+      .all() as any[];
+  } catch (e: any) {
+    if (!/no such column/i.test(String(e?.message ?? ""))) throw e;
+    rows = db
+      .prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`)
+      .all() as any[];
+  }
 
   const byProvider = new Map<string, ReadingPoint[]>();
   for (const r of rows) {
