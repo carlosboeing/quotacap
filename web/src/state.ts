@@ -41,6 +41,7 @@ export interface AdvisoryView {
   bindingWindow: "weekly" | "monthly";
   bindingRemaining: number;
   bindingDaysLeft: number;
+  exhaustedAt?: string | null;
 }
 
 export interface RecommendationView {

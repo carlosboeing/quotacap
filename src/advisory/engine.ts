@@ -13,13 +13,19 @@ const DAY_MS = 86400000;
  * when less than MIN_PACE_SPAN_DAYS has elapsed (annualizing a smaller
  * denominator fabricates verdicts).
  */
-export function averagePace(q: Quota, now = new Date()): number | null {
+export function averagePace(q: Quota, now = new Date(), exhaustedAt?: string | null): number | null {
   if (!q.periodStart) return null;
   const start = new Date(q.periodStart).getTime();
   if (Number.isNaN(start)) return null;
-  const elapsedDays = (now.getTime() - start) / DAY_MS;
-  if (elapsedDays < MIN_PACE_SPAN_DAYS) return null;
-  const pace = q.weeklyPct / elapsedDays;
+  const endMs =
+    exhaustedAt && q.weeklyPct >= 100
+      ? new Date(exhaustedAt).getTime()
+      : now.getTime();
+  if (Number.isNaN(endMs)) return null;
+  const elapsedDays = (endMs - start) / DAY_MS;
+  const effectiveDays = q.weeklyPct >= 100 ? Math.max(MIN_PACE_SPAN_DAYS, elapsedDays) : elapsedDays;
+  if (effectiveDays < MIN_PACE_SPAN_DAYS) return null;
+  const pace = q.weeklyPct / effectiveDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
 }
@@ -54,15 +60,22 @@ function elapsedPctOf(q: Quota, now: Date): number | null {
   return Math.min(100, Math.max(0, (elapsed / span) * 100));
 }
 
-export function computeAdvisory(q: Quota, recent: number | null, baseline: number | null, now = new Date()): Advisory {
+export function computeAdvisory(
+  q: Quota,
+  recent: number | null,
+  baseline: number | null,
+  now = new Date(),
+  exhaustedTimestamps?: string | { weekly?: string | null; monthly?: string | null } | null,
+): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.weeklyPct;
   const idealRate = remaining / daysLeft;
-  const avgPace = averagePace(q, now);
-  // Nothing left to burn: force the capped verdict even when the recent
-  // window is flat (burn 0 at 100% used must not read "on track").
-  const exhausted = remaining <= 0;
+  const weeklyExhaustedAt =
+    typeof exhaustedTimestamps === "string"
+      ? exhaustedTimestamps
+      : exhaustedTimestamps?.weekly ?? (q.weeklyPct >= 100 ? (q.fetchedAt ?? null) : null);
+  const avgPace = averagePace(q, now, weeklyExhaustedAt);
   const burnRate = blendForecast(recent, baseline);
 
   // Above every return: the unknown-pace path below is exactly what pool 2
@@ -86,6 +99,19 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       bindingDaysLeft = monthlyDaysLeft;
     }
   }
+
+  const monthlyExhaustedAt =
+    typeof exhaustedTimestamps === "object" && exhaustedTimestamps !== null
+      ? exhaustedTimestamps.monthly ?? (bindingRemaining <= 0 ? (q.fetchedAt ?? null) : null)
+      : null;
+
+  const bindingExhausted = bindingRemaining <= 0;
+  const exhausted = remaining <= 0 || bindingExhausted;
+  const exhaustedAt: string | null = bindingExhausted
+    ? (bindingWindow === "monthly" ? monthlyExhaustedAt : weeklyExhaustedAt)
+    : remaining <= 0
+      ? weeklyExhaustedAt
+      : null;
 
   // paceSource describes recent availability; the blend's composition is
   // carried by recentRate and baselineRate.
@@ -112,6 +138,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       bindingWindow,
       bindingRemaining,
       bindingDaysLeft,
+      exhaustedAt,
     };
   }
   if (exhausted) {
@@ -134,6 +161,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       bindingWindow,
       bindingRemaining,
       bindingDaysLeft,
+      exhaustedAt,
     };
   }
 
@@ -160,7 +188,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   else if(wastePct>10) urgency="save";
   if (estimated && urgency === "burn now") urgency = "use soon";
 
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft, exhaustedAt };
 }
 
 /**

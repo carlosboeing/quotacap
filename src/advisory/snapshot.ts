@@ -1,5 +1,5 @@
 import type { Quota, QuotaWire } from "../adapters/types.js";
-import { getAllLatest, getBurnRates, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
+import { getAllLatest, getBurnRates, getExhaustedTimestamps, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { getCatalogs } from "../store/catalogs.js";
 import { emptyCatalog } from "../catalog/types.js";
@@ -57,6 +57,7 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     bindingDaysLeft: Number.isFinite(adv.bindingDaysLeft)
       ? adv.bindingDaysLeft
       : Number.isFinite(adv.daysLeft) ? adv.daysLeft : 0,
+    exhaustedAt: typeof adv.exhaustedAt === "string" ? adv.exhaustedAt : null,
   };
 }
 
@@ -86,6 +87,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
   );
 
   const burnRates = getBurnRates(db, asOfMs);
+  const exhaustedTimestamps = getExhaustedTimestamps(db, asOfMs);
   const history = getHistoryBaseline(db);
   const catalogMap = getCatalogs(db);
 
@@ -179,7 +181,11 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       const recent = burnRates.get(id) ?? null;
       const baseline = baselineFor(history.get(id) ?? null, quota, now);
       pace = { recent, baseline };
-      rawAdvisory = computeAdvisory(quota, recent, baseline, now);
+      const exhausted = {
+        weekly: exhaustedTimestamps.weekly.get(id) ?? null,
+        monthly: exhaustedTimestamps.monthly.get(id) ?? null,
+      };
+      rawAdvisory = computeAdvisory(quota, recent, baseline, now, exhausted);
     }
 
     const advisory = normalizeAdvisory(rawAdvisory);

@@ -59,6 +59,8 @@ export interface Advisory {
   bindingRemaining: number;
   /** Days until the binding window resets. Equals `daysLeft` when weekly binds. */
   bindingDaysLeft: number;
+  /** ISO timestamp when the binding quota reached 100% in this window, or null if not exhausted. */
+  exhaustedAt?: string | null;
 }
 
 export interface Recommendation {
