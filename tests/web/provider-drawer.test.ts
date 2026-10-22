@@ -1018,6 +1018,61 @@ describe("burn-down pace chart", () => {
     expect(html).not.toContain("hollow");
   });
 
+  it("locks the burn slope, dot, and basis line to the time quota exhausted", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const muse = s.providers.find((p) => p.id === "kimi")!;
+    // Window: 2026-08-28 to 2026-09-04 (7 days = 168h)
+    // asOf: 2026-08-31T06:00:00Z (72h in = 42.86% elapsed)
+    // exhaustedAt: 2026-08-29T00:00:00Z (24h in = 14.29% elapsed)
+    const exhaustedMuse = {
+      ...muse,
+      id: "muse",
+      displayName: "Muse",
+      quota: {
+        ...muse.quota!,
+        provider: "muse",
+        weeklyPct: 100,
+        periodStart: "2026-08-28T00:00:00.000Z",
+        resetsAt: "2026-09-04T00:00:00.000Z",
+      },
+      advisory: {
+        ...muse.advisory!,
+        provider: "muse",
+        remaining: 0,
+        bindingRemaining: 0,
+        daysToExhaust: 0,
+        avgPace: 100,
+        burnRate: 100,
+        exhaustedAt: "2026-08-29T00:00:00.000Z",
+      },
+    };
+
+    const asOfMs = Date.parse("2026-08-31T00:00:00.000Z"); // 3.0 days elapsed (42.86%)
+    const geo = burnGeometry(exhaustedMuse as any, asOfMs)!;
+    expect(geo).not.toBeNull();
+    expect(geo.usedPct).toBe(100);
+    expect(geo.elapsedPct).toBeCloseTo(42.86, 1);
+    expect(geo.exhaustedElapsedPct).toBeCloseTo(14.29, 1);
+
+    const html = renderToString(
+      React.createElement(BurnDown, { provider: exhaustedMuse as any, asOf: "2026-08-31T00:00:00.000Z" }),
+    );
+    // Dot is placed at 14.29% elapsed, not 42.86%
+    // PLOT.left = 48, PLOT.right = 388, width = 340
+    // sx(14.2857) = 48 + 0.142857 * 340 = 96.6
+    expect(html).toContain('cx="96.6" cy="28"');
+    // Slope line ends at (96.6, 28)
+    expect(html).toContain('x2="96.6" y2="28" class="actual cap" data-testid="burn-actual"');
+    // Plateau line connects 96.6 to nowX (48 + 0.42857 * 340 = 193.7)
+    expect(html).toContain('x1="96.6" y1="28" x2="193.7" y2="28" class="actual cap" data-testid="burn-exhausted-plateau"');
+    // Forecast line extends from nowX (193.7) to reset (388)
+    expect(html).toContain('x1="193.7" y1="28" x2="388" y2="28" class="proj cap" data-testid="burn-proj"');
+    // Legend and basis
+    expect(html).toContain("Dot is quota exhausted");
+    expect(html).toContain("averaged over 1.0 days to reach 100%");
+    expect(html).toContain("Burn-down: 100 percent used at 14 percent elapsed, currently 43 percent elapsed");
+  });
+
   it("plots the monthly quota window for monthly-bound OpenCode Go", () => {
     const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
     const go = s.providers.find((p) => p.id === "opencode-go")!;

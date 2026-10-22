@@ -105,11 +105,11 @@ export function computeAdvisory(
       ? exhaustedTimestamps.monthly ?? (bindingRemaining <= 0 ? (q.fetchedAt ?? null) : null)
       : null;
 
-  const bindingExhausted = bindingRemaining <= 0;
-  const exhausted = remaining <= 0 || bindingExhausted;
-  const exhaustedAt: string | null = bindingExhausted
-    ? (bindingWindow === "monthly" ? monthlyExhaustedAt : weeklyExhaustedAt)
-    : remaining <= 0
+  const monthlyExhausted = bindingWindow === "monthly" && bindingRemaining <= 0;
+  const exhausted = remaining <= 0;
+  const exhaustedAt: string | null = monthlyExhausted
+    ? monthlyExhaustedAt
+    : exhausted
       ? weeklyExhaustedAt
       : null;
 

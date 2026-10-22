@@ -180,9 +180,19 @@ export function paceBasis(provider: ProviderView, asOfMs?: number): string {
   if (!isMonthlyBound(provider) && advisory.paceSource === "unknown") return "No current reading";
   const startIso = quotaWindowStartIso(provider);
   const start = startIso ? Date.parse(startIso) : NaN;
-  if (Number.isFinite(start) && Number.isFinite(asOfMs) && (asOfMs as number) > start) {
-    const days = ((asOfMs as number) - start) / 86_400_000;
-    if (days >= 0.1) return `averaged over ${days.toFixed(1)} days of this window`;
+  const isExhausted =
+    (provider.quota && provider.quota.weeklyPct >= 100) ||
+    (advisory.bindingRemaining <= 0);
+  const endMs =
+    isExhausted && advisory.exhaustedAt ? Date.parse(advisory.exhaustedAt) : asOfMs;
+  if (Number.isFinite(start) && Number.isFinite(endMs) && (endMs as number) > start) {
+    const days = ((endMs as number) - start) / 86_400_000;
+    if (days >= 0.1) {
+      if (isExhausted && advisory.exhaustedAt) {
+        return `averaged over ${days.toFixed(1)} days to reach 100%`;
+      }
+      return `averaged over ${days.toFixed(1)} days of this window`;
+    }
   }
   if (provider.evidence.includes("measured") || advisory.burnMeasured) return "Measured";
   if (advisory.paceSource === "window-average" || provider.evidence.includes("window-average")) {
@@ -388,9 +398,11 @@ export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
   }
   if (lane === "ease-off" || advisory.status === "at risk" || advisory.status === "watch") {
     const detail =
-      advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-        ? `exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-        : paceBadge(provider);
+      advisory.remaining <= 0 || paceBadge(provider) === "Quota exhausted"
+        ? "quota fully used"
+        : advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
+          ? `exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
+          : paceBadge(provider);
     return { tone: "ease-off", label: "↓ Ease off", detail };
   }
   return { tone: "neutral", label: "• On track", detail: forecastLine(provider) };

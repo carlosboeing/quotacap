@@ -138,7 +138,12 @@ export function quotaAvgPace(provider: ProviderView, asOfMs: number): number | n
   if (!startIso) return null;
   const startMs = Date.parse(startIso);
   if (!Number.isFinite(startMs) || !Number.isFinite(asOfMs)) return null;
-  const elapsedDays = (asOfMs - startMs) / 86_400_000;
+  const isExhausted = provider.advisory.bindingRemaining <= 0 || used >= 100;
+  const endMs =
+    isExhausted && provider.advisory.exhaustedAt
+      ? Date.parse(provider.advisory.exhaustedAt)
+      : asOfMs;
+  const elapsedDays = (endMs - startMs) / 86_400_000;
   if (elapsedDays < 0.25) return null;
   const pace = used / elapsedDays;
   return Number.isFinite(pace) ? Math.max(0, pace) : null;
