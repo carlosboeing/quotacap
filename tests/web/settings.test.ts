@@ -149,6 +149,7 @@ describe("settings", () => {
     const html = renderToString(React.createElement(DaemonPanel)).replace(/<!-- -->/g, "");
     expect(html).toContain("HTTP Service");
     expect(html).toContain("Polling Cadence");
+    expect(html).toContain("Every 10 minutes (default)");
     expect(html).toContain("Database File");
     expect(html).toContain("127.0.0.1:8787");
     expect(html).not.toContain("Storage Engine");

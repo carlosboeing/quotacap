@@ -28,7 +28,7 @@ export function DaemonPanel() {
           <code>127.0.0.1:{port ?? "8787"}</code>
         </dd>
         <dt>Polling Cadence</dt>
-        <dd>Every 15 minutes (default)</dd>
+        <dd>Every 10 minutes (default)</dd>
         <dt>Database File</dt>
         <dd>
           <code>~/.quotacap/quotacap.db</code>
