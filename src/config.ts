@@ -32,7 +32,7 @@ export const ProviderDisplayNameSchema = z
 
 const ConfigSchema = z.object({
   port: z.number().default(8787),
-  pollMinutes: z.number().default(15),
+  pollMinutes: z.number().default(10),
   catalogTtlHours: z.number().finite().positive().default(6),
   enabledProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),
   knownProviders: z.array(z.string()).default(["claude", "codex", "kimi", "grok", "agy", "muse"]),

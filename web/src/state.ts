@@ -253,7 +253,7 @@ export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
 }
 
 /** Default poll interval; matches `pollMinutes` in `src/config.ts`. */
-export const DEFAULT_POLL_INTERVAL_MS = 15 * 60 * 1000;
+export const DEFAULT_POLL_INTERVAL_MS = 10 * 60 * 1000;
 
 /** Health-strip copy for the next scheduled poll. */
 export function nextRefreshLabel(

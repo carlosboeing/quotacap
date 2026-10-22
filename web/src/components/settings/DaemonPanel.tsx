@@ -37,7 +37,7 @@ export function DaemonPanel() {
 
       <p className="settings-note">
         Change the port and polling cadence in <code>~/.quotacap/config.json</code> (<code>port</code>,{" "}
-        <code>pollMinutes</code>; defaults 8787 and 15), then restart the daemon. These controls stay
+        <code>pollMinutes</code>; defaults 8787 and 10), then restart the daemon. These controls stay
         read-only until the server offers a settings API.
       </p>
     </div>
