@@ -39,6 +39,7 @@ export interface BurnGeometry {
   projYPct: number;
   exhaustsBeforeReset: boolean;
   tone: BurnTone;
+  exhaustedElapsedPct: number | null;
 }
 
 /**
@@ -71,39 +72,70 @@ export function burnGeometry(provider: ProviderView, asOfMs: number): BurnGeomet
   if (burnRate === null || !Number.isFinite(burnRate)) return null;
   const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
   if (elapsedPct === null || !Number.isFinite(elapsedPct)) return null;
+
+  let exhaustedElapsedPct: number | null = null;
+  const isExhausted =
+    usedPct >= 100 ||
+    (monthly && advisory.bindingRemaining <= 0) ||
+    advisory.remaining <= 0;
+
+  if (isExhausted) {
+    if (advisory.exhaustedAt) {
+      const exMs = Date.parse(advisory.exhaustedAt);
+      const startIso = monthly ? provider.quota.periodStart : quotaWindowStartIso(provider);
+      const resetIso = monthly ? provider.quota.monthlyResetsAt : quotaResetsAt(provider);
+      const startMs = startIso ? Date.parse(startIso) : NaN;
+      const resetMs = resetIso ? Date.parse(resetIso) : NaN;
+      if (
+        Number.isFinite(exMs) &&
+        Number.isFinite(startMs) &&
+        Number.isFinite(resetMs) &&
+        resetMs > startMs
+      ) {
+        exhaustedElapsedPct = Math.min(
+          elapsedPct,
+          Math.max(0, ((exMs - startMs) / (resetMs - startMs)) * 100),
+        );
+      }
+    }
+    if (exhaustedElapsedPct === null) {
+      exhaustedElapsedPct = elapsedPct;
+    }
+  }
+
   let projXPct: number;
   let projYPct: number;
   let exhaustsBeforeReset = false;
-  if (
+  if (isExhausted) {
+    exhaustsBeforeReset = true;
+    projYPct = 100;
+    projXPct = 100;
+  } else if (
     daysToExhaust !== null &&
     Number.isFinite(daysToExhaust) &&
     daysToExhaust < daysLeft
   ) {
     exhaustsBeforeReset = true;
     projYPct = 100;
-    if (usedPct >= 100) {
-      projXPct = elapsedPct;
+    const startIso = quotaWindowStartIso(provider);
+    const resetIso = quotaResetsAt(provider);
+    const startMs = startIso ? Date.parse(startIso) : NaN;
+    const resetMs = resetIso ? Date.parse(resetIso) : NaN;
+    if (
+      Number.isFinite(startMs) &&
+      Number.isFinite(resetMs) &&
+      resetMs > startMs &&
+      Number.isFinite(asOfMs)
+    ) {
+      const totalDays = (resetMs - startMs) / 86_400_000;
+      const elapsedDays = (asOfMs - startMs) / 86_400_000;
+      projXPct = ((elapsedDays + daysToExhaust) / totalDays) * 100;
+    } else if (elapsedPct < 100 && daysLeft > 0) {
+      projXPct = elapsedPct + (daysToExhaust * (100 - elapsedPct)) / daysLeft;
     } else {
-      const startIso = quotaWindowStartIso(provider);
-      const resetIso = quotaResetsAt(provider);
-      const startMs = startIso ? Date.parse(startIso) : NaN;
-      const resetMs = resetIso ? Date.parse(resetIso) : NaN;
-      if (
-        Number.isFinite(startMs) &&
-        Number.isFinite(resetMs) &&
-        resetMs > startMs &&
-        Number.isFinite(asOfMs)
-      ) {
-        const totalDays = (resetMs - startMs) / 86_400_000;
-        const elapsedDays = (asOfMs - startMs) / 86_400_000;
-        projXPct = ((elapsedDays + daysToExhaust) / totalDays) * 100;
-      } else if (elapsedPct < 100 && daysLeft > 0) {
-        projXPct = elapsedPct + (daysToExhaust * (100 - elapsedPct)) / daysLeft;
-      } else {
-        projXPct = 100;
-      }
-      projXPct = Math.min(100, Math.max(elapsedPct, projXPct));
+      projXPct = 100;
     }
+    projXPct = Math.min(100, Math.max(elapsedPct, projXPct));
   } else {
     projXPct = 100;
     projYPct = usedPct + burnRate * daysLeft;
@@ -117,6 +149,7 @@ export function burnGeometry(provider: ProviderView, asOfMs: number): BurnGeomet
     projYPct,
     exhaustsBeforeReset,
     tone: burnTone(provider),
+    exhaustedElapsedPct,
   };
 }
 
@@ -124,6 +157,10 @@ export function burnAriaLabel(provider: ProviderView, geo: BurnGeometry): string
   const used = Math.round(geo.usedPct);
   const elapsed = Math.round(geo.elapsedPct);
   const window = `${quotaWindowName(provider).toLowerCase()} quota window`;
+  if (geo.exhaustedElapsedPct !== null && geo.usedPct >= 100) {
+    const exElapsed = Math.round(geo.exhaustedElapsedPct);
+    return `Burn-down: 100 percent used at ${exElapsed} percent elapsed, currently ${elapsed} percent elapsed (${window})`;
+  }
   if (geo.exhaustsBeforeReset) {
     return `Burn-down: ${used} percent used at ${elapsed} percent elapsed, forecast exhausts the quota before reset (${window})`;
   }
@@ -143,9 +180,19 @@ function fallbackBasis(provider: ProviderView, asOfMs: number): string {
   if (!isMonthlyBound(provider) && avg === null && recent !== null) return PACE_TIPS.recent;
   const startIso = quotaWindowStartIso(provider);
   const start = startIso ? Date.parse(startIso) : NaN;
-  if (Number.isFinite(start) && Number.isFinite(asOfMs) && asOfMs > start) {
-    const days = (asOfMs - start) / 86_400_000;
-    if (days >= 0.1) return `averaged over ${days.toFixed(1)} days of this window`;
+  const isExhausted =
+    (provider.quota && provider.quota.weeklyPct >= 100) ||
+    (advisory.bindingRemaining <= 0);
+  const endMs =
+    isExhausted && advisory.exhaustedAt ? Date.parse(advisory.exhaustedAt) : asOfMs;
+  if (Number.isFinite(start) && Number.isFinite(endMs) && endMs > start) {
+    const days = (endMs - start) / 86_400_000;
+    if (days >= 0.1) {
+      if (isExhausted && advisory.exhaustedAt) {
+        return `averaged over ${days.toFixed(1)} days to reach 100%`;
+      }
+      return `averaged over ${days.toFixed(1)} days of this window`;
+    }
   }
   if (provider.evidence.includes("measured") || advisory.burnMeasured) return "Measured";
   if (advisory.paceSource === "window-average" || provider.evidence.includes("window-average")) {
@@ -192,9 +239,13 @@ export function BurnDown({
   const tone = geo.tone;
   const nowX = sx(geo.elapsedPct);
   const nowY = sy(geo.usedPct);
+  const isExhausted = geo.exhaustedElapsedPct !== null && geo.usedPct >= 100;
+  const exhaustX = isExhausted ? sx(geo.exhaustedElapsedPct as number) : nowX;
+  const dotX = isExhausted ? exhaustX : nowX;
+  const dotY = isExhausted ? PLOT.top : nowY;
   const projX = sx(geo.projXPct);
   const projY = sy(geo.projYPct);
-  const showProjDot = Math.hypot(projX - nowX, projY - nowY) >= 3;
+  const showProjDot = !isExhausted && Math.hypot(projX - nowX, projY - nowY) >= 3;
   const label = burnAriaLabel(provider, geo);
   const windowName = quotaWindowName(provider);
   const elapsedLabel = `${Math.round(geo.elapsedPct)}% elapsed`;
@@ -246,14 +297,24 @@ export function BurnDown({
         <line
           x1={PLOT.left}
           y1={PLOT.bottom}
-          x2={n(nowX)}
-          y2={n(nowY)}
+          x2={n(isExhausted ? exhaustX : nowX)}
+          y2={n(isExhausted ? PLOT.top : nowY)}
           className={`actual ${tone}`}
           data-testid="burn-actual"
         />
+        {isExhausted && nowX > exhaustX && (
+          <line
+            x1={n(exhaustX)}
+            y1={PLOT.top}
+            x2={n(nowX)}
+            y2={PLOT.top}
+            className={`actual ${tone}`}
+            data-testid="burn-exhausted-plateau"
+          />
+        )}
         <line
           x1={n(nowX)}
-          y1={n(nowY)}
+          y1={n(isExhausted ? PLOT.top : nowY)}
           x2={n(projX)}
           y2={n(projY)}
           className={`proj ${tone}`}
@@ -261,7 +322,7 @@ export function BurnDown({
           data-proj-x={n(geo.projXPct)}
           data-proj-y={n(geo.projYPct)}
         />
-        <circle cx={n(nowX)} cy={n(nowY)} r={4.5} className={`dot ${tone}`} />
+        <circle cx={n(dotX)} cy={n(dotY)} r={4.5} className={`dot ${tone}`} data-testid="burn-dot" />
         {showProjDot && (
           <circle cx={n(projX)} cy={n(projY)} r={3.5} className={`dot ${tone} hollow`} />
         )}
@@ -274,7 +335,7 @@ export function BurnDown({
         <span className="legend-label">Legend</span>
         <span className="legend-item">
           <span className={`burn-swatch-dot ${tone}`} aria-hidden="true" />
-          Dot is now
+          {isExhausted ? "Dot is quota exhausted" : "Dot is now"}
         </span>
         <span className="legend-item">
           <span className={`burn-swatch-proj ${tone}`} aria-hidden="true" />

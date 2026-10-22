@@ -240,7 +240,7 @@ interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
 // (grok with no "Resets:" line, claude with an unparsed reset) derive
 // periodStart from the poll time, so it moves on every poll and exact equality
 // would discard every earlier reading in the same cycle.
-function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
+function currentCycle<T extends BurnPoint>(sorted: T[]): T[] {
   let start = 0;
   for (let i = 1; i < sorted.length; i++) {
     if (isWeeklyCycleBreak(sorted[i - 1], sorted[i])) start = i;
@@ -279,6 +279,83 @@ export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
     if (burn >= 0 && Number.isFinite(burn)) out.set(provider, burn);
   }
   return out;
+}
+
+interface ReadingPoint {
+  usedPct: number;
+  t: number;
+  resetsAt: string | null;
+  monthlyPct?: number | null;
+  monthlyStatus?: string | null;
+}
+
+export function getExhaustedTimestamps(
+  db: any,
+  now = Date.now(),
+): { weekly: Map<string, string>; monthly: Map<string, string> } {
+  let rows: {
+    provider: string;
+    used_pct: number;
+    fetched_at: string;
+    resets_at: string | null;
+    monthly_pct?: number | null;
+    monthly_status?: string | null;
+  }[] = [];
+  try {
+    rows = db
+      .prepare(
+        `SELECT provider, used_pct, fetched_at, resets_at, monthly_pct, monthly_status FROM quotas`,
+      )
+      .all() as any[];
+  } catch (e: any) {
+    if (!/no such column/i.test(String(e?.message ?? ""))) throw e;
+    rows = db
+      .prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`)
+      .all() as any[];
+  }
+
+  const byProvider = new Map<string, ReadingPoint[]>();
+  for (const r of rows) {
+    const t = new Date(r.fetched_at).getTime();
+    if (Number.isNaN(t) || t > now) continue;
+    const pts = byProvider.get(r.provider) ?? [];
+    pts.push({
+      usedPct: r.used_pct,
+      t,
+      resetsAt: r.resets_at,
+      monthlyPct: r.monthly_pct,
+      monthlyStatus: r.monthly_status,
+    });
+    byProvider.set(r.provider, pts);
+  }
+
+  const weekly = new Map<string, string>();
+  const monthly = new Map<string, string>();
+
+  for (const [provider, all] of byProvider) {
+    const sorted = currentCycle(all.sort((a, b) => a.t - b.t));
+    if (sorted.length === 0) continue;
+    const latest = sorted[sorted.length - 1];
+
+    if (latest.usedPct >= 100) {
+      const first = sorted.find((p) => p.usedPct >= 100);
+      if (first) weekly.set(provider, new Date(first.t).toISOString());
+    }
+
+    const latestMonthlyExhausted =
+      latest.monthlyStatus === "exhausted" ||
+      (typeof latest.monthlyPct === "number" && latest.monthlyPct >= 100);
+    if (latestMonthlyExhausted) {
+      const firstMonthly = sorted.find(
+        (p) =>
+          p.monthlyStatus === "exhausted" ||
+          (typeof p.monthlyPct === "number" && p.monthlyPct >= 100),
+      );
+      if (firstMonthly) monthly.set(provider, new Date(firstMonthly.t).toISOString());
+    }
+  }
+
+  return { weekly, monthly };
 }
 
 export function getHistoryBaseline(db:any, limit = 4): Map<string, number> {

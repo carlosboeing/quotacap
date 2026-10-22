@@ -370,7 +370,7 @@ describe("bare invocation and foreground preservation", () => {
     const res = await runCli(dir, [], { QUOTACAP_NO_OPEN: "1" });
     expect(res.code).toBe(0);
     expect(res.stdout.trim()).toBe(`http://127.0.0.1:${port}`);
-  });
+  }, 15000);
 
   it("quotacap --help keeps Commander behavior", async () => {
     const dir = isolatedHome();

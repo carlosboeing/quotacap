@@ -528,4 +528,29 @@ describe("recommend verified-first ranking", () => {
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.use).toBe("kimi");
   });
+
+  it("locks averagePace to exhaustedAt when 100% used rather than deflating over subsequent days", () => {
+    const start = new Date("2026-10-19T00:00:00.000Z");
+    const exhaustedAt = "2026-10-20T00:00:00.000Z"; // Exactly 1.0 day to reach 100%
+    const q = {
+      provider: "muse",
+      weeklyPct: 100,
+      periodStart: start.toISOString(),
+      resetsAt: "2026-10-26T00:00:00.000Z",
+      fetchedAt: "2026-10-22T00:00:00.000Z",
+    } as any;
+
+    // Checked 3 days later: without exhaustedAt, pace would be 100 / 3 = 33.3%/day
+    const now3DaysLater = new Date("2026-10-22T00:00:00.000Z");
+    const paceWithoutLock = averagePace(q, now3DaysLater);
+    expect(paceWithoutLock).toBeCloseTo(33.33, 1);
+
+    // With exhaustedAt locked to day 1, pace is preserved at 100%/day
+    const paceWithLock = averagePace(q, now3DaysLater, exhaustedAt);
+    expect(paceWithLock).toBeCloseTo(100.0, 1);
+
+    const adv = computeAdvisory(q, null, null, now3DaysLater, exhaustedAt);
+    expect(adv.exhaustedAt).toBe(exhaustedAt);
+    expect(adv.avgPace).toBeCloseTo(100.0, 1);
+  });
 });
