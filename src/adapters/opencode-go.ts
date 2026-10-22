@@ -50,7 +50,7 @@ export function openCodeGoConsentNotice(loginCommand?: string | null): string {
     : `with the command for your CLI version: v2 \`${OPENCODE_LOGIN_COMMAND_V2}\` or v1 \`${OPENCODE_LOGIN_COMMAND_V1}\``;
   return [
   `• What is read: Bearer [REDACTED] already stored ${loginClause} (v2 \`~/.local/share/opencode/opencode.db\` active credential, else legacy \`~/.local/share/opencode/auth.json\`; \`opencode-go\` then \`opencode\`).`,
-  "• Read frequency: in-memory, read-only once per poll (every 15 minutes by default).",
+  "• Read frequency: in-memory, read-only once per poll (every 10 minutes by default).",
   "• Request destination: sent only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage` to fetch `rolling/weekly/monthly` `percent` + `resetsAt`.",
   "• Never-list: never used to make chat or model requests, never written or rotated, never stored in the `quotacap` DB, never returned by the API or MCP, and never logged (errors show `[redacted]`).",
   "• Revocation instructions: revoke at `https://opencode.ai/auth` or `opencode providers logout opencode-go` and run `quotacap providers disable opencode-go` to stop polling.",
