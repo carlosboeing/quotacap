@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.56
+
+- Polling cadence copy (#162): updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence.
+
 ## 0.0.55
 
 - Pace chart exhaustion lock (#160): when a quota is 100% used, the burn-down pace chart locks its actual slope line and red dot to the moment quota exhausted (`exhaustedAt`) rather than moving with `now`. A flat plateau connects exhaustion time to `now` and projects a flat dashed forecast to the reset boundary. Average pace and basis wording calculate across the days taken to reach 100% instead of continuously deflating. The provider drawer banner renders `Quota exhausted · quota fully used`.

@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.56 — 2026-10-22 (daemon settings & consent cadence copy)
+
+* Polling cadence copy — updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence (#162)
+
 ## Recently shipped — 0.0.55 — 2026-10-22 (pace chart exhaustion lock & 10m polling default)
 
 * Pace chart quota exhaustion locking — 100% exhausted quota locks burn-down slope and dot to exhaustion time, draws a plateau line to now, projects a flat dashed line to reset, and locks average pace calculation to days to exhaust (#160)
