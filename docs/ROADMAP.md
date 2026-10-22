@@ -1,5 +1,10 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.55 — 2026-10-22 (pace chart exhaustion lock & 10m polling default)
+
+* Pace chart quota exhaustion locking — 100% exhausted quota locks burn-down slope and dot to exhaustion time, draws a plateau line to now, projects a flat dashed line to reset, and locks average pace calculation to days to exhaust (#160)
+* 10m default polling — daemon default polling interval lowered from 15 to 10 minutes while remaining configurable (#160)
+
 ## Recently shipped — 0.0.54 — 2026-10-22 (quota exhausted badge)
 
 * Quota exhausted badge — 100% used quota displays the badge `Quota exhausted` across all cards, table rows, and terminal views instead of `Cap risk` (#158)

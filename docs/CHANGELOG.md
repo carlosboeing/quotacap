@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.55
+
+- Pace chart exhaustion lock (#160): when a quota is 100% used, the burn-down pace chart locks its actual slope line and red dot to the moment quota exhausted (`exhaustedAt`) rather than moving with `now`. A flat plateau connects exhaustion time to `now` and projects a flat dashed forecast to the reset boundary. Average pace and basis wording calculate across the days taken to reach 100% instead of continuously deflating. The provider drawer banner renders `Quota exhausted · quota fully used`.
+- Polling interval default (#160): daemon and dashboard default polling interval lowered from 15 to 10 minutes (`pollMinutes`), configurable in `~/.quotacap/config.json`.
+
 ## 0.0.54
 
 - Quota exhausted badge (#158): providers with 100% used quota (0% remaining) display the badge `Quota exhausted` instead of `Cap risk`, distinguishing active exhaustion from an account that is burning fast but still has quota remaining.
