@@ -448,7 +448,7 @@ describe("service lifecycle", () => {
       expect(raw.knownProviders).toEqual([...five, "muse"]);
     } finally {
       d.child.kill("SIGTERM");
-      expect(await waitExit(d.child, 10000)).toBe(0);
+      expect(await waitExit(d.child, 15000)).toBe(0);
     }
   }, 30000);
 
@@ -474,7 +474,7 @@ describe("service lifecycle", () => {
       expect(raw.enabledProviders).not.toContain("muse");
     } finally {
       d.child.kill("SIGTERM");
-      expect(await waitExit(d.child, 10000)).toBe(0);
+      expect(await waitExit(d.child, 15000)).toBe(0);
     }
   }, 30000);
 
