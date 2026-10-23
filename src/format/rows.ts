@@ -201,7 +201,8 @@ export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
 
 // Shared STATE vocabulary (locked badge mapping): any exclusion reads
 // Not reporting; at-risk status beats urgency, then watch, then unknown;
-// on-track rows ahead of cumulative elapsed time revive Ahead of pace;
+// on-track rows ahead of cumulative elapsed time revive Ahead of pace,
+// except a finish inside the horizon tube, which stays On track;
 // urgency maps to the remaining pace words.
 export function stateWord(ps: ProviderSnapshot): StateWord {
   if (ps.exclusionReason !== null) return "Not reporting";
@@ -219,6 +220,7 @@ export function stateWord(ps: ProviderSnapshot): StateWord {
   if (adv.status === "at risk") return "Cap risk";
   if (adv.status === "watch") return "Watch";
   if (adv.status === "unknown") return "Measuring";
+  if (adv.status === "on track" && adv.closeToReset === true) return "On track";
   if (adv.aheadOfElapsed === true) return "Ahead of pace";
   switch (adv.urgency) {
     case "burn now":

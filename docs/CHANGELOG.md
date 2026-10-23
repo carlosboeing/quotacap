@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Pace verdict: a forecast that finishes near the reset reads On track while several days remain. The on-track band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain. Between that band and 15%, the row stays Watch, so a small miss still warns near the reset. A finish more than 15% early stays Cap risk when usage is ahead of elapsed time. An estimated reset inside the band stays Watch. The badge and the CLI state word stay On track for a finish inside the band, including when usage is slightly ahead of elapsed time. An on-track board with no spare quota reports "no avoidable waste" instead of the at-risk sentence.
+
 ## 0.0.56
 
 - Polling cadence copy (#162): updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence.

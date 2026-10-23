@@ -78,6 +78,12 @@ describe("pace badges", () => {
         advisory: { status: "on track", urgency: "on track", aheadOfElapsed: true },
       } as any),
     ).toBe("Ahead of pace");
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        advisory: { status: "on track", urgency: "on track", aheadOfElapsed: true, closeToReset: true },
+      } as any),
+    ).toBe("On track");
   });
 });
 

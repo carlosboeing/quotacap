@@ -45,7 +45,15 @@ const require = createRequire(import.meta.url);
 const DAY_MS = 86400000;
 
 // Mirrors src/advisory/types.ts; locked by tests/scripts/forecast-backtest.test.ts.
-export const DEFAULT_CONSTANTS = { K: 0.5, M: 0.15, T: 0.1 };
+export const DEFAULT_CONSTANTS = { K: 0.5, M: 0.15, T: 0.1, windowDays: 7, tubeFloor: 0.05 };
+
+// Mirrors paceTube in src/advisory/types.ts.
+function paceTube(daysLeft, margin, constants) {
+  const floor = constants.tubeFloor ?? DEFAULT_CONSTANTS.tubeFloor;
+  const windowDays = constants.windowDays ?? DEFAULT_CONSTANTS.windowDays;
+  if (!(daysLeft > 0) || !(margin > 0)) return floor;
+  return Math.min(margin, floor + margin * (daysLeft / windowDays));
+}
 
 // minimum data span before a pace annualizes — mirrors MIN_PACE_SPAN_DAYS.
 const MIN_PACE_SPAN_DAYS = 6 / 24;
@@ -115,6 +123,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured: false,
       paceSource: "unknown",
@@ -134,6 +143,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured,
       paceSource,
@@ -152,11 +162,14 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
   const wastePct = Math.max(0, remaining - burnRate * daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - M);
-  const marginal = !over && daysToExhaust < daysLeft * (1 + M);
+  const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;
+  const insideTube = missFrac <= paceTube(daysLeft, M, constants);
+  const inShell = !over && !insideTube && daysToExhaust < daysLeft * (1 + M);
   let status;
   if (over && gate) status = "at risk";
-  else if (over || marginal) status = "watch";
+  else if (over || inShell || (insideTube && estimated)) status = "watch";
   else status = "on track";
+  const closeToReset = status === "on track" && insideTube;
 
   let urgency = "on track";
   if (wastePct > 30 && daysLeft < 3) urgency = "burn now";
@@ -174,6 +187,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
     recentRate: recent,
     baselineRate: baseline,
     aheadOfElapsed,
+    closeToReset,
     avgPace,
     burnMeasured,
     paceSource,

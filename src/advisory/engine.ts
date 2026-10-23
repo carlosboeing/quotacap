@@ -1,6 +1,6 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis, BindingWindow } from "./types.js";
-import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL } from "./types.js";
+import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL, paceTube } from "./types.js";
 
 const DAY_MS = 86400000;
 
@@ -128,6 +128,7 @@ export function computeAdvisory(
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured: false,
       paceSource: "unknown",
@@ -151,6 +152,7 @@ export function computeAdvisory(
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured,
       paceSource,
@@ -167,6 +169,9 @@ export function computeAdvisory(
 
   // Red needs a deadband margin and a cumulatively-ahead position on a
   // verified clock; a missing or estimated clock caps at Watch.
+  // The on-track tube widens with time left: a near-full finish reads on
+  // track while the reset is days away, and the shell out to RISK_MARGIN
+  // stays Watch so a small miss still warns near the reset.
   const elapsed = elapsedPctOf(q, now);
   const estimated = q.resetsAtEstimated === true;
   const gate = elapsed !== null && !estimated && q.weeklyPct >= elapsed * (1 - GATE_TOL);
@@ -175,11 +180,14 @@ export function computeAdvisory(
   const wastePct = Math.max(0, remaining - burnRate*daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - RISK_MARGIN);
-  const marginal = !over && daysToExhaust < daysLeft * (1 + RISK_MARGIN);
+  const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;
+  const insideTube = missFrac <= paceTube(daysLeft);
+  const inShell = !over && !insideTube && daysToExhaust < daysLeft * (1 + RISK_MARGIN);
   let status: BurnStatus;
   if (over && gate) status = "at risk";
-  else if (over || marginal) status = "watch";
+  else if (over || inShell || (insideTube && estimated)) status = "watch";
   else status = "on track";
+  const closeToReset = status === "on track" && insideTube;
 
   let urgency:Urgency = "on track";
   if(wastePct>30 && daysLeft<3) urgency="burn now";
@@ -188,7 +196,7 @@ export function computeAdvisory(
   else if(wastePct>10) urgency="save";
   if (estimated && urgency === "burn now") urgency = "use soon";
 
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft, exhaustedAt };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, closeToReset, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft, exhaustedAt };
 }
 
 /**
@@ -276,10 +284,12 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     };
   }
 
-  // 3. No meaningful candidate (e.g. all quotas at risk, watch, or exhausted).
+  // 3. No meaningful candidate. A hot board names the amber and red tiers.
+  // An on-track board with nothing spare (a finish inside the tube) does not.
+  const hot = advisories.some(a => a.status === "at risk" || a.status === "watch");
   return {
     use: "none",
-    reason: "all quotas at risk, watch, or exhausted",
+    reason: hot ? "all quotas at risk, watch, or exhausted" : "no avoidable waste",
     wastePct: 0,
     idealRate: 0,
     recommendationBasis: "none" as RecommendationBasis,

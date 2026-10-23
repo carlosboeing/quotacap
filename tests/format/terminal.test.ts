@@ -68,6 +68,7 @@ function advisory(over: Partial<Advisory> = {}): Advisory {
     status: "on track" as const,
     wastePct: 60,
     urgency: "save" as const,
+    closeToReset: false,
     ...over,
   };
   return {
@@ -320,6 +321,15 @@ describe("STATE words follow the shared badge mapping", () => {
         }),
       ),
     ).toBe("Behind pace");
+    expect(
+      stateWord(
+        ps({
+          id: "x",
+          quota: quota(),
+          advisory: advisory({ status: "on track", urgency: "on track", aheadOfElapsed: true, closeToReset: true }),
+        }),
+      ),
+    ).toBe("On track");
   });
 });
 
