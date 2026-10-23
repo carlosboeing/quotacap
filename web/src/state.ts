@@ -30,6 +30,11 @@ export interface AdvisoryView {
   baselineRate?: number | null;
   /** Cumulative position versus elapsed time; null on excluded/unknown branches. */
   aheadOfElapsed?: boolean | null;
+  /**
+   * Forecast finish sits inside the horizon tube and the verdict is on track.
+   * Absent on advisories from a daemon older than the tube.
+   */
+  closeToReset?: boolean;
   /** Window-average pace (used % ÷ days elapsed); null before the window start is known. */
   avgPace: number | null;
   burnMeasured: boolean;

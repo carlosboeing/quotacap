@@ -47,6 +47,7 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     recentRate: adv.recentRate != null && Number.isFinite(adv.recentRate) ? adv.recentRate : null,
     baselineRate: adv.baselineRate != null && Number.isFinite(adv.baselineRate) ? adv.baselineRate : null,
     aheadOfElapsed: typeof adv.aheadOfElapsed === "boolean" ? adv.aheadOfElapsed : null,
+    closeToReset: adv.closeToReset === true,
     avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,

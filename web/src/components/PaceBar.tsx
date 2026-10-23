@@ -7,7 +7,8 @@ export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" |
 /**
  * Pace-state badge from the mapping table. Exclusion always wins; a blocked
  * month next; otherwise status "at risk" wins, then "watch", then "unknown";
- * on-track rows ahead of cumulative elapsed time read Ahead of pace;
+ * on-track rows ahead of cumulative elapsed time read Ahead of pace,
+ * except a finish inside the horizon tube, which stays On track;
  * otherwise urgency decides. No client thresholds.
  */
 export function paceBadge(provider: ProviderView): PaceBadge {
@@ -24,6 +25,7 @@ export function paceBadge(provider: ProviderView): PaceBadge {
   if (advisory.status === "at risk") return "Cap risk";
   if (advisory.status === "watch") return "Watch";
   if (advisory.status === "unknown") return "Measuring";
+  if (advisory.status === "on track" && advisory.closeToReset === true) return "On track";
   if (advisory.aheadOfElapsed === true) return "Ahead of pace";
   switch (advisory.urgency) {
     case "burn now":
