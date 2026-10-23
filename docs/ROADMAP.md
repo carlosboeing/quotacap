@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.57 — 2026-10-23 (on-track finish while days remain)
+
+* On-track pace horizon — a forecast that finishes near the reset reads On track while several days remain. The band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain, and a small miss near the reset stays Watch (#164)
+
 ## Recently shipped — 0.0.56 — 2026-10-22 (daemon settings & consent cadence copy)
 
 * Polling cadence copy — updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence (#162)
