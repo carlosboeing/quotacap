@@ -240,6 +240,7 @@
 
 ## Next
 
+* Short-window wait — a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the card, the table, the CLI row, and the advice line. Pace, forecast, and use-next stay on the reset window
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)

@@ -1347,6 +1347,28 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   gap: var(--s2);
 }
 
+/* Full short window. Separate from the pace badge and the forecast. */
+.rate-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.lrow .rate-wait { margin-top: 8px; }
+.drawer > .rate-wait {
+  margin: 0;
+  border-radius: 0;
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+
 /* Windows row: 5h and monthly tags under the weekly bar (treatment E). */
 .wline {
   display: flex;

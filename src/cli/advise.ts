@@ -3,6 +3,7 @@
 // task returns the identical any-basis recommendation.
 import type { Command } from "commander";
 import { projectRecommendationResponse } from "../advisory/snapshot.js";
+import { renderRecommendationSummary } from "../format/markdown.js";
 import { validateTask } from "../advisory/validate.js";
 import { ensureConfig, getDbPath } from "../config.js";
 import { createServiceClient } from "../runtime/client.js";
@@ -141,7 +142,7 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
           const rec = projectRecommendationResponse(emptySnapshot(t, cfg.providerNames), task);
           if (o.json) console.log(JSON.stringify(rec, null, 2));
           else {
-            console.log(`${rec.use}: ${rec.reason}`);
+            console.log(renderRecommendationSummary(emptySnapshot(t, cfg.providerNames), t));
             printVersionLine(o, VERSION, health?.version);
             printUpdateFooter(o, footer);
           }
@@ -156,7 +157,7 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
       const rec = projectRecommendationResponse(resolved.snapshot, task);
       if (o.json) console.log(JSON.stringify(rec, null, 2));
       else {
-        console.log(`${rec.use}: ${rec.reason}`);
+        console.log(renderRecommendationSummary(resolved.snapshot, t));
         const modelsLine = formatModelsLine(rec, t, cfg.catalogTtlHours);
         if (modelsLine) console.log(modelsLine);
         printVersionLine(o, VERSION, health?.version);

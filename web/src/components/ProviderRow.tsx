@@ -10,6 +10,7 @@ import {
 } from "./PaceBar.js";
 import { lastClose } from "./ClosedWeeks.js";
 import { WindowsRow } from "./WindowsRow.js";
+import { RateLimitNote } from "./RateLimitNote.js";
 
 export function ProviderRow({
   provider,
@@ -58,6 +59,7 @@ export function ProviderRow({
         {quota ? (
           <>
             <PaceBar provider={provider} asOf={asOf} />
+            <RateLimitNote provider={provider} asOf={asOf} />
             <WindowsRow provider={provider} asOf={asOf} variant="row" />
           </>
         ) : "—"}

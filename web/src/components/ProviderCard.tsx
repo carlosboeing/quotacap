@@ -15,6 +15,7 @@ import {
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lastClose } from "./ClosedWeeks.js";
 import { WindowsRow } from "./WindowsRow.js";
+import { RateLimitNote } from "./RateLimitNote.js";
 
 function resetsDate(provider: ProviderView): string | null {
   const resetIso = quotaResetsAt(provider);
@@ -77,6 +78,7 @@ export function ProviderCard({
 
       <div className="pcard-body">
         <PaceBar provider={provider} asOf={asOf} />
+        <RateLimitNote provider={provider} asOf={asOf} />
         <WindowsRow provider={provider} asOf={asOf} variant="card" />
 
         <PaceStats provider={provider} asOf={asOf} />

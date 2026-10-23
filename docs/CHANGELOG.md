@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Short-window wait: a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the dashboard, the CLI row, and the advice text agents read. Pace, forecast, and which provider to use next stay on the reset window.
+
 ## 0.0.57
 
 - Pace verdict (#164): a forecast that finishes near the reset reads On track while several days remain. The on-track band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain. Between that band and 15%, the row stays Watch, so a small miss still warns near the reset. A finish more than 15% early stays Cap risk when usage is ahead of elapsed time. An estimated reset inside the band stays Watch. The badge and the CLI state word stay On track for a finish inside the band, including when usage is slightly ahead of elapsed time. An on-track board with no spare quota reports "no avoidable waste" instead of the at-risk sentence.
