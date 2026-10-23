@@ -20,7 +20,7 @@ import {
 
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
-  { name:"get_recommendation", description:"Which provider to use next (same advice for every task)", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
+  { name:"get_recommendation", description:"Which provider to use next (same advice for every task). Also names a full 5h limit or a full week on a monthly plan, and when that limit clears.", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
   { name:"get_models", description:"Currently listed models per quota bucket (inventory, not a task ranking)", inputSchema:{type:"object",properties:{provider:{type:"string"}}} },
   { name:"forecast", description:"Burn (24h + window avg) vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
@@ -76,9 +76,10 @@ export async function handleTool(name:string, args:any){
     const task = validateTask(args?.task ?? "any");
     const { snapshot, source } = await resolveState();
     if (source === "offline") console.error(OFFLINE_LABEL);
+    const now = new Date();
     return {
       content: [
-        { type:"text", text: renderRecommendationSummary(snapshot) },
+        { type:"text", text: renderRecommendationSummary(snapshot, now) },
         { type:"text", text: JSON.stringify(projectRecommendationResponse(snapshot, task), null, 2) },
       ],
     };

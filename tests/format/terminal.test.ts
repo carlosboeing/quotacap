@@ -530,6 +530,7 @@ describe("buildRow composes one presentation row", () => {
       usedPct: 22,
       railCells: railCells(kimi, FIXED_NOW),
       pace: "3.1 avg",
+      wait: "",
     });
   });
   it("maps the invalid grok snapshot without throwing", () => {

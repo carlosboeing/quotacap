@@ -3,6 +3,7 @@
 // math lives here (countdowns, elapsed, rail cells); freshness, ranking, and
 // pace rules stay in src/advisory and are never recomputed.
 import type { ProviderSnapshot } from "../advisory/types.js";
+import { rateLimitWaits } from "./rate-limit-wait.js";
 
 export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted" | "Quota exhausted";
 export type RailCell = "used" | "tick" | "unused";
@@ -19,6 +20,12 @@ export interface Row {
   railCells: RailCell[];
   /** Compact pace pair without units, e.g. "10.6 avg · 0.0 24h". Surfaces label %/day once. */
   pace: string;
+  /**
+   * Full short window the user has to wait out, with the date and time it
+   * clears. Empty when the reset-window quota is the block, or no short
+   * window is full. Never changes `state` or `forecast`.
+   */
+  wait: string;
 }
 
 export const RAIL_CELLS = 20;
@@ -416,5 +423,6 @@ export function buildRow(ps: ProviderSnapshot, now: Date): Row {
     usedPct: usedPctOf(ps),
     railCells: railCells(ps, now),
     pace: paceText(ps, now),
+    wait: rateLimitWaits(ps, now).map((w) => w.text).join(" · "),
   };
 }

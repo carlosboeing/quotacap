@@ -36,6 +36,7 @@ import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { BurnDown } from "./BurnDown.js";
 import { ClosedWeeks } from "./ClosedWeeks.js";
 import { trackFillForPct } from "./WindowsRow.js";
+import { RateLimitNote } from "./RateLimitNote.js";
 import { laneOf } from "./Recommendation.js";
 import { renameProvider } from "../api.js";
 
@@ -941,6 +942,8 @@ export function ProviderDrawer({
           <b>{verdict.label}</b>
           {verdict.detail && <span>{verdict.detail}</span>}
         </div>
+
+        <RateLimitNote provider={provider} asOf={asOf} />
 
         {provider.description && <p className="drawer-desc">{provider.description}</p>}
 

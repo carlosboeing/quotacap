@@ -12,6 +12,7 @@ import {
   type SortKey,
   type StateWord,
 } from "./rows.js";
+import { rateLimitWaits } from "./rate-limit-wait.js";
 
 export interface RenderOptions {
   now: Date;
@@ -149,6 +150,9 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
     const state = row.state.padEnd(19);
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
+    const wait = row.wait
+      ? `${GAP}${opts.ascii ? "-" : "·"}${GAP}${paint(opts.ascii ? asciiText(row.wait) : row.wait, STATE_COLORS["Quota exhausted"])}`
+      : "";
     const main = [
       color ? colorProviderField(name, recommended, row.state) : name,
       used,
@@ -157,7 +161,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
       rail,
       countdown,
       paint(state, STATE_COLORS[row.state]),
-      forecast,
+      forecast + wait,
     ].join(GAP);
     const leftover = leftoverLine(p);
     return leftover ? `${main}\n${leftover}` : main;
@@ -184,9 +188,12 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
     const pace = opts.ascii ? asciiText(row.pace) : row.pace;
     const paceBits = row.pace === "—" ? pace : `${pace} %/day`;
     const state = color ? `${STATE_COLORS[row.state]}${row.state}${RESET}` : row.state;
+    const wait = row.wait
+      ? ` ${g.sep} ${color ? `${STATE_COLORS["Quota exhausted"]}${opts.ascii ? asciiText(row.wait) : row.wait}${RESET}` : opts.ascii ? asciiText(row.wait) : row.wait}`
+      : "";
     lines.push(
       `${color ? colorProviderField(name, recommended, row.state) : name} ${used} used ${g.sep} ${elapsed} elapsed ${g.sep} ${paceBits}`,
-      `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}`,
+      `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}${wait}`,
     );
     const close = p.lastCloses?.[0];
     if (close) {
@@ -201,8 +208,7 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
 
 // Always ASCII, never ANSI, even on a TTY: prompt-safe by construction.
 // Takes the fixed clock for signature parity; compact shows no ages.
-export function renderCompact(snapshot: StateSnapshot, _now?: Date): string {
-  void _now;
+export function renderCompact(snapshot: StateSnapshot, now: Date = new Date()): string {
   const use = snapshot.recommendation.use;
   const sorted = sortProviders(snapshot.providers, "recommended", use);
   const entries = sorted
@@ -213,5 +219,11 @@ export function renderCompact(snapshot: StateSnapshot, _now?: Date): string {
       return `[${p.id}:${used}%${compactSuffix(p)}]`;
     });
   if (entries.length === 0) return "(use: none)";
-  return `${entries.join(" | ")}  (use: ${use})`;
+  const waits = sorted.flatMap((p) => {
+    const found = rateLimitWaits(p, now);
+    if (found.length === 0) return [];
+    return [`${p.id} ${found.map((w) => w.text).join(", ")}`];
+  });
+  const base = `${entries.join(" | ")}  (use: ${use})`;
+  return waits.length === 0 ? base : `${base}  (wait: ${waits.join("; ")})`;
 }
