@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.58
 
-- Short-window wait: a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the dashboard, the CLI row, and the advice text agents read. Pace, forecast, and which provider to use next stay on the reset window.
+- Short-window wait (#166): a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the dashboard, the CLI row, and the advice text agents read. Pace, forecast, and which provider to use next stay on the reset window.
 
 ## 0.0.57
 

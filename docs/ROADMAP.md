@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.58 — 2026-10-24 (short-window wait)
+
+* Short-window wait — a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the card, the table, the CLI row, and the advice line. Pace, forecast, and use-next stay on the reset window (#166)
+
 ## Recently shipped — 0.0.57 — 2026-10-23 (on-track finish while days remain)
 
 * On-track pace horizon — a forecast that finishes near the reset reads On track while several days remain. The band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain, and a small miss near the reset stays Watch (#164)
@@ -240,7 +244,6 @@
 
 ## Next
 
-* Short-window wait — a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the card, the table, the CLI row, and the advice line. Pace, forecast, and use-next stay on the reset window
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)
