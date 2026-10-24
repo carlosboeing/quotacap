@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import type { WindowCloseView } from "../state.js";
 
 const STALE_EARLY_MS = 15 * 60 * 1000;
+// A drop seen this long before the scheduled reset means the provider reset early.
+const EARLY_RESET_MS = 60 * 60 * 1000;
 
 export function lastClose(provider: { lastCloses?: WindowCloseView[] }): WindowCloseView | null {
   const closes = provider.lastCloses;
@@ -22,6 +24,13 @@ export function closeIsStale(c: WindowCloseView): boolean {
   const sampledMs = Date.parse(c.sampledAt);
   if (!Number.isFinite(resetMs) || !Number.isFinite(sampledMs)) return true;
   return resetMs - sampledMs > STALE_EARLY_MS;
+}
+
+/** Milliseconds the provider reset ahead of schedule, or null for an on-schedule close. */
+export function closeResetEarlyMs(c: WindowCloseView): number | null {
+  if (c.resetsAtEstimated || !c.resetsAt) return null;
+  const early = Date.parse(c.resetsAt) - Date.parse(c.detectedAt);
+  return Number.isFinite(early) && early > EARLY_RESET_MS ? early : null;
 }
 
 export function closeSampleStamp(sampledAt: string): string | null {
@@ -68,7 +77,8 @@ function earlyWords(ms: number): string {
 /** Bar chart of closed quota windows, oldest left. The solid segment is
  * used at close, the hatched cap is the stored leftover; a cap under 3% is
  * label-only. One bar per real close, never a placeholder. Stale samples
- * name their earliness on the label; exact stamps stay in the tooltip. */
+ * name their earliness on the label; a provider's early reset is dated when
+ * it was seen and named as a reset; exact stamps stay in the tooltip. */
 export function ClosedWeeks({
   closes,
   windowName,
@@ -78,7 +88,7 @@ export function ClosedWeeks({
 }) {
   if (!Array.isArray(closes) || closes.length === 0) return null;
   const cells = [...closes].reverse();
-  const labels = cells.map((c) => closeDateLabel(c.resetsAt));
+  const labels = cells.map((c) => closeDateLabel(closeResetEarlyMs(c) !== null ? c.detectedAt : c.resetsAt));
   return (
     <section className="dsec" aria-label="History">
       {windowName ? (
@@ -96,7 +106,8 @@ export function ClosedWeeks({
         {cells.map((c, i) => {
           const used = Math.min(100, Math.max(0, c.usedPct));
           const leftover = Math.min(100, Math.max(0, c.leftoverPct));
-          const stale = closeIsStale(c);
+          const resetEarlyMs = closeResetEarlyMs(c);
+          const stale = resetEarlyMs === null && closeIsStale(c);
           const sampled = closeSampleStamp(c.sampledAt);
           const reset = c.resetsAt ? closeResetStamp(c.resetsAt) : null;
           const earlyMs = c.resetsAt ? Date.parse(c.resetsAt) - Date.parse(c.sampledAt) : NaN;
@@ -104,7 +115,8 @@ export function ClosedWeeks({
           const title = [
             `${c.usedPct}% used`,
             `${c.leftoverPct}% leftover`,
-            reset ? `reset ${reset}${est}` : "reset unknown",
+            resetEarlyMs !== null ? "provider reset early" : null,
+            reset ? `${resetEarlyMs !== null ? "scheduled reset" : "reset"} ${reset}${est}` : "reset unknown",
             stale && sampled ? `last reading ${sampled}` : null,
           ]
             .filter(Boolean)
@@ -122,6 +134,7 @@ export function ClosedWeeks({
                 <b>
                   {c.leftoverPct}% leftover{est}
                 </b>
+                {resetEarlyMs !== null && <>reset {earlyCompact(resetEarlyMs)} early</>}
                 {stale && Number.isFinite(earlyMs) && earlyMs > 0 && <>read {earlyCompact(earlyMs)} early</>}
               </div>
             </div>

@@ -135,4 +135,27 @@ describe("window closes", () => {
       reason: "both",
     });
   });
+
+  it("collapses usage drops inside one window to the newest close", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, row({ usedPct: 11, fetchedAt: "2026-09-05T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 9, fetchedAt: "2026-09-05T02:40:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 88, fetchedAt: "2026-09-10T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 0, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM window_closes`).get()).toMatchObject({ n: 2 });
+    const closes = getWindowCloses(db, "agy");
+    expect(closes).toHaveLength(1);
+    expect(closes[0]).toMatchObject({ usedPct: 88, reason: "both" });
+  });
+
+  it("drops a usage drop from the window still open when given the current window", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, row({ usedPct: 88, fetchedAt: "2026-09-10T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 0, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 43, fetchedAt: "2026-09-13T02:20:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 40, fetchedAt: "2026-09-13T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    const current = { resetsAt: "2026-09-17T02:25:00Z" };
+    expect(getWindowCloses(db, "agy").map((c) => c.usedPct)).toEqual([43, 88]);
+    expect(getWindowCloses(db, "agy", 4, "weekly", current).map((c) => c.usedPct)).toEqual([88]);
+  });
 });

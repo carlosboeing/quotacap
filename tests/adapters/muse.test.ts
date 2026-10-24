@@ -506,3 +506,19 @@ describe("parseMuseQuotaExhausted", () => {
   });
 });
 
+
+describe("parseMusePlan", () => {
+  it("reads the plan from a rendered panel row", () => {
+    expect(parseMusePlan("│ Subscription · Muse Code High Usage   │\n")).toBe("High Usage");
+  });
+
+  it("drops escape codes and the panel border from raw output", () => {
+    const raw =
+      "Subscription · Muse Code High Usage\x1b[22m\x1b[38;5;242;49m │\x1b[18;1H│ \x1b[38;5;252;49m \x1b[38;5;242;49m  \n";
+    expect(parseMusePlan(raw)).toBe("High Usage");
+  });
+
+  it("returns unknown without a subscription line", () => {
+    expect(parseMusePlan("Session usage\n")).toBe("unknown");
+  });
+});

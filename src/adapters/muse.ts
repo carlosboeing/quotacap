@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseResetText } from "./parse.js";
-import { runPty } from "./pty.js";
+import { runPty, stripAnsi } from "./pty.js";
 import { parseScreens, type GridDims } from "./vt.js";
 import { adapterSignal, trackedExecFile } from "../runtime/spawn.js";
 import { attachEvidence, getErrorEvidence } from "../diagnostics/failure.js";
@@ -102,8 +102,10 @@ export function museProbeDir(): string {
   return path.join(process.env.QUOTACAP_HOME ?? os.homedir(), ".quotacap", "muse-probe");
 }
 
-export function parseMusePlan(cleaned: string): string {
-  const planMatch = cleaned.match(/Subscription\s*·\s*Muse Code\s+(.+?)(?:\s{2,}|\r?\n|$)/i);
+// The recovery path hands over raw stdout, so escape codes are stripped here
+// and the match stops at the panel's box-drawing border.
+export function parseMusePlan(text: string): string {
+  const planMatch = stripAnsi(text).match(/Subscription\s*·\s*Muse Code\s+(.+?)(?:\s{2,}|\s*[\u2500-\u257F]|\r?\n|$)/i);
   return planMatch ? planMatch[1].trim() : "unknown";
 }
 

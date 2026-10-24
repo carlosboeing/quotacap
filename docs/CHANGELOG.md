@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- History accuracy: a usage drop inside the window still open no longer shows as last week's leftover, and a window that dropped more than once shows one bar. The history baseline prices each close over the days it actually ran, so an early provider reset no longer drags the forecast down; a close that ran under one day is skipped. History bars for an early reset are dated when the reset was seen and read "reset 2d early" instead of "read 2d early". MCP and HTTP `advisories` now cover only the providers in the ranking, so a disabled or stale provider no longer appears with an urgency. The Muse plan name no longer carries terminal escape codes.
+
 ## 0.0.58
 
 - Short-window wait (#166): a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the dashboard, the CLI row, and the advice text agents read. Pace, forecast, and which provider to use next stay on the reset window.

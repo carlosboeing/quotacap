@@ -234,12 +234,15 @@ describe("forecast-weeks fixture — recorded receipts", () => {
   it("keeps the blended spike on track where the current formula reds", () => {
     const spike = dayOf("bravo", "2026-08-12");
     expect(spike.label).toBe("clearly-not-capped");
-    expect(spike.candidate.burnRate).toBeCloseTo(13, 9); // 6 + 0.5 * (20 - 6)
+    // Baseline 42% over the 6.75 days the close was sampled across.
+    const baseline = 42 / 6.75;
+    const blended = baseline + 0.5 * (20 - baseline);
+    expect(spike.candidate.burnRate).toBeCloseTo(blended, 9);
     // The blend finishes inside the tube with days still left, so the amber
     // band no longer catches it. The raw 24h rate still exhausts early.
     expect(spike.candidate.status).toBe("on track");
     expect(spike.candidate.closeToReset).toBe(true);
-    expect(spike.candidate.daysToExhaust).toBeCloseTo(55 / 13, 6);
+    expect(spike.candidate.daysToExhaust).toBeCloseTo(55 / blended, 6);
     expect(spike.current.status).toBe("at risk");
     expect(spike.current.daysToExhaust).toBeCloseTo(55 / 20, 6);
   });

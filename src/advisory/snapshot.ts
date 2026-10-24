@@ -89,13 +89,13 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
 
   const burnRates = getBurnRates(db, asOfMs);
   const exhaustedTimestamps = getExhaustedTimestamps(db, asOfMs);
-  const history = getHistoryBaseline(db);
+  const history = getHistoryBaseline(db, 4, quotaMap);
   const catalogMap = getCatalogs(db);
 
   const providerSnapshots: ProviderSnapshot[] = [];
   const eligibleQuotas: Quota[] = [];
   const paceByProvider = new Map<string, { recent: number | null; baseline: number | null }>();
-  const allValidAdvisories: Advisory[] = [];
+  const eligibleAdvisories: Advisory[] = [];
 
   for (const id of unionIds) {
     const quota = quotaMap.get(id) ?? null;
@@ -202,11 +202,8 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence.push("estimated-reset");
     }
 
-    if (advisory) {
-      allValidAdvisories.push(advisory);
-    }
-
     if (enabled && quota !== null && exclusionReason === null) {
+      if (advisory) eligibleAdvisories.push(advisory);
       eligibleQuotas.push(quota);
       if (pace) paceByProvider.set(id, pace);
     }
@@ -234,12 +231,12 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence,
       exclusionReason,
       advisory,
-      lastCloses: getWindowCloses(db, id, 4, closeWindow),
+      lastCloses: getWindowCloses(db, id, 4, closeWindow, quota),
       catalog,
     });
   }
 
-  // 2. Recommendation: ranked from eligible providers only; advisories cover all valid rows
+  // 2. Recommendation: ranked from eligible providers only; advisories cover the same rows
   let recommendation: Recommendation;
   if (!eligibleQuotas.length) {
     recommendation = {
@@ -253,7 +250,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       catalogStatus: "unfetched",
       catalogFetchedAt: null,
       alternatives: [],
-      advisories: allValidAdvisories,
+      advisories: eligibleAdvisories,
     };
   } else {
     const rec = recommend(eligibleQuotas, "any", paceByProvider, now);
@@ -284,7 +281,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       catalogStatus: rec.use === "none" ? "unfetched" : pickCatalog.status,
       catalogFetchedAt: pickCatalog.fetchedAt,
       alternatives: alternativesWithCatalog,
-      advisories: allValidAdvisories,
+      advisories: eligibleAdvisories,
     };
   }
 
