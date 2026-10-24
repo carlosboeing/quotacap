@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson, boardMonthlyStateSnapshotJson } from "../fixtures/stable-state.js";
 import { laneOf, lanesFor } from "../../web/src/components/Recommendation.js";
-import { daysToDuration, forecastLine } from "../../web/src/components/PaceBar.js";
+import { forecastLine } from "../../web/src/components/PaceBar.js";
 import { toViewModel } from "../../web/src/state.js";
 import { Recommendation } from "../../web/src/components/Recommendation.js";
 import { sortProviders as webSort } from "../../web/src/components/SubscriptionList.js";
