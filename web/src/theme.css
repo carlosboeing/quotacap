@@ -59,8 +59,10 @@
   --warn-soft: oklch(0.965 0.055 90);
   --danger: oklch(0.49 0.17 25);
   --danger-soft: oklch(0.945 0.042 25);
-  --ahead: oklch(0.50 0.15 52);
-  --ahead-soft: oklch(0.955 0.05 52);
+  /* Ahead is informational (the forecast still reaches reset), so it sits
+     on a cool hue well away from Watch's amber-orange. */
+  --ahead: oklch(0.50 0.12 245);
+  --ahead-soft: oklch(0.955 0.035 245);
   --watch: oklch(0.50 0.15 40);
   --watch-soft: oklch(0.955 0.05 40);
   --scrim: oklch(0.25 0.02 292 / 0.42);
@@ -119,8 +121,8 @@ html[data-theme="dark"] {
   --warn-soft: oklch(0.29 0.06 88);
   --danger: oklch(0.75 0.15 25);
   --danger-soft: oklch(0.28 0.055 25);
-  --ahead: oklch(0.79 0.15 52);
-  --ahead-soft: oklch(0.29 0.06 52);
+  --ahead: oklch(0.79 0.11 245);
+  --ahead-soft: oklch(0.29 0.05 245);
   --watch: oklch(0.79 0.15 40);
   --watch-soft: oklch(0.29 0.06 40);
   --scrim: oklch(0.08 0.02 295 / 0.62);
@@ -2819,6 +2821,17 @@ footer.health .dot {
 @media (max-width: 480px) {
   .topbar-inner {
     padding: var(--s2) var(--s3);
+  }
+  /* Four pace cells do not fit a phone: two by two, rules between cells only. */
+  .pstats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pstats div:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .pstats div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
   }
 }
 

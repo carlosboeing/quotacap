@@ -12,6 +12,8 @@ const WINDOW_CAPACITY = 2;
 export const STEM_PX = 14;
 /** Layout width before the rail measures itself (dashboard content max). */
 const RAIL_REF_PX = 1072;
+/** Below this rail width separate pins collide (phone width), so pins group. */
+export const NARROW_RAIL_PX = 480;
 /** Gap kept between dodged pills. */
 const DODGE_GAP_PX = 6;
 /** Computed overlap tolerated before pins dodge; pills may touch slightly. */
@@ -410,7 +412,11 @@ export function ResetRail({
       resetsAt: quotaResetsAt(p),
       estimated: quotaResetEstimated(p),
     }));
-  const placement = placePins(rows, new Date(asOfMs), { grouped: mode === "grouped", railWidthPx: railWidth });
+  // A phone-width rail cannot fit separate labels; group without
+  // overwriting the stored choice, which returns on a wider screen.
+  const narrow = railWidth < NARROW_RAIL_PX;
+  const shownMode: RailMode = narrow ? "grouped" : mode;
+  const placement = placePins(rows, new Date(asOfMs), { grouped: shownMode === "grouped", railWidthPx: railWidth });
   const labels = dayLabels(asOfMs);
   const setModePersist = (next: RailMode) => {
     setOpenCluster(null);
@@ -436,10 +442,16 @@ export function ResetRail({
             )}
           </span>
           <div data-testid="rail-mode" role="group" aria-label="Reset pin grouping" className="seg">
-            <button type="button" aria-pressed={mode === "separate"} onClick={() => setModePersist("separate")}>
+            <button
+              type="button"
+              aria-pressed={shownMode === "separate"}
+              disabled={narrow}
+              title={narrow ? "Too narrow to separate pins" : undefined}
+              onClick={() => setModePersist("separate")}
+            >
               Separate
             </button>
-            <button type="button" aria-pressed={mode === "grouped"} onClick={() => setModePersist("grouped")}>
+            <button type="button" aria-pressed={shownMode === "grouped"} onClick={() => setModePersist("grouped")}>
               Grouped
             </button>
           </div>
