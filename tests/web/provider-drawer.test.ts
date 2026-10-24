@@ -744,6 +744,24 @@ describe("closed weeks drawer", () => {
     expect(html).not.toContain("2 hours");
   });
 
+  it("dates an early provider reset by when it happened and names it as a reset", () => {
+    // Seen 2d 21h before the scheduled reset: the provider reset early.
+    const { s, claude } = claudeWith([
+      closeRow({
+        sampledAt: "2026-09-07T13:00:00+10:00",
+        detectedAt: "2026-09-07T15:25:00+10:00",
+        resetsAt: "2026-09-10T12:25:00+10:00",
+      }),
+    ]);
+    const html = render(claude, s);
+    expect(html).toContain(`class="hlab">${label("2026-09-07T15:25:00+10:00")}`);
+    expect(html).not.toContain(`class="hlab">${label("2026-09-10T12:25:00+10:00")}`);
+    expect(html).toContain(`scheduled reset ${closeResetStamp("2026-09-10T12:25:00+10:00")}`);
+    expect(html).toContain("reset 2d early");
+    expect(html).not.toContain("read 2d early");
+    expect(html).toContain("provider reset early");
+  });
+
   it("ports the history bar CSS from the mock", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.hchart \{[^}]*display: flex/);

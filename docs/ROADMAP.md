@@ -244,6 +244,7 @@
 
 ## Next
 
+* History accuracy — finished windows only in `lastCloses` and the baseline, each close priced over the days it ran, early resets dated and named on the history bars, `advisories` limited to ranked providers, Muse plan name without escape codes
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)

@@ -107,6 +107,54 @@ export function upsertQuota(db:any, q:any){
   }
 }
 
+const DAY_MS = 86_400_000;
+// Verified resets this close together name one window: claude reports the
+// same reset as 20:59 and 21:00.
+const SAME_WINDOW_MS = 60 * 60 * 1000;
+// A close that ran under a day says too little about a week's pace.
+const MIN_CLOSE_SPAN_DAYS = 1;
+
+interface CloseWindow { resetsAt: string | null; resetsAtEstimated?: boolean }
+
+function sameVerifiedWindow(a: CloseWindow, b: CloseWindow): boolean {
+  if (a.resetsAtEstimated || b.resetsAtEstimated || !a.resetsAt || !b.resetsAt) return false;
+  const aMs = Date.parse(a.resetsAt);
+  const bMs = Date.parse(b.resetsAt);
+  return Number.isFinite(aMs) && Number.isFinite(bMs) && Math.abs(aMs - bMs) <= SAME_WINDOW_MS;
+}
+
+/**
+ * Finished windows only, one row each. A usage drop inside the window still
+ * open is not a close, and a window that dropped more than once keeps its
+ * newest row. Estimated resets pass through: their boundaries move per poll.
+ */
+function settleCloses<T extends CloseWindow>(newestFirst: T[], current?: CloseWindow | null): T[] {
+  const out: T[] = [];
+  for (const c of newestFirst) {
+    if (current && sameVerifiedWindow(c, current)) continue;
+    if (out.some((kept) => sameVerifiedWindow(kept, c))) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Daily pace over the days a close actually ran: a window the provider reset
+ * early, or one last sampled days before its reset, covers fewer than seven.
+ * Null under MIN_CLOSE_SPAN_DAYS. Estimated or undated closes keep used / 7.
+ */
+function closeDailyRate(c: CloseWindow & { usedPct: number; sampledAt: string; periodStart: string | null }): number | null {
+  const start = c.periodStart ? Date.parse(c.periodStart) : NaN;
+  const end = c.resetsAt ? Date.parse(c.resetsAt) : NaN;
+  const sampled = Date.parse(c.sampledAt);
+  if (c.resetsAtEstimated || !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(sampled)) {
+    return c.usedPct / 7;
+  }
+  const ranUntil = end - sampled <= SAME_WINDOW_MS ? end : Math.min(sampled, end);
+  const days = (ranUntil - start) / DAY_MS;
+  return days >= MIN_CLOSE_SPAN_DAYS ? c.usedPct / days : null;
+}
+
 function monthlyPeriodStart(resetIso: string | null | undefined): string | null {
   if (!resetIso) return null;
   const resetMs = Date.parse(resetIso);
@@ -121,6 +169,7 @@ export function getWindowCloses(
   provider: string,
   limit = 4,
   window: "weekly" | "monthly" = "weekly",
+  current?: CloseWindow | null,
 ): Array<{
   provider: string;
   plan: string | null;
@@ -201,13 +250,13 @@ export function getWindowCloses(
   }
   let rows: any[] = [];
   try {
-    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];
+    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC`).all(provider) as any[];
   } catch (e: any) {
     // A pre-observability database read offline is never migrated, so the
     // table can be absent. No table means no recorded closes.
     if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
   }
-  return rows.map((r) => ({
+  const mapped = rows.map((r) => ({
     provider: r.provider,
     plan: r.plan ?? null,
     usedPct: r.used_pct,
@@ -219,6 +268,7 @@ export function getWindowCloses(
     detectedAt: r.detected_at,
     reason: r.reason,
   }));
+  return settleCloses(mapped, current).slice(0, limit);
 }
 export function getLatestByProvider(db:any, provider:string){
   const row = db.prepare(`SELECT * FROM quotas WHERE provider=? ORDER BY fetched_at DESC LIMIT 1`).get(provider);
@@ -358,31 +408,50 @@ export function getExhaustedTimestamps(
   return { weekly, monthly };
 }
 
-export function getHistoryBaseline(db:any, limit = 4): Map<string, number> {
-  let rows: { provider: string; used_pct: number; resets_at_estimated: number | null }[] = [];
+export function getHistoryBaseline(
+  db: any,
+  limit = 4,
+  current?: Map<string, CloseWindow>,
+): Map<string, number> {
+  let rows: {
+    provider: string;
+    used_pct: number;
+    sampled_at: string;
+    period_start: string | null;
+    resets_at: string | null;
+    resets_at_estimated: number | null;
+  }[] = [];
   try {
-    rows = db.prepare(`SELECT provider, used_pct, resets_at_estimated FROM window_closes ORDER BY detected_at DESC, id DESC`).all() as any[];
+    rows = db.prepare(`SELECT provider, used_pct, sampled_at, period_start, resets_at, resets_at_estimated FROM window_closes ORDER BY detected_at DESC, id DESC`).all() as any[];
   } catch (e: any) {
     // A pre-observability database read offline is never migrated, so the
     // table can be absent. No table means no recorded closes.
     if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
   }
 
-  const byProvider = new Map<string, { usedPct: number; verified: boolean }[]>();
+  type Close = CloseWindow & { usedPct: number; sampledAt: string; periodStart: string | null };
+  const byProvider = new Map<string, Close[]>();
   for (const r of rows) {
     const closes = byProvider.get(r.provider) ?? [];
-    closes.push({ usedPct: r.used_pct, verified: !r.resets_at_estimated });
+    closes.push({
+      usedPct: r.used_pct,
+      sampledAt: r.sampled_at,
+      periodStart: r.period_start ?? null,
+      resetsAt: r.resets_at ?? null,
+      resetsAtEstimated: !!r.resets_at_estimated,
+    });
     byProvider.set(r.provider, closes);
   }
 
   const out = new Map<string, number>();
   for (const [provider, newestFirst] of byProvider) {
-    const pool = newestFirst.slice(0, limit);
+    const pool = settleCloses(newestFirst, current?.get(provider)).slice(0, limit);
     if (!pool.length) continue;
-    const verified = pool.filter((c) => c.verified);
+    const verified = pool.filter((c) => !c.resetsAtEstimated);
     const chosen = verified.length ? verified : pool;
-    const mean = chosen.reduce((sum, c) => sum + c.usedPct, 0) / chosen.length;
-    const rate = mean / 7;
+    const rates = chosen.map(closeDailyRate).filter((r): r is number => r !== null);
+    if (!rates.length) continue;
+    const rate = rates.reduce((sum, r) => sum + r, 0) / rates.length;
     if (Number.isFinite(rate)) out.set(provider, rate);
   }
   return out;
