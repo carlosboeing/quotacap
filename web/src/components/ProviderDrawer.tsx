@@ -29,6 +29,7 @@ import {
   resetClock,
   resetDateClock,
   timeLeft,
+  unusedLine,
   type PaceBadge,
   type PaceHeadline,
 } from "./PaceBar.js";
@@ -396,23 +397,10 @@ export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
   }
   const lane = laneOf(advisory, provider.exclusionReason);
   if (lane === "use-more") {
-    const waste =
-      advisory.wastePct !== null && Number.isFinite(advisory.wastePct)
-        ? Math.round(advisory.wastePct)
-        : null;
-    const quotaReset = quotaResetsAt(provider);
-    const left =
-      quotaReset && asOfMs !== undefined
-        ? timeLeft(quotaReset, asOfMs)
-        : Number.isFinite(advisory.bindingDaysLeft ?? advisory.daysLeft)
-          ? daysToDuration(advisory.bindingDaysLeft ?? advisory.daysLeft)
-          : null;
     const detail =
-      waste !== null && left
-        ? `${waste}% waste forecast · resets in ${left}`
-        : waste !== null
-          ? `${waste}% waste forecast`
-          : forecastLine(provider);
+      advisory.wastePct !== null && Number.isFinite(advisory.wastePct)
+        ? unusedLine(provider, advisory.wastePct)
+        : forecastLine(provider);
     return { tone: "use-more", label: "↑ Use more", detail };
   }
   if (lane === "ease-off" || advisory.status === "at risk" || advisory.status === "watch") {

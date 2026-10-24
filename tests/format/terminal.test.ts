@@ -140,15 +140,13 @@ function snap(providers: ProviderSnapshot[], use = "none"): StateSnapshot {
 
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-describe("countdowns (D7)", () => {
+describe("countdowns (D7, shared floored form)", () => {
   const cases: Array<[string, string | null, string]> = [
-    ["7d exact", RESETS, "7d"],
-    ["12h", new Date(FIXED_NOW.getTime() + 12 * HOUR).toISOString(), "12h"],
+    ["7d exact", RESETS, "7d 0h"],
+    ["12h", new Date(FIXED_NOW.getTime() + 12 * HOUR).toISOString(), "12h 0m"],
     ["45m", new Date(FIXED_NOW.getTime() + 45 * 60_000).toISOString(), "45m"],
-    ["48h boundary shows days", new Date(FIXED_NOW.getTime() + 48 * HOUR).toISOString(), "2d"],
-    ["47h shows hours", new Date(FIXED_NOW.getTime() + 47 * HOUR).toISOString(), "47h"],
-    ["90m boundary shows hours", new Date(FIXED_NOW.getTime() + 90 * 60_000).toISOString(), "1h"],
-    ["89m shows minutes", new Date(FIXED_NOW.getTime() + 89 * 60_000).toISOString(), "89m"],
+    ["one day shows days and hours", new Date(FIXED_NOW.getTime() + 47 * HOUR).toISOString(), "1d 23h"],
+    ["under a day shows hours and minutes", new Date(FIXED_NOW.getTime() + 89 * 60_000).toISOString(), "1h 29m"],
     ["past reset", new Date(FIXED_NOW.getTime() - HOUR).toISOString(), "passed"],
     ["unparseable", "not-a-date", "—"],
   ];
@@ -168,7 +166,7 @@ describe("countdowns (D7)", () => {
         ps({ id: "x", quota: quota({ resetsAtEstimated: true }) }),
         FIXED_NOW,
       ),
-    ).toBe("7d (est.)");
+    ).toBe("7d 0h (est.)");
   });
 });
 
@@ -336,13 +334,13 @@ describe("STATE words follow the shared badge mapping", () => {
 describe("forecast sentences (D7)", () => {
   it("reporting rows carry the engine waste sentence", () => {
     const kimi = exampleStateSnapshot.providers.find((p) => p.id === "kimi")!;
-    expect(forecastText(kimi, FIXED_NOW)).toBe("56% waste in 7.0d");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("56% unused at reset (Mon 14 Sep 06:00)");
   });
   it("unknown pace shows no numeric rate and no predicted-waste phrasing", () => {
     const kimi = unknownPaceStateSnapshot.providers.find((p) => p.id === "kimi")!;
     expect(kimi.advisory?.paceSource).toBe("unknown");
     const text = forecastText(kimi, FIXED_NOW);
-    expect(text).toBe("Measuring pace; 78% remains with 7.0d until reset");
+    expect(text).toBe("Measuring pace; 78% remains with 7d 0h until reset");
     expect(text).not.toMatch(/waste/i);
     expect(text).not.toMatch(/%\/day/);
     expect(text).not.toMatch(/per day/i);
@@ -354,7 +352,7 @@ describe("forecast sentences (D7)", () => {
       reporting: true,
       advisory: advisory({ status: "at risk", wastePct: 0, urgency: "slow down", daysToExhaust: 1.5 }),
     });
-    expect(forecastText(p, FIXED_NOW)).toBe("Exhausts in 1.5d — cap risk");
+    expect(forecastText(p, FIXED_NOW)).toBe("Exhausts in 1d 12h — cap risk");
   });
   it("a finish inside the tube lands near 100%, never 0% waste", () => {
     const p = ps({
@@ -399,18 +397,18 @@ describe("forecast sentences (D7)", () => {
         reporting: true,
         advisory: advisory({ status: "watch", urgency: "save", wastePct: 0, daysToExhaust: 2.1, ...over }),
       });
-    expect(forecastText(watch(), FIXED_NOW)).toBe("Exhausts in 2.1d — watch");
+    expect(forecastText(watch(), FIXED_NOW)).toBe("Exhausts in 2d 2h — watch");
     expect(forecastText(watch({ daysToExhaust: Infinity }), FIXED_NOW)).toBe("Near the cap — watch");
     expect(forecastText(watch({ daysToExhaust: null }), FIXED_NOW)).toBe("Near the cap — watch");
-    expect(forecastText(watch({}, true), FIXED_NOW)).toBe("Exhausts in 2.1d — watch (estimated)");
+    expect(forecastText(watch({}, true), FIXED_NOW)).toBe("Exhausts in 2d 2h — watch (estimated)");
   });
   it("estimated resets use the engine estimate vocabulary", () => {
     const codex = exampleStateSnapshot.providers.find((p) => p.id === "codex")!;
-    expect(forecastText(codex, FIXED_NOW)).toBe("20% estimated waste in 7.0d");
+    expect(forecastText(codex, FIXED_NOW)).toBe("20% unused at estimated reset (Mon 14 Sep 06:00)");
   });
   it("excluded rows carry the specific exclusion note", () => {
     const staleKimi = staleStateSnapshot.providers.find((p) => p.id === "kimi")!;
-    expect(forecastText(staleKimi, FIXED_NOW)).toBe("stale 3h ago");
+    expect(forecastText(staleKimi, FIXED_NOW)).toBe("stale 3h 0m ago");
     const passedKimi = resetPassedStateSnapshot.providers.find((p) => p.id === "kimi")!;
     expect(forecastText(passedKimi, FIXED_NOW)).toBe("reset passed — awaiting fresh window");
     const grok = exampleStateSnapshot.providers.find((p) => p.id === "grok")!;
@@ -542,8 +540,8 @@ describe("buildRow composes one presentation row", () => {
     expect(buildRow(kimi, FIXED_NOW)).toEqual({
       id: "kimi",
       state: "Behind pace",
-      countdown: "7d",
-      forecast: "56% waste in 7.0d",
+      countdown: "7d 0h",
+      forecast: "56% unused at reset (Mon 14 Sep 06:00)",
       elapsedPct: 50,
       usedPct: 22,
       railCells: railCells(kimi, FIXED_NOW),
@@ -564,7 +562,7 @@ describe("buildRow composes one presentation row", () => {
     const go = monthlyStateSnapshot.providers[0]!;
     const row = buildRow(go, FIXED_NOW);
     expect(row.usedPct).toBe(95);
-    expect(row.countdown).toBe("8d");
+    expect(row.countdown).toBe("8d 16h");
     expect(row.elapsedPct).toBe(72);
     expect(row.pace).toBe("4.3 avg");
     expect(row.forecast).toBe("5% of month left");
@@ -689,30 +687,30 @@ describe("wide table", () => {
     const lines = wide();
     expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.length);
     expect(lines[0]).toBe(
-      line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS   ", "STATE              ", "FORECAST"]),
+      line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS      ", "STATE              ", "FORECAST"]),
     );
   });
   it("pins the recommended row exactly", () => {
     expect(wide()[1]).toBe(
-      line(["★ my-plan       ", "   12%", "     50%", "1.7 avg     ", "██░░░░░░░░│░░░░░░░░░", "7d       ", "Behind pace        ", "76% waste in 7.0d"]),
+      line(["★ my-plan       ", "   12%", "     50%", "1.7 avg     ", "██░░░░░░░░│░░░░░░░░░", "7d 0h       ", "Behind pace        ", "76% unused at reset (Mon 14 Sep 06:00)"]),
     );
   });
   it("pins reporting, unknown-pace, stale, invalid, and not-reporting rows", () => {
     const lines = wide();
     expect(lines[2]).toBe(
-      line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d       ", "Behind pace        ", "56% waste in 7.0d"]),
+      line(["  Kimi          ", "   22%", "     50%", "3.1 avg     ", "████░░░░░░│░░░░░░░░░", "7d 0h       ", "Behind pace        ", "56% unused at reset (Mon 14 Sep 06:00)"]),
     );
     expect(lines[5]).toBe(
-      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d       ", "Measuring          ", "Measuring pace; 50% remains with 7.0d until reset"]),
+      line(["  Antigravity   ", "   50%", "      0%", "—           ", "│█████████░░░░░░░░░░", "7d 0h       ", "Measuring          ", "Measuring pace; 50% remains with 7d 0h until reset"]),
     );
     expect(lines[6]).toBe(
-      line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d       ", "Not reporting      ", "stale 3h ago"]),
+      line(["  Antigravity 3P", "   60%", "      0%", "—           ", "░░░░░░░░░░░░░░░░░░░░", "7d 0h       ", "Not reporting      ", "stale 3h 0m ago"]),
     );
     expect(lines[7]).toBe(
-      line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting      ", "invalid reading"]),
+      line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—           ", "Not reporting      ", "invalid reading"]),
     );
     expect(lines[8]).toBe(
-      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—        ", "Not reporting      ", "no readings yet"]),
+      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—           ", "Not reporting      ", "no readings yet"]),
     );
   });
   it("every row honors the column contract", () => {
@@ -727,11 +725,11 @@ describe("wide table", () => {
       expect(line.slice(48, 50)).toBe("  ");
       expect(line.slice(50, 70)).toMatch(/^[█│░]{20}$/);
       expect(line.slice(70, 72)).toBe("  ");
-      expect(line.slice(72, 81)).toMatch(/^.{1,9}$/);
-      expect(line.slice(81, 83)).toBe("  ");
-      expect(line.slice(83, 102)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting|Monthly exhausted|Quota exhausted) *$/);
-      expect(line.slice(98, 100)).toBe("  ");
-      expect(line.slice(100).length).toBeGreaterThan(0);
+      expect(line.slice(72, 84)).toMatch(/^.{1,12}$/);
+      expect(line.slice(84, 86)).toBe("  ");
+      expect(line.slice(86, 105)).toMatch(/^(?:On track|Behind pace|Ahead of pace|Cap risk|Watch|Measuring|Not reporting|Monthly exhausted|Quota exhausted) *$/);
+      expect(line.slice(101, 103)).toBe("  ");
+      expect(line.slice(103).length).toBeGreaterThan(0);
     }
   });
   it("paints Watch with the 256-color amber-orange entry", () => {
@@ -744,7 +742,7 @@ describe("wide table", () => {
     const out = renderWide(snap([p], "none"), { now: FIXED_NOW, color: true });
     expect(out).toContain("\x1b[38;5;214mWatch");
     expect(strip(out)).toContain("Watch");
-    expect(strip(out)).toContain("Exhausts in 30.0d — watch");
+    expect(strip(out)).toContain("Exhausts in 30d 0h — watch");
   });
   it("honors the requested sort key", () => {
     const lines = strip(renderWide(exampleStateSnapshot, { now: FIXED_NOW, sort: "used-asc" })).split("\n");
@@ -793,7 +791,7 @@ describe("narrow table (D8)", () => {
     const lines = narrow();
     expect(lines).toHaveLength(2 * exampleStateSnapshot.providers.length);
     expect(lines[0]).toBe("★ my-plan        12% used · 50% elapsed · 1.7 avg %/day");
-    expect(lines[1]).toBe("██░░░░░░░░│░░░░░░░░░ resets 7d · Behind pace · 76% waste in 7.0d");
+    expect(lines[1]).toBe("██░░░░░░░░│░░░░░░░░░ resets 7d 0h · Behind pace · 76% unused at reset (Mon 14 Sep 06:00)");
   });
   it("renders unknown values without placeholders leaking percents", () => {
     const lines = narrow();
@@ -809,7 +807,7 @@ describe("narrow table (D8)", () => {
   it("--ascii replaces separators and glyphs", () => {
     const lines = renderNarrow(exampleStateSnapshot, { now: FIXED_NOW, ascii: true }).split("\n");
     expect(lines[0]).toBe("* my-plan        12% used - 50% elapsed - 1.7 avg %/day");
-    expect(lines[1]).toBe("##::::::::|::::::::: resets 7d - Behind pace - 76% waste in 7.0d");
+    expect(lines[1]).toBe("##::::::::|::::::::: resets 7d 0h - Behind pace - 76% unused at reset (Mon 14 Sep 06:00)");
   });
 });
 

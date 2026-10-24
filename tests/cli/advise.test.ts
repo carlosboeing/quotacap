@@ -113,7 +113,7 @@ describe("advise process", () => {
       expect(rec.recommendationBasis).toBe("known-waste");
       const human = await runCli(home, ["advise"]);
       expect(human.code).toBe(0);
-      expect(human.stdout).toBe("my-plan: 76% waste in 7.0d\n");
+      expect(human.stdout).toBe("my-plan: 76% unused at reset (Mon 14 Sep 06:00)\n");
     } finally {
       await stub.close();
     }
@@ -167,12 +167,14 @@ describe("advise process", () => {
       const b = JSON.parse(offline.stdout);
       expect(b.use).toBe(a.use);
       expect(b.recommendationBasis).toBe(a.recommendationBasis);
-      expect(b.reason.replace(/[\d.]+/g, "#")).toBe(a.reason.replace(/[\d.]+/g, "#"));
+      // The clock may cross the 7-day dated form between the two runs.
+      const shape = (r: string) => r.replace(/\(.*\)/, "(clock)").replace(/[\d.]+/g, "#");
+      expect(shape(b.reason)).toBe(shape(a.reason));
       expect(b.wastePct).toBeCloseTo(a.wastePct, 0);
       const human = await runCli(home, ["advise"]);
       expect(human.code).toBe(0);
       expect(human.stderr).toContain(OFFLINE_LABEL);
-      expect(human.stdout).toMatch(/^my-plan: \d+% waste in 7\.0d\n$/);
+      expect(human.stdout).toMatch(/^my-plan: \d+% unused at reset \([^)]+\)\n$/);
     } finally {
       await stub.close();
     }

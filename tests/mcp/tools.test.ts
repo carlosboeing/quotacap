@@ -152,7 +152,7 @@ describe("get_quotas", () => {
         if (p.quota) expect(markdown.text).toContain(`| ${Math.round(p.quota.usedPct)}% |`);
         expect(markdown.text).toContain(`| ${stateWord(p)} |`);
       }
-      expect(markdown.text).toContain("stale 3h ago");
+      expect(markdown.text).toContain("stale 3h 0m ago");
       expect(markdown.text).toContain("invalid reading");
       expect(json.type).toBe("text");
       expect(JSON.parse(json.text)).toEqual(projectQuotasResponse(exampleStateSnapshot));
@@ -186,11 +186,11 @@ describe("get_quotas", () => {
     try {
       const quotas: any = await handleTool("get_quotas", {});
       expect(quotas.content[0].text).toContain("| Watch |");
-      expect(quotas.content[0].text).toContain("Exhausts in 2.1d — watch");
+      expect(quotas.content[0].text).toContain("Exhausts in 2d 2h — watch");
       const forecast: any = await handleTool("forecast", { provider: "kimi" });
       const body = JSON.parse(forecast.content[0].text);
       expect(body.state).toBe("Watch");
-      expect(body.forecast).toBe("Exhausts in 2.1d — watch");
+      expect(body.forecast).toBe("Exhausts in 2d 2h — watch");
       expect(body.advisory).toMatchObject({
         recentRate: 6.2,
         baselineRate: 3.1,
@@ -210,7 +210,7 @@ describe("get_recommendation", () => {
     try {
       const res: any = await handleTool("get_recommendation", { task: "any" });
       expect(res.isError).toBeUndefined();
-      expect(res.content[0].text).toBe("my-plan: 76% waste in 7.0d");
+      expect(res.content[0].text).toBe("my-plan: 76% unused at reset (Mon 14 Sep 06:00)");
       expect(JSON.parse(res.content[1].text)).toEqual(
         projectRecommendationResponse(exampleStateSnapshot, "any"),
       );
@@ -256,7 +256,7 @@ describe("forecast", () => {
       expect(body.evidence).toEqual(["window-average"]);
       expect(body.exclusionReason).toBeNull();
       expect(body.state).toBe("Behind pace");
-      expect(body.forecast).toBe("56% waste in 7.0d");
+      expect(body.forecast).toBe("56% unused at reset (Mon 14 Sep 06:00)");
       // Blend composition rides the advisory JSON; old clients ignore it.
       expect(body.advisory).toHaveProperty("recentRate", null);
       expect(typeof body.advisory.baselineRate).toBe("number");

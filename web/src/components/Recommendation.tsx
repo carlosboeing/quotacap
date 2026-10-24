@@ -8,6 +8,7 @@ import type {
 } from "../state.js";
 import { ageLabel } from "../state.js";
 import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
+import { clockText } from "../../../src/format/time.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export type Lane = "use-more" | "ease-off";
@@ -171,7 +172,7 @@ export function Recommendation({
   const easeLane = easeTint === "tint-cap" ? "l-cap" : easeTint === "tint-watch" ? "l-watch" : "l-ahead";
   const pick = providers.find((p) => p.id === recommendation.use);
   const pickReset = pick ? quotaResetsAt(pick) : null;
-  const pickLeft = pickReset ? timeLeft(pickReset, asOfMs) : null;
+  const pickClock = clockText(pickReset, asOfMs);
   const openAdvice = () => {
     onViewAdvice?.();
   };
@@ -251,8 +252,8 @@ export function Recommendation({
               {recommendation.wastePct !== null && recommendation.bindingWindow !== "monthly" ? (
                 <>
                   {" — "}
-                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused quota forecast
-                  {pickLeft ? <> to expire in <strong>{pickLeft}</strong></> : null}.
+                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused at reset
+                  {pickClock ? <> (<strong>{pickClock}</strong>)</> : null}.
                 </>
               ) : (
                 <> — {recommendation.reason}</>

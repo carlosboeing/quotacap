@@ -57,8 +57,8 @@ describe("advice drawer", () => {
         open: true, recommendation: s.recommendation, providers: s.providers, asOf: s.asOf, onClose: () => {},
       })
     ).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota expires in");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset (");
   });
 
   it("names the blend when the forecast mixes the 24h rate with history", () => {
@@ -101,7 +101,7 @@ describe("advice drawer", () => {
     ).replace(/<!-- -->/g, "");
     expect(html).toContain("Which quota to burn next, and why");
     // Stats line is prose; figures are wrapped in <b> (mono via CSS).
-    expect(html).toContain("unused quota expires in");
+    expect(html).toContain("unused at reset (<b>Mon 14 Sep 06:00</b>)");
     // One sentence: remaining + time to reset + pace basis, no second filler sentence.
     expect(html).toContain(
       `has ${Math.round(pick.advisory!.remaining)}% quota remaining with 7d 0h to reset, forecast at the window-average pace.`
@@ -133,7 +133,7 @@ describe("advice drawer", () => {
     expect(html).toContain("↓");
     expect(html).toContain("Ease off");
     // Use-more metas lead with unused % and reset (Kimi 56% waste in the fixture).
-    expect(html).toContain("56% unused · resets in 7d 0h");
+    expect(html).toContain("56% unused at reset · resets in 7d 0h");
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.lane-group dt\.um \{[^}]*color: var\(--warn\)/);
     expect(css).toMatch(/\.lane-group dt\.eo \{[^}]*color: var\(--danger\)/);

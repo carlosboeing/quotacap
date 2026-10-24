@@ -309,11 +309,11 @@ describe("parity: watch tier", () => {
     const snap = watchSnapshot();
     const kimi = snap.providers.find((p) => p.id === "kimi")!;
     expect(stateWord(kimi)).toBe("Watch");
-    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2d 2h — watch");
     expect(compactSuffix(kimi)).toBe("~");
     const wide = strip(renderWide(snap, { now: FIXED_NOW }));
     expect(wide).toContain("Watch");
-    expect(wide).toContain("Exhausts in 2.1d — watch");
+    expect(wide).toContain("Exhausts in 2d 2h — watch");
     expect(strip(renderNarrow(snap, { now: FIXED_NOW }))).toContain("Watch");
     expect(renderMarkdownTable(snap, FIXED_NOW)).toContain("| Watch |");
     expect(renderCompact(snap, FIXED_NOW)).toContain("[kimi:22%~]");
@@ -322,7 +322,7 @@ describe("parity: watch tier", () => {
     const f: any = await handleTool("forecast", { provider: "kimi" });
     const body = JSON.parse(f.content[0].text);
     expect(body.state).toBe("Watch");
-    expect(body.forecast).toBe("Exhausts in 2.1d — watch");
+    expect(body.forecast).toBe("Exhausts in 2d 2h — watch");
     expect(body.advisory.recentRate).toBe(6.2);
     expect(body.advisory.baselineRate).toBe(3.1);
     expect(body.advisory.aheadOfElapsed).toBe(false);
@@ -335,9 +335,9 @@ describe("parity: watch tier", () => {
     mode = "estimated";
     const snap = watchSnapshot(true);
     const kimi = snap.providers.find((p) => p.id === "kimi")!;
-    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch (estimated)");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2d 2h — watch (estimated)");
     const f: any = await handleTool("forecast", { provider: "kimi" });
-    expect(JSON.parse(f.content[0].text).forecast).toBe("Exhausts in 2.1d — watch (estimated)");
+    expect(JSON.parse(f.content[0].text).forecast).toBe("Exhausts in 2d 2h — watch (estimated)");
   });
 });
 
@@ -468,25 +468,25 @@ describe("parity: monthly windows", () => {
     expect(JSON.parse(f.content[0].text).forecast).toBe("5% of month left");
   });
 
-  it("reads Monthly exhausted and unused until Tue Sep 15 on every surface when the month is empty", async () => {
+  it("reads Monthly exhausted and unused until Tue 15 Sep on every surface when the month is empty", async () => {
     current = monthlyExhaustedStateSnapshotJson;
     const go = cli(monthlyExhaustedStateSnapshot);
     expect(stateWord(go)).toBe("Monthly exhausted");
     expect(paceBadge(web(monthlyExhaustedStateSnapshotJson))).toBe("Monthly exhausted");
-    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue Sep 15");
-    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue Sep 15");
+    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue 15 Sep");
+    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue 15 Sep");
     expect(renderMarkdownTable(monthlyExhaustedStateSnapshot, FIXED_NOW)).toContain("| Monthly exhausted |");
     expect(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW, color: true })).toContain("\x1b[31mMonthly exhausted");
     const f: any = await handleTool("forecast", { provider: "opencode-go" });
     const body = JSON.parse(f.content[0].text);
     expect(body.state).toBe("Monthly exhausted");
-    expect(body.forecast).toBe("unused until Tue Sep 15");
+    expect(body.forecast).toBe("unused until Tue 15 Sep");
   });
 
   it("keeps FORECAST column-aligned on a Monthly exhausted row", () => {
     const [header, ...lines] = strip(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW })).split("\n");
     const row = lines.find((l) => l.includes("Monthly exhausted"))!;
-    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue Sep 15");
+    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue 15 Sep");
   });
 
   it("the month sentence wins over unknown pace and over Watch", () => {

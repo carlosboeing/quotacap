@@ -14,8 +14,8 @@ const html = (el: React.ReactElement) => renderToString(el).replace(/<!-- -->/g,
 
 describe("windowCountdown", () => {
   it("returns one coarse unit", () => {
-    expect(windowCountdown(new Date(asOfMs + 7.5 * 86400000).toISOString(), asOfMs)).toBe("7d");
-    expect(windowCountdown(new Date(asOfMs + 4.2 * 3600000).toISOString(), asOfMs)).toBe("4h");
+    expect(windowCountdown(new Date(asOfMs + 7.5 * 86400000).toISOString(), asOfMs)).toBe("7d 12h");
+    expect(windowCountdown(new Date(asOfMs + 4.2 * 3600000).toISOString(), asOfMs)).toBe("4h 12m");
     expect(windowCountdown(new Date(asOfMs + 40 * 60000).toISOString(), asOfMs)).toBe("40m");
     expect(windowCountdown(new Date(asOfMs - 1000).toISOString(), asOfMs)).toBeNull();
   });
@@ -32,7 +32,7 @@ describe("windows row", () => {
     expect(out).not.toContain('data-win="month"');
     expect(out).toMatch(/<span class="k">Wk<\/span><span class="n">44%<\/span>/);
     expect(out).toMatch(/<span class="k">5h<\/span><span class="n">12%<\/span>/);
-    expect(out).toContain('<span class="t">in 3d</span>');
+    expect(out).toContain('<span class="t">in 3d 4h</span>');
     expect(out).not.toContain('class="windows"'); // first paint collapsed
     expect(out).not.toContain("Mo<");
   });
@@ -48,7 +48,7 @@ describe("windows row", () => {
     // The exhausted quota lives on the main bar and card foot, not repeated here.
     expect(out).not.toContain('data-win="month"');
     expect(out).toContain('data-win="week"');
-    expect(out).not.toContain("Tue Sep 15");
+    expect(out).not.toContain("Tue 15 Sep");
   });
 
   it("Claude renders the 5h unit only; Grok renders no line at all", () => {

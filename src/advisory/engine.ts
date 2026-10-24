@@ -1,6 +1,7 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis, BindingWindow } from "./types.js";
 import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL, paceTube } from "./types.js";
+import { durationFromDays, unusedAtReset } from "../format/time.js";
 
 const DAY_MS = 86400000;
 
@@ -253,8 +254,8 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     return {
       use: use.provider,
       reason: use.bindingWindow === "monthly"
-        ? `${Math.round(use.bindingRemaining)}% of month left in ${use.bindingDaysLeft.toFixed(1)}d`
-        : `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
+        ? `${Math.round(use.bindingRemaining)}% of month left in ${durationFromDays(use.bindingDaysLeft)}`
+        : unusedAtReset(use.wastePct, quotas.find(q => q.provider === use.provider)?.resetsAt, now.getTime()),
       wastePct: rankWaste(use),
       idealRate: use.idealRate,
       recommendationBasis: "known-waste" as RecommendationBasis,
@@ -276,8 +277,8 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     return {
       use: use.provider,
       reason: use.bindingWindow === "monthly"
-        ? `Measuring pace; ${Math.round(use.bindingRemaining)}% of month left with ${use.bindingDaysLeft.toFixed(1)}d until reset`
-        : `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
+        ? `Measuring pace; ${Math.round(use.bindingRemaining)}% of month left with ${durationFromDays(use.bindingDaysLeft)} until reset`
+        : `Measuring pace; ${Math.round(use.remaining)}% remains with ${durationFromDays(use.daysLeft)} until reset`,
       wastePct: null,
       idealRate: use.idealRate,
       recommendationBasis: "unknown-headroom" as RecommendationBasis,

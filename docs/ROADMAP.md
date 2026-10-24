@@ -245,6 +245,7 @@
 ## Next
 
 * History accuracy — finished windows only in `lastCloses` and the baseline, each close priced over the days it ran, early resets dated and named on the history bars, `advisories` limited to ranked providers, Muse plan name without escape codes
+* One vocabulary — one duration, clock and waste sentence across dashboard, CLI, MCP and the engine reason, one state-word table, legend copy
 * One forecast story — waste at the faster of the 24h rate and the forecast, "forecast pace" copy with the rate shown, one near-reset sentence on every surface, capped quotas out of the lanes, 24h rate limited to the open window
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)

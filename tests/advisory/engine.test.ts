@@ -149,7 +149,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 99% remains with 7\.0d until reset/);
+    expect(rec.reason).toBe("Measuring pace; 99% remains with 6d 23h until reset");
   });
 
   it("prefers measured positive waste over unknown providers", () => {
@@ -169,7 +169,7 @@ describe("advisory", () => {
     const rec = recommend([freshKimi, measuredClaude], "any", new Map([["claude", { recent: null, baseline: 10 / 3 }]]), now);
     expect(rec.use).toBe("claude");
     expect(rec.recommendationBasis).toBe("known-waste");
-    expect(rec.reason).toMatch(/77% waste in 4\.0d/);
+    expect(rec.reason).toBe("77% unused at reset (Fri 06:00)");
     expect(rec.advisories.find(a => a.provider === "kimi")?.paceSource).toBe("unknown");
     expect(rec.advisories.find(a => a.provider === "claude")?.paceSource).toBe("window-average");
   });
@@ -193,7 +193,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 98% remains with 2\.0d until reset/);
+    expect(rec.reason).toBe("Measuring pace; 98% remains with 2d 0h until reset");
     const claudeAdv = rec.advisories.find(a => a.provider === "claude");
     expect(claudeAdv?.status).toBe("at risk");
     expect(claudeAdv?.wastePct).toBe(0);
@@ -220,7 +220,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 90% remains with 3\.0d until reset/);
+    expect(rec.reason).toMatch(/^Measuring pace; 90% remains with (3d 0h|2d 23h) until reset$/);
   });
 
   it("retains all providers in advisories and alternatives output", () => {

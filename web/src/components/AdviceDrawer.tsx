@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { AdvisoryView, ProviderView, RecommendationView } from "../state.js";
 import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
+import { clockText } from "../../../src/format/time.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lanesFor } from "./Recommendation.js";
 import { CopyButton } from "./CopyButton.js";
@@ -96,6 +97,7 @@ export function AdviceDrawer({
         : null;
   const pickReset = pick ? quotaResetsAt(pick) : null;
   const left = pickReset ? timeLeft(pickReset, asOfMs) : null;
+  const pickClock = clockText(pickReset, asOfMs);
   const basis = forecastBasisWords(pick?.advisory);
   const othersMore = useMore.filter((a) => a.provider !== pickId);
   const titleId = "advice-drawer-title";
@@ -179,7 +181,7 @@ export function AdviceDrawer({
                 </div>
                 {waste !== null && left && (
                   <div className="advice-card-stats">
-                    <b>{waste}%</b> unused quota expires in <b>{left}</b>
+                    <b>{waste}%</b> unused at reset{pickClock ? <> (<b>{pickClock}</b>)</> : null}
                   </div>
                 )}
               </div>
@@ -225,7 +227,7 @@ export function AdviceDrawer({
                       a.bindingWindow === "monthly"
                         ? `${Math.round(a.bindingRemaining)}% of month left`
                         : a.wastePct !== null
-                          ? `${Math.round(a.wastePct)}% unused`
+                          ? `${Math.round(a.wastePct)}% unused at reset`
                           : null;
                     const resetIso = p ? quotaResetsAt(p) : null;
                     const t = resetIso ? timeLeft(resetIso, asOfMs) : null;

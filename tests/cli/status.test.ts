@@ -302,7 +302,7 @@ describe("status process", () => {
       const wide = await runCli(home, ["status"]);
       expect(wide.code).toBe(0);
       expect(wide.stdout).toContain("Watch");
-      expect(wide.stdout).toContain("Exhausts in 2.1d — watch");
+      expect(wide.stdout).toContain("Exhausts in 2d 2h — watch");
       const compact = await runCli(home, ["status", "--compact"]);
       expect(compact.code).toBe(0);
       expect(compact.stdout).toContain("[kimi:22%~]");
@@ -410,7 +410,7 @@ describe("status wiring", () => {
     expect(errors).toEqual([]);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toContain("PROVIDER");
-    expect(logs[0]).toContain("76% waste in 7.0d");
+    expect(logs[0]).toContain("76% unused at reset (Mon 14 Sep 06:00)");
     expect(logs[0]).toContain("★ my-plan");
   });
 

@@ -119,6 +119,10 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     "PACE (%/DAY)".length,
     ...rows.map(({ row }) => row.pace.length),
   );
+  const resetsWidth = Math.max(
+    "RESETS".length,
+    ...rows.map(({ row }) => row.countdown.length),
+  );
   const paint = (s: string, code: string): string => (color ? `${code}${s}${RESET}` : s);
   const resetsIndent = " ".repeat(
     width + GAP.length + 6 + GAP.length + 8 + GAP.length + paceWidth + GAP.length + 20 + GAP.length,
@@ -136,7 +140,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     "ELAPSED".padStart(8),
     "PACE (%/DAY)".padEnd(paceWidth),
     "USED VS TIME".padEnd(20),
-    "RESETS".padEnd(9),
+    "RESETS".padEnd(resetsWidth),
     "STATE".padEnd(19),
     "FORECAST",
   ].join(GAP);
@@ -147,7 +151,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     const elapsed = (row.elapsedPct === null ? g.dash : `${row.elapsedPct}%`).padStart(8);
     const pace = (opts.ascii ? asciiText(row.pace) : row.pace).padEnd(paceWidth);
     const rail = renderRail(row.railCells, g, row.state, color);
-    const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
+    const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(resetsWidth);
     const state = row.state.padEnd(19);
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
     const wait = row.wait

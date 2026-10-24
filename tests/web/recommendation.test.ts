@@ -42,7 +42,7 @@ describe("recommendation lanes", () => {
     const pick = s.providers.find((p: any) => p.id === s.recommendation.use);
     expect(pick.advisory.wastePct).toBe(s.recommendation.wastePct);
     expect(forecastLine(pick)).toContain(`${Math.round(pick.advisory.wastePct)}%`);
-    expect(forecastLine(pick)).toContain(daysToDuration(pick.advisory.daysLeft));
+    expect(forecastLine(pick)).toContain("unused at reset");
   });
 });
 
@@ -53,8 +53,8 @@ describe("monthly-bound pick", () => {
     const html = renderToString(React.createElement(Recommendation, {
       recommendation: s.recommendation, providers: s.providers, asOf: s.asOf,
     })).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota forecast");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset");
     expect(html).not.toContain("Measuring");
   });
 });

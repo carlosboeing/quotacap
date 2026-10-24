@@ -23,6 +23,7 @@ import {
   submitProviderRename,
 } from "../../web/src/components/ProviderDrawer.js";
 import { closeDateLabel, closeResetStamp, closeSampleStamp } from "../../web/src/components/ClosedWeeks.js";
+import { clockText } from "../../src/format/time.js";
 import { BurnDown, burnGeometry } from "../../web/src/components/BurnDown.js";
 import { renameProvider } from "../../web/src/api.js";
 
@@ -109,7 +110,7 @@ describe("provider drawer", () => {
     expect(verdictFor(kimi, Date.parse(s.asOf))).toEqual({
       tone: "use-more",
       label: "↑ Use more",
-      detail: "56% waste forecast · resets in 7d 0h",
+      detail: "56% unused at reset (Mon 14 Sep 06:00)",
     });
     const html = renderToString(
       React.createElement(ProviderDrawer, {
@@ -127,13 +128,13 @@ describe("provider drawer", () => {
     expect(html).not.toContain("Copy JSON");
     expect(html).toContain('class="verdict use-more"');
     expect(html).toContain("↑ Use more");
-    expect(html).toContain("56% waste forecast");
+    expect(html).toContain("56% unused at reset");
     expect(html).toContain('class="drawer-desc"');
     expect(html).toContain('class="winrow-sub reset-line"');
     expect(html).toContain("<strong>");
     // The projected-waste forecast rides the quota row, wording as on the card.
     const limitsSlice = html.slice(html.indexOf("<h3>Limits</h3>"), html.indexOf("prov-foot"));
-    expect(limitsSlice).toContain("expires unused");
+    expect(limitsSlice).toContain("unused at reset");
     // The quota bar hatches the projected-unused share, like the card bar.
     expect(limitsSlice).toContain('data-testid="limit-hatch"');
     expect(limitsSlice).toContain('class="band band-waste"');
@@ -258,7 +259,7 @@ describe("provider drawer", () => {
     expect(verdictFor(risky as any, Date.parse(s.asOf))).toEqual({
       tone: "ease-off",
       label: "↓ Ease off",
-      detail: "exhausts in 2d 10h at forecast pace",
+      detail: "exhausts in 2d 9h at forecast pace",
     });
     const html = renderToString(
       React.createElement(ProviderDrawer, {
@@ -269,12 +270,12 @@ describe("provider drawer", () => {
       })
     );
     expect(html).toContain('class="verdict ease-off"');
-    expect(html).toContain("exhausts in 2d 10h at forecast pace");
+    expect(html).toContain("exhausts in 2d 9h at forecast pace");
     // The limit line keeps only the outcome, without the status prefix.
     const limits = html.slice(html.indexOf("<h3>Limits</h3>"), html.indexOf("prov-foot")).replace(/<!-- -->/g, "");
-    expect(limits).toContain("→ exhausts in 2d 10h");
+    expect(limits).toContain("→ exhausts in 2d 9h");
     expect(limits).not.toContain("Cap risk ·");
-    expect(compactLimitForecast(risky as any)?.text).toBe("exhausts in 2d 10h");
+    expect(compactLimitForecast(risky as any)?.text).toBe("exhausts in 2d 9h");
     // A status-only headline and an on-track headline stay off the row.
     const noClock = { ...risky, advisory: { ...risky.advisory, daysToExhaust: null } };
     expect(compactLimitForecast(noClock as any)).toBeNull();
@@ -314,7 +315,7 @@ describe("provider drawer", () => {
       })
     );
     expect(html).toContain('class="verdict use-more"');
-    expect(html).toContain("waste forecast");
+    expect(html).toContain("unused at reset");
     expect(html).not.toContain("NaN");
   });
   it("names Watch rows as ease-off instead of on-track copy", () => {
@@ -374,7 +375,7 @@ describe("provider drawer", () => {
     expect(verdictFor(goEx, Date.parse(exhausted.asOf))).toEqual({
       tone: "neutral",
       label: "• Not ranked",
-      detail: "unused until Tue Sep 15",
+      detail: "unused until Tue 15 Sep",
     });
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
@@ -818,10 +819,7 @@ describe("closed weeks drawer", () => {
 describe("drawer windows", () => {
   // Expected monthly clock from locale parts, so the assertion holds in any
   // timezone without hard-coding one machine's weekday and time.
-  const dateClockOf = (iso: string) => {
-    const when = new Date(iso);
-    return `${when.toLocaleDateString(undefined, { weekday: "short" })} ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}`;
-  };
+  const dateClockOf = (iso: string) => clockText(iso)!;
   const render = (json: string, id: string) => {
     const s = JSON.parse(json);
     return renderToString(React.createElement(ProviderDrawer, {
@@ -929,7 +927,7 @@ describe("drawer windows", () => {
     expect(verdictFor(goEx, Date.parse(exhausted.asOf))).toEqual({
       tone: "neutral",
       label: "• Not ranked",
-      detail: "unused until Tue Sep 15",
+      detail: "unused until Tue 15 Sep",
     });
   });
 
