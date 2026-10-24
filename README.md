@@ -70,7 +70,7 @@ No setup ceremony: config is provisioned on first use, and bare `quotacap` is th
 
 Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
 
-Tools: `get_quotas`, `get_recommendation`, `forecast`.
+Tools: `get_quotas`, `get_recommendation`, `forecast`, `get_models`. `get_recommendation` returns the pick, its reason, and each other provider's state, availability and reset; pass `verbose: true` for every quota, advisory and model list.
 
 ## HTTP API
 

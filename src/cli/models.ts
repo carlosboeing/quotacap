@@ -51,11 +51,11 @@ function printTable(list: any[]): void {
   });
   const maxProv = Math.max(8, ...rows.map((r) => r.prov.length));
   const maxLeft = Math.max(8, ...rows.map((r) => r.leftover.length));
-  const maxStat = Math.max(6, ...rows.map((r) => r.status.length));
+  const maxStat = Math.max("CATALOG".length, ...rows.map((r) => r.status.length));
   const header = [
     "PROVIDER".padEnd(maxProv),
     "LEFTOVER".padEnd(maxLeft),
-    "STATUS".padEnd(maxStat),
+    "CATALOG".padEnd(maxStat),
     "MODELS",
   ].join("  ");
   const lines = rows.map((r) =>

@@ -9,7 +9,7 @@ import { dayText, durationFromDays, durationText, unusedAtReset } from "./time.j
 export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted" | "Quota exhausted";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
-export type CompactSuffix = "" | "!" | "~" | "?";
+export type CompactSuffix = "" | "<" | ">" | "~" | "!" | "x" | "?" | "-";
 
 export interface Row {
   id: string;
@@ -322,16 +322,38 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   return text;
 }
 
-// Compact legend: none = On track; ! = Cap risk; ~ = Watch or Behind/Ahead
-// pace or estimated reset; ? = unknown pace or any excluded row.
-export function compactSuffix(ps: ProviderSnapshot): CompactSuffix {
-  if (ps.exclusionReason !== null) return "?";
-  const adv = ps.advisory;
-  if (!adv || adv.paceSource === "unknown") return "?";
-  if (adv.status === "at risk") return "!";
-  if (adv.status === "watch") return "~";
-  if (adv.urgency !== "on track" || (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated)) return "~";
-  return "";
+// Compact glyph: one per state word, so the statusline never folds two
+// states into one mark. COMPACT_LEGEND is printed in `status --help`.
+const COMPACT_GLYPHS: Record<StateWord, CompactSuffix> = {
+  "On track": "",
+  "Behind pace": "<",
+  "Ahead of pace": ">",
+  Watch: "~",
+  "Cap risk": "!",
+  "Quota exhausted": "x",
+  "Monthly exhausted": "x",
+  Measuring: "?",
+  "Not reporting": "-",
+};
+
+export const COMPACT_LEGEND = "no mark on track, < behind, > ahead, ~ watch, ! cap risk, x exhausted, ? measuring, - not reporting";
+
+export function compactSuffix(ps: StateSource): CompactSuffix {
+  return COMPACT_GLYPHS[stateWord(ps)];
+}
+
+/**
+ * Providers a human surface lists: the enabled ones, as the dashboard
+ * shows them. JSON keeps every provider with its exclusion reason.
+ */
+export function shownProviders(providers: ProviderSnapshot[]): ProviderSnapshot[] {
+  return providers.filter((p) => p.enabled !== false);
+}
+
+/** Display name of the recommended provider, or "none". */
+export function useName(snapshot: { recommendation: { use: string }; providers: Array<{ id: string; displayName: string }> }): string {
+  const use = snapshot.recommendation.use;
+  return snapshot.providers.find((p) => p.id === use)?.displayName ?? use;
 }
 
 export function assertValidSortKey(key: string): asserts key is SortKey {

@@ -58,8 +58,10 @@ function cycleBreakReason(
 ): CycleBreakReason | null {
   const dropped = cur.usedPct < prev.usedPct;
   const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  // Instants, not strings: one reset written as "+10:00" and as "Z" is one boundary.
+  const curResets = cur.resetsAt ? new Date(cur.resetsAt).getTime() : NaN;
   const boundaryRolled =
-    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prevResets !== curResets;
   if (dropped && boundaryRolled) return "both";
   if (dropped) return "usage-drop";
   if (boundaryRolled) return "resets-at-rolled";
@@ -73,11 +75,27 @@ export function isWeeklyCycleBreak(
   return cycleBreakReason(prev, cur) !== null;
 }
 
+// One timestamp format on the wire: adapters report offsets as their
+// source prints them ("+10:00", "Z"), so ingest stores UTC ISO.
+function utcIso(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const ms = Date.parse(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : v;
+}
+
 export function upsertQuota(db:any, q:any){
   if (Array.isArray(q)) {
     for (const item of q) upsertQuota(db, item);
     return;
   }
+  q = {
+    ...q,
+    resetsAt: utcIso(q.resetsAt),
+    periodStart: utcIso(q.periodStart),
+    fetchedAt: utcIso(q.fetchedAt),
+    monthlyResetsAt: utcIso(q.monthlyResetsAt),
+    fiveHourResetsAt: utcIso(q.fiveHourResetsAt),
+  };
   const credits = q.creditsUsd ?? q.credits_usd ?? null;
   const estimated = q.resetsAtEstimated ? 1 : null;
   // Either spelling binds; an explicit null stays null (SQLite binds it),

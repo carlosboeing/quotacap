@@ -228,7 +228,7 @@ describe("status process", () => {
         expect(run.code).toBe(0);
         const nameById = new Map(exampleStateSnapshot.providers.map((p) => [p.id, p.displayName]));
         const expected = sortProviders(
-          exampleStateSnapshot.providers,
+          exampleStateSnapshot.providers.filter((p) => p.enabled),
           key,
           exampleStateSnapshot.recommendation.use,
         ).map((p) => nameById.get(p.id)!);
@@ -269,7 +269,7 @@ describe("status process", () => {
       const run = await runCli(home, ["status", "--compact"]);
       expect(run.code).toBe(0);
       expect(run.stdout).toBe(
-        "[my-plan:12%~] | [kimi:22%~] | [claude:40%~] | [codex:40%~] | [agy:50%?] | [agy:3p:60%?] | [grok:30%?]  (use: my-plan)\n",
+        "[my-plan:12%<] | [Kimi:22%<] | [Claude:40%<] | [Codex:40%<] | [Antigravity:50%?] | [Antigravity 3P:60%-] | [Grok:30%-]  (use: my-plan)\n",
       );
       for (const ch of run.stdout) expect(ch.charCodeAt(0)).toBeLessThan(128);
     } finally {
@@ -305,7 +305,7 @@ describe("status process", () => {
       expect(wide.stdout).toContain("Exhausts in 2d 2h — watch");
       const compact = await runCli(home, ["status", "--compact"]);
       expect(compact.code).toBe(0);
-      expect(compact.stdout).toContain("[kimi:22%~]");
+      expect(compact.stdout).toContain("[Kimi:22%~]");
     } finally {
       await stub.close();
     }
@@ -417,7 +417,7 @@ describe("status wiring", () => {
   it("selects narrow below 100 columns on a TTY", async () => {
     await runWired(["status"], onlineDeps({ resolveWidth: () => ({ columns: 80, tty: true }) }));
     expect(logs).toHaveLength(1);
-    expect(logs[0].split("\n")).toHaveLength(2 * exampleStateSnapshot.providers.length);
+    expect(logs[0].split("\n")).toHaveLength(2 * exampleStateSnapshot.providers.filter((p) => p.enabled).length);
     expect(logs[0]).toContain("resets 7d");
     expect(logs[0]).toContain("\x1b[");
   });
@@ -459,7 +459,7 @@ describe("status wiring", () => {
     await runWired(["status", "--compact"], deps);
     expect(errors).toEqual([OFFLINE_LABEL]);
     expect(logs[0]).toBe(
-      "[my-plan:12%~] | [kimi:22%~] | [claude:40%~] | [codex:40%~] | [agy:50%?] | [agy:3p:60%?] | [grok:30%?]  (use: my-plan)",
+      "[my-plan:12%<] | [Kimi:22%<] | [Claude:40%<] | [Codex:40%<] | [Antigravity:50%?] | [Antigravity 3P:60%-] | [Grok:30%-]  (use: my-plan)",
     );
   });
 
@@ -762,7 +762,7 @@ describe("status wiring", () => {
       await runWired(["status", "--verbose", "--compact"], failedDeps());
       expect(exitCode).toBeUndefined();
       expect(logs).toHaveLength(1);
-      expect(logs[0]).toContain("[codex:");
+      expect(logs[0]).toContain("[Codex:");
       expect(logs[0]).not.toContain("Adapter issues:");
     });
 

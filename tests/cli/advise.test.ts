@@ -203,12 +203,12 @@ describe("advise process", () => {
     expect(human.stdout).toBe("none: no quotas yet\n");
   }, 15000);
 
-  it("help never claims task-specific ranking", async () => {
+  it("help never claims task-specific ranking and no longer offers --task", async () => {
     const home = tmpDir();
     const run = await runCli(home, ["advise", "--help"]);
     expect(run.code).toBe(0);
     expect(run.stdout).not.toMatch(/task-specific|ranked|tailored|optimized/i);
-    expect(run.stdout).toMatch(/same advice for every task/);
+    expect(run.stdout).not.toContain("--task");
   }, 15000);
 });
 
@@ -459,7 +459,7 @@ describe("advise wiring", () => {
     };
 
     await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => FIXED_NOW }));
-    expect(logs[0]).toContain("claude:");
+    expect(logs[0]).toContain("Claude:");
     expect(logs).toContain("models: claude-sonnet-4-6, claude-opus-4-6");
 
     // Stale catalog

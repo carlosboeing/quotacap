@@ -6,7 +6,7 @@ import type {
   RecommendationView,
   Urgency,
 } from "../state.js";
-import { ageLabel } from "../state.js";
+import { ageLabel, oldestReadingAt } from "../state.js";
 import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
 import { clockText } from "../../../src/format/time.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
@@ -181,7 +181,7 @@ export function Recommendation({
     <div className="section-head">
       <h2>Quota Advice & Pacing</h2>
       <span className="note">
-        {tracked} tracked · {ageLabel(asOf)}
+        {tracked} tracked · {ageLabel(oldestReadingAt(providers, asOf))}
       </span>
     </div>
   );

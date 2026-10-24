@@ -5,6 +5,8 @@ import type { StateSnapshot } from "../advisory/types.js";
 import {
   buildRow,
   compactSuffix,
+  shownProviders,
+  useName,
   isMonthlyBound,
   sortProviders,
   weeklyPctOf,
@@ -112,8 +114,8 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const g = opts.ascii ? ASCII : UNICODE;
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
+  const sorted = sortProviders(shownProviders(snapshot.providers), opts.sort ?? "recommended", use);
+  const width = provWidthFor(shownProviders(snapshot.providers).map((p) => p.displayName));
   const rows = sorted.map((p) => ({ p, row: buildRow(p, opts.now) }));
   const paceWidth = Math.max(
     "PACE (%/DAY)".length,
@@ -177,8 +179,8 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
   const g = opts.ascii ? ASCII : UNICODE;
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
+  const sorted = sortProviders(shownProviders(snapshot.providers), opts.sort ?? "recommended", use);
+  const width = provWidthFor(shownProviders(snapshot.providers).map((p) => p.displayName));
   const lines: string[] = [];
   for (const p of sorted) {
     const row = buildRow(p, opts.now);
@@ -214,20 +216,20 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
 // Takes the fixed clock for signature parity; compact shows no ages.
 export function renderCompact(snapshot: StateSnapshot, now: Date = new Date()): string {
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, "recommended", use);
+  const sorted = sortProviders(shownProviders(snapshot.providers), "recommended", use);
   const entries = sorted
     .filter((p) => p.quota !== null)
     .map((p) => {
       const u = weeklyPctOf(p.quota);
       const used = typeof u === "number" && Number.isFinite(u) ? String(Math.round(u)) : "?";
-      return `[${p.id}:${used}%${compactSuffix(p)}]`;
+      return `[${p.displayName}:${used}%${compactSuffix(p)}]`;
     });
   if (entries.length === 0) return "(use: none)";
   const waits = sorted.flatMap((p) => {
     const found = rateLimitWaits(p, now);
     if (found.length === 0) return [];
-    return [`${p.id} ${found.map((w) => w.text).join(", ")}`];
+    return [`${p.displayName} ${found.map((w) => w.text).join(", ")}`];
   });
-  const base = `${entries.join(" | ")}  (use: ${use})`;
+  const base = `${entries.join(" | ")}  (use: ${useName(snapshot)})`;
   return waits.length === 0 ? base : `${base}  (wait: ${waits.join("; ")})`;
 }

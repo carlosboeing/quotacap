@@ -22,7 +22,6 @@ describe("markdown table", () => {
         "| Antigravity | 50% | 0% | — | 7d 0h | Measuring | Measuring pace; 50% remains with 7d 0h until reset | — |",
         "| Antigravity 3P | 60% | 0% | — | 7d 0h | Not reporting | stale 3h 0m ago | — |",
         "| Grok | 30% | — | — | — | Not reporting | invalid reading | — |",
-        "| Manual | — | — | — | — | Not reporting | no readings yet | — |",
       ].join("\n"),
     );
   });

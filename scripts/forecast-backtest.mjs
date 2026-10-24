@@ -292,8 +292,9 @@ export function currentVerdict(q, recent, windowAvg, now) {
 function cycleBreakReason(prev, cur) {
   const dropped = cur.usedPct < prev.usedPct;
   const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  const curResets = cur.resetsAt ? new Date(cur.resetsAt).getTime() : NaN;
   const boundaryRolled =
-    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prevResets !== curResets;
   if (dropped && boundaryRolled) return "both";
   if (dropped) return "usage-drop";
   if (boundaryRolled) return "resets-at-rolled";

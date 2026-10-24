@@ -103,7 +103,7 @@ describe("tool surface", () => {
         description: expect.any(String),
         inputSchema: {
           type: "object",
-          properties: { task: { type: "string", enum: ["any", "heavy", "light"] } },
+          properties: { verbose: { type: "boolean", description: expect.any(String) } },
         },
       },
       {
@@ -208,12 +208,33 @@ describe("get_recommendation", () => {
     const stub = await startStub(serveState(exampleStateSnapshotJson));
     process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
     try {
-      const res: any = await handleTool("get_recommendation", { task: "any" });
+      const res: any = await handleTool("get_recommendation", { verbose: true });
       expect(res.isError).toBeUndefined();
       expect(res.content[0].text).toBe("my-plan: 76% unused at reset (Mon 14 Sep 06:00)");
       expect(JSON.parse(res.content[1].text)).toEqual(
         projectRecommendationResponse(exampleStateSnapshot, "any"),
       );
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("defaults to the pick plus each other shown provider's state, availability and reset", async () => {
+    const stub = await startStub(serveState(exampleStateSnapshotJson));
+    process.env.QUOTACAP_URL = `http://127.0.0.1:${stub.port}`;
+    try {
+      // An old client that still sends task gets the same default payload.
+      const res: any = await handleTool("get_recommendation", { task: "heavy" });
+      const body = JSON.parse(res.content[1].text);
+      expect(Object.keys(body)).toEqual(["use", "reason", "wastePct", "recommendationBasis", "bindingWindow", "alternatives"]);
+      expect(body.use).toBe("my-plan");
+      expect(body.alternatives.map((a: any) => a.provider)).not.toContain("my-plan");
+      expect(body.alternatives.map((a: any) => a.provider)).not.toContain("manual");
+      const kimi = body.alternatives.find((a: any) => a.provider === "kimi");
+      expect(kimi).toEqual({ provider: "kimi", state: "Behind pace", available: true, resetsAt: expect.any(String) });
+      const grok = body.alternatives.find((a: any) => a.provider === "grok");
+      expect(grok.available).toBe(false);
+      expect(res.content[1].text.length).toBeLessThan(2000);
     } finally {
       await stub.close();
     }
@@ -489,7 +510,7 @@ describe("get_models", () => {
       expect(res.content).toHaveLength(2);
       const [markdown, json] = res.content;
       expect(markdown.type).toBe("text");
-      expect(markdown.text).toContain("| Provider | Leftover | Status | Models |");
+      expect(markdown.text).toContain("| Provider | Leftover | Catalog | Models |");
       expect(markdown.text).toContain("| Claude | 75% | ok | claude-sonnet-4-6, claude-opus-4-6 |");
       expect(json.type).toBe("text");
       expect(JSON.parse(json.text)).toEqual(sampleModels);

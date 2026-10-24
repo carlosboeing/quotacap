@@ -514,18 +514,19 @@ describe("pace pair text", () => {
   });
 });
 
-describe("compact suffix legend (D5)", () => {
+describe("compact suffix legend (D5, one glyph per state)", () => {
   const cases: Array<[string, Partial<ProviderSnapshot>, string]> = [
     ["on track has no suffix", { quota: quota(), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, ""],
     ["cap risk", { quota: quota(), advisory: advisory({ status: "at risk", wastePct: 0 }) }, "!"],
     ["watch", { quota: quota(), advisory: advisory({ status: "watch", urgency: "on track", wastePct: 0 }) }, "~"],
     ["watch with waste urgency", { quota: quota(), advisory: advisory({ status: "watch", urgency: "save", wastePct: 0 }) }, "~"],
-    ["behind pace", { quota: quota(), advisory: advisory({ urgency: "save" }) }, "~"],
-    ["ahead of pace", { quota: quota(), advisory: advisory({ urgency: "slow down", status: "on track" }) }, "~"],
-    ["estimated reset", { quota: quota({ resetsAtEstimated: true }), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, "~"],
+    ["behind pace", { quota: quota(), advisory: advisory({ urgency: "save" }) }, "<"],
+    ["ahead of pace", { quota: quota(), advisory: advisory({ urgency: "slow down", status: "on track" }) }, ">"],
+    ["an estimated reset alone adds no mark", { quota: quota({ resetsAtEstimated: true }), advisory: advisory({ urgency: "on track", wastePct: 0, status: "on track" }) }, ""],
+    ["exhausted", { quota: quota({ weeklyPct: 100 }), advisory: advisory({ remaining: 0, bindingRemaining: 0, status: "at risk", wastePct: 0 }) }, "x"],
     ["unknown pace", { quota: quota(), advisory: advisory({ paceSource: "unknown", burnRate: null, wastePct: null, status: "unknown", urgency: "on track" }) }, "?"],
-    ["excluded", { quota: quota(), exclusionReason: "stale", advisory: advisory() }, "?"],
-    ["not reporting", { exclusionReason: "not-reporting" }, "?"],
+    ["excluded", { quota: quota(), exclusionReason: "stale", advisory: advisory() }, "-"],
+    ["not reporting", { exclusionReason: "not-reporting" }, "-"],
   ];
   for (const [name, over, expected] of cases) {
     it(name, () => {
@@ -685,7 +686,7 @@ describe("wide table", () => {
   const line = (cells: string[]) => cells.join("  ");
   it("renders the header plus one row per provider", () => {
     const lines = wide();
-    expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.length);
+    expect(lines).toHaveLength(1 + exampleStateSnapshot.providers.filter((p) => p.enabled).length);
     expect(lines[0]).toBe(
       line(["PROVIDER        ", "  USED", " ELAPSED", "PACE (%/DAY)", "USED VS TIME        ", "RESETS      ", "STATE              ", "FORECAST"]),
     );
@@ -709,9 +710,8 @@ describe("wide table", () => {
     expect(lines[7]).toBe(
       line(["  Grok          ", "   30%", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—           ", "Not reporting      ", "invalid reading"]),
     );
-    expect(lines[8]).toBe(
-      line(["  Manual        ", "     —", "       —", "—           ", "░░░░░░░░░░░░░░░░░░░░", "—           ", "Not reporting      ", "no readings yet"]),
-    );
+    // Manual has no reading and is not enabled: hidden, as on the dashboard.
+    expect(lines[8]).toBeUndefined();
   });
   it("every row honors the column contract", () => {
     for (const line of wide().slice(1)) {
@@ -789,14 +789,14 @@ describe("narrow table (D8)", () => {
   const narrow = () => strip(renderNarrow(exampleStateSnapshot, { now: FIXED_NOW })).split("\n");
   it("renders two lines per provider in recommended order", () => {
     const lines = narrow();
-    expect(lines).toHaveLength(2 * exampleStateSnapshot.providers.length);
+    expect(lines).toHaveLength(2 * exampleStateSnapshot.providers.filter((p) => p.enabled).length);
     expect(lines[0]).toBe("★ my-plan        12% used · 50% elapsed · 1.7 avg %/day");
     expect(lines[1]).toBe("██░░░░░░░░│░░░░░░░░░ resets 7d 0h · Behind pace · 76% unused at reset (Mon 14 Sep 06:00)");
   });
   it("renders unknown values without placeholders leaking percents", () => {
     const lines = narrow();
-    expect(lines[14]).toBe("  Manual         — used · — elapsed · —");
-    expect(lines[15]).toBe("░░░░░░░░░░░░░░░░░░░░ resets — · Not reporting · no readings yet");
+    expect(lines[12]).toBe("  Grok           30% used · — elapsed · —");
+    expect(lines[13]).toBe("░░░░░░░░░░░░░░░░░░░░ resets — · Not reporting · invalid reading");
   });
   it("keeps the wide provider width, colors, and words", () => {
     const colored = renderNarrow(exampleStateSnapshot, { now: FIXED_NOW, color: true });
@@ -815,7 +815,7 @@ describe("compact statusline (D5)", () => {
   it("pins the example fixture exactly and stays ASCII-only", () => {
     const out = renderCompact(exampleStateSnapshot, FIXED_NOW);
     expect(out).toBe(
-      "[my-plan:12%~] | [kimi:22%~] | [claude:40%~] | [codex:40%~] | [agy:50%?] | [agy:3p:60%?] | [grok:30%?]  (use: my-plan)",
+      "[my-plan:12%<] | [Kimi:22%<] | [Claude:40%<] | [Codex:40%<] | [Antigravity:50%?] | [Antigravity 3P:60%-] | [Grok:30%-]  (use: my-plan)",
     );
     expect(out).not.toContain("\x1b[");
     for (const ch of out) expect(ch.charCodeAt(0)).toBeLessThan(128);

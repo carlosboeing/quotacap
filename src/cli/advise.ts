@@ -1,7 +1,7 @@
-// advise: which provider to use next, over the shared projection. The task
-// value validates client-side but never changes the ranking: every valid
-// task returns the identical any-basis recommendation.
-import type { Command } from "commander";
+// advise: which provider to use next, over the shared projection. The
+// hidden --task flag is still accepted and validated for old scripts, but it
+// never changes the ranking, so help no longer offers it.
+import { Option, type Command } from "commander";
 import { projectRecommendationResponse } from "../advisory/snapshot.js";
 import { renderRecommendationSummary } from "../format/markdown.js";
 import { validateTask } from "../advisory/validate.js";
@@ -59,9 +59,9 @@ export function registerAdviseCommand(program: Command, deps: ClientCommandDeps)
 
   program
     .command("advise")
-    .description("show which provider to use next (same advice for every task)")
+    .description("show which provider to use next")
     .option("--json", "machine-readable output")
-    .option("--task <t>", "task type: any|heavy|light", "any")
+    .addOption(new Option("--task <t>").default("any").hideHelp())
     .action(async (o) => {
       // Task validation precedes any I/O: a bogus task never touches the
       // network, config, or database.

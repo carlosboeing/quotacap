@@ -245,6 +245,7 @@
 ## Next
 
 * History accuracy — finished windows only in `lastCloses` and the baseline, each close priced over the days it ran, early resets dated and named on the history bars, `advisories` limited to ranked providers, Muse plan name without escape codes
+* CLI and MCP — compact `get_recommendation` with `verbose`, display names, disabled providers hidden, one compact glyph per state, CATALOG column, UTC timestamps at ingest, header dated by the oldest reading
 * Phone layout — 2×2 pace cells and grouped reset pins under 480 px, Ahead of pace off the Watch hue
 * One vocabulary — one duration, clock and waste sentence across dashboard, CLI, MCP and the engine reason, one state-word table, legend copy
 * One forecast story — waste at the faster of the 24h rate and the forecast, "forecast pace" copy with the rate shown, one near-reset sentence on every surface, capped quotas out of the lanes, 24h rate limited to the open window
