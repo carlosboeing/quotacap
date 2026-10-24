@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect, vi } from "vitest";
 import { exampleStateSnapshotJson, monthlyStateSnapshotJson } from "../fixtures/stable-state.js";
-import { AdviceDrawer } from "../../web/src/components/AdviceDrawer.js";
+import { AdviceDrawer, forecastBasisWords } from "../../web/src/components/AdviceDrawer.js";
 import { CopyButton } from "../../web/src/components/CopyButton.js";
 import { toViewModel } from "../../web/src/state.js";
 
@@ -57,8 +57,33 @@ describe("advice drawer", () => {
         open: true, recommendation: s.recommendation, providers: s.providers, asOf: s.asOf, onClose: () => {},
       })
     ).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota expires in");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset (");
+  });
+
+  it("names the blend when the forecast mixes the 24h rate with history", () => {
+    const base = { paceSource: "recent" } as any;
+    expect(forecastBasisWords({ ...base, recentRate: 9, baselineRate: 4 })).toBe("24h pace blended with history");
+    expect(forecastBasisWords({ ...base, recentRate: 9, baselineRate: null })).toBe("24h pace");
+    expect(forecastBasisWords({ paceSource: "window-average", recentRate: null, baselineRate: 4 } as any)).toBe("window-average pace");
+  });
+
+  it("a month-bound use-more row reads the month, like its card", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const pick = s.recommendation.use;
+    const other = s.providers.find((p) => p.id !== pick && p.advisory)!;
+    const advisories = s.recommendation.advisories.map((a) =>
+      a.provider === other.id
+        ? { ...a, urgency: "save" as const, wastePct: 95, bindingWindow: "monthly" as const, bindingRemaining: 60 }
+        : a,
+    );
+    const html = renderToString(
+      React.createElement(AdviceDrawer, {
+        open: true, recommendation: { ...s.recommendation, advisories }, providers: s.providers, asOf: s.asOf, onClose: () => {},
+      })
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("60% of month left");
+    expect(html).not.toContain("95% unused");
   });
 
   it("uses the trimmed subtitle, one-sentence pick body, and prose stats with mono figures", () => {
@@ -76,7 +101,7 @@ describe("advice drawer", () => {
     ).replace(/<!-- -->/g, "");
     expect(html).toContain("Which quota to burn next, and why");
     // Stats line is prose; figures are wrapped in <b> (mono via CSS).
-    expect(html).toContain("unused quota expires in");
+    expect(html).toContain("unused at reset (<b>Mon 14 Sep 06:00</b>)");
     // One sentence: remaining + time to reset + pace basis, no second filler sentence.
     expect(html).toContain(
       `has ${Math.round(pick.advisory!.remaining)}% quota remaining with 7d 0h to reset, forecast at the window-average pace.`
@@ -108,7 +133,7 @@ describe("advice drawer", () => {
     expect(html).toContain("↓");
     expect(html).toContain("Ease off");
     // Use-more metas lead with unused % and reset (Kimi 56% waste in the fixture).
-    expect(html).toContain("56% unused · resets in 7d 0h");
+    expect(html).toContain("56% unused at reset · resets in 7d 0h");
     const css = fs.readFileSync("web/src/theme.css", "utf8");
     expect(css).toMatch(/\.lane-group dt\.um \{[^}]*color: var\(--warn\)/);
     expect(css).toMatch(/\.lane-group dt\.eo \{[^}]*color: var\(--danger\)/);

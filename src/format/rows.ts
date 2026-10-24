@@ -2,13 +2,14 @@
 // countdowns, and forecast sentences every surface renders. Presentation-only
 // math lives here (countdowns, elapsed, rail cells); freshness, ranking, and
 // pace rules stay in src/advisory and are never recomputed.
-import type { ProviderSnapshot } from "../advisory/types.js";
+import type { Advisory, ProviderSnapshot } from "../advisory/types.js";
 import { rateLimitWaits } from "./rate-limit-wait.js";
+import { dayText, durationFromDays, durationText, unusedAtReset } from "./time.js";
 
 export type StateWord = "On track" | "Behind pace" | "Ahead of pace" | "Cap risk" | "Watch" | "Measuring" | "Not reporting" | "Monthly exhausted" | "Quota exhausted";
 export type RailCell = "used" | "tick" | "unused";
 export type SortKey = "recommended" | "reset-asc" | "reset-desc" | "used-desc" | "used-asc";
-export type CompactSuffix = "" | "!" | "~" | "?";
+export type CompactSuffix = "" | "<" | ">" | "~" | "!" | "x" | "?" | "-";
 
 export interface Row {
   id: string;
@@ -32,8 +33,6 @@ export const RAIL_CELLS = 20;
 export const SORT_KEYS: SortKey[] = ["recommended", "reset-asc", "reset-desc", "used-desc", "used-asc"];
 
 const DAY_MS = 86400000;
-const HOUR_MS = 3600000;
-const MIN_MS = 60000;
 
 function msOf(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -47,7 +46,28 @@ function msOf(iso: string | null | undefined): number | null {
  * elapsed, and pace read it. Weekly-bound rows fall back to the weekly
  * fields unchanged; rate-limit windows never drive these figures.
  */
-export function isMonthlyBound(ps: ProviderSnapshot): boolean {
+/**
+ * The fields the state word and the binding helpers read. Structural, so
+ * the dashboard's ProviderView feeds the same table as the CLI snapshot.
+ */
+export interface StateSource {
+  exclusionReason: string | null;
+  advisory:
+    | (Pick<Advisory, "bindingWindow" | "bindingRemaining" | "remaining" | "status" | "urgency"> & {
+        closeToReset?: boolean;
+        aheadOfElapsed?: boolean | null;
+      })
+    | null;
+  quota: {
+    weeklyPct?: number;
+    usedPct?: number;
+    monthlyKind?: string;
+    monthlyPct?: number;
+    monthlyResetsAt?: string;
+  } | null;
+}
+
+export function isMonthlyBound(ps: StateSource): boolean {
   return (
     ps.advisory?.bindingWindow === "monthly" &&
     ps.quota?.monthlyKind === "included" &&
@@ -64,7 +84,7 @@ export function bindingResetsAt(ps: ProviderSnapshot): string | null {
 }
 
 /** Used percent of the quota window. Null without a quota reading. */
-export function bindingUsedPct(ps: ProviderSnapshot): number | null {
+export function bindingUsedPct(ps: StateSource): number | null {
   if (!ps.quota) return null;
   if (isMonthlyBound(ps)) {
     const m = ps.quota.monthlyPct;
@@ -144,22 +164,18 @@ export function weeklyPctOf(q: { weeklyPct?: number; usedPct?: number } | null |
   return q?.weeklyPct ?? q?.usedPct;
 }
 
-// Compact duration: 7d / 12h / 45m. Countdown convention floors; sub-minute
-// spans read 1m so a live window never prints 0m.
+// Countdown in the shared floored form ("6d 23h", "5h 12m", "45m").
 export function fmtDuration(ms: number): string {
-  if (ms >= 48 * HOUR_MS) return `${Math.floor(ms / DAY_MS)}d`;
-  if (ms >= 90 * MIN_MS) return `${Math.floor(ms / HOUR_MS)}h`;
-  return `${Math.max(1, Math.floor(ms / MIN_MS))}m`;
+  return durationText(ms);
 }
 
 // Short weekday plus calendar date of an ISO instant in the locked English
-// copy, e.g. "Tue Sep 15". Pinned to en-US: the sentence it feeds
-// ("unused until Tue Sep 15") is English, so a non-English machine must not
+// copy, e.g. "Tue 15 Sep". Pinned to en-US: the sentence it feeds
+// ("unused until Tue 15 Sep") is English, so a non-English machine must not
 // print localized parts inside it. A bare weekday scans as this coming week,
 // which misreads a monthly reset sitting weeks out.
 export function dayOf(iso: string | undefined): string {
-  const when = new Date(iso ?? "");
-  return `${when.toLocaleDateString("en-US", { weekday: "short" })} ${when.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+  return dayText(iso);
 }
 
 export function countdownText(ps: ProviderSnapshot, now: Date): string {
@@ -211,7 +227,7 @@ export function railCells(ps: ProviderSnapshot, now: Date): RailCell[] {
 // on-track rows ahead of cumulative elapsed time revive Ahead of pace,
 // except a finish inside the horizon tube, which stays On track;
 // urgency maps to the remaining pace words.
-export function stateWord(ps: ProviderSnapshot): StateWord {
+export function stateWord(ps: StateSource): StateWord {
   if (ps.exclusionReason !== null) return "Not reporting";
   const adv = ps.advisory;
   if (!adv) return "Not reporting";
@@ -280,37 +296,64 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
   } else if (adv.remaining <= 0) {
     text = "Exhausted";
   } else if (adv.paceSource === "unknown" || adv.burnRate === null) {
-    text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${adv.daysLeft.toFixed(1)}d until reset`;
-  } else if (adv.status === "watch") {
+    text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${durationFromDays(adv.daysLeft)} until reset`;
+  } else if (adv.status === "at risk" || adv.status === "watch") {
+    const word = adv.status === "at risk" ? "cap risk" : "watch";
     text =
       adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust)
-        ? `Exhausts in ${adv.daysToExhaust.toFixed(1)}d — watch`
-        : "Near the cap — watch";
-  } else if (adv.wastePct !== null && adv.wastePct > 0) {
-    text = `${Math.round(adv.wastePct)}% waste in ${adv.daysLeft.toFixed(1)}d`;
+        ? `Exhausts in ${durationFromDays(adv.daysToExhaust)} — ${word}`
+        : `Near the cap — ${word}`;
+  } else if (adv.closeToReset === true) {
+    // Same words as the dashboard (LANDS_NEAR_FULL in web PaceBar.tsx).
+    text = "Lands near 100% at reset";
+  } else if (adv.wastePct !== null && Math.round(adv.wastePct) >= 1) {
+    text = unusedAtReset(adv.wastePct, bindingResetsAt(ps), now.getTime());
   } else {
-    text = "Exhausts before reset";
+    // Same words as the dashboard (NO_SPARE in web PaceBar.tsx).
+    text = "No spare quota at 24h pace";
   }
   // Engine estimate vocabulary, mirroring the snapshot reason transform.
   // A monthly quota forecast never carries the weekly estimate flag.
   if (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated) {
-    if (text.includes("waste in")) text = text.replace("waste in", "estimated waste in");
+    if (text.includes("unused at reset")) text = text.replace("unused at reset", "unused at estimated reset");
     else if (text.includes("until reset")) text = text.replace("until reset", "until estimated reset");
     else if (!text.includes("estimated")) text = `${text} (estimated)`;
   }
   return text;
 }
 
-// Compact legend: none = On track; ! = Cap risk; ~ = Watch or Behind/Ahead
-// pace or estimated reset; ? = unknown pace or any excluded row.
-export function compactSuffix(ps: ProviderSnapshot): CompactSuffix {
-  if (ps.exclusionReason !== null) return "?";
-  const adv = ps.advisory;
-  if (!adv || adv.paceSource === "unknown") return "?";
-  if (adv.status === "at risk") return "!";
-  if (adv.status === "watch") return "~";
-  if (adv.urgency !== "on track" || (!isMonthlyBound(ps) && ps.quota?.resetsAtEstimated)) return "~";
-  return "";
+// Compact glyph: one per state word, so the statusline never folds two
+// states into one mark. COMPACT_LEGEND is printed in `status --help`.
+const COMPACT_GLYPHS: Record<StateWord, CompactSuffix> = {
+  "On track": "",
+  "Behind pace": "<",
+  "Ahead of pace": ">",
+  Watch: "~",
+  "Cap risk": "!",
+  "Quota exhausted": "x",
+  "Monthly exhausted": "x",
+  Measuring: "?",
+  "Not reporting": "-",
+};
+
+export const COMPACT_LEGEND = "no mark on track, < behind, > ahead, ~ watch, ! cap risk, x exhausted, ? measuring, - not reporting";
+
+export function compactSuffix(ps: StateSource): CompactSuffix {
+  return COMPACT_GLYPHS[stateWord(ps)];
+}
+
+/**
+ * Providers a human surface lists: the enabled ones, as the dashboard
+ * shows them. JSON keeps every provider with its exclusion reason.
+ */
+export function shownProviders(providers: ProviderSnapshot[]): ProviderSnapshot[] {
+  return providers.filter((p) => p.enabled !== false);
+}
+
+/** Display name of the recommended provider, or "none". */
+export function useName(snapshot: { recommendation: { use: string }; providers: Array<{ id: string; displayName: string }> }): string {
+  const use = snapshot.recommendation.use;
+  return snapshot.providers.find((p) => p.id === use)?.displayName ?? use;
 }
 
 export function assertValidSortKey(key: string): asserts key is SortKey {

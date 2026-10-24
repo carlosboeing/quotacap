@@ -29,7 +29,7 @@ describe("rankWaste", () => {
     expect(rec.use).toBe("opencode-go");
     expect(rec.wastePct).toBeCloseTo(5 * 6 / 7, 9); // 4.3
     expect(rec.bindingWindow).toBe("monthly");
-    expect(rec.reason).toBe("5% of month left in 7.0d");
+    expect(rec.reason).toBe("5% of month left in 7d 0h");
   });
 
   it("95% monthly over 7 days loses to a peer at 12% weekly waste", () => {
@@ -55,7 +55,7 @@ describe("rankWaste", () => {
     const adv = computeAdvisory(kimi, 8, 8, NOW);
     expect(rec.wastePct).toBe(adv.wastePct);
     expect(rec.bindingWindow).toBe("weekly");
-    expect(rec.reason).toBe("12% waste in 6.0d");
+    expect(rec.reason).toBe("12% unused at reset (Mon 22:00)");
   });
 
   it("100% monthly is absent from both pools", () => {
@@ -76,12 +76,12 @@ describe("rankWaste", () => {
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
     expect(rec.bindingWindow).toBe("monthly");
-    expect(rec.reason).toBe("Measuring pace; 5% of month left with 7.0d until reset");
+    expect(rec.reason).toBe("Measuring pace; 5% of month left with 7d 0h until reset");
   });
 
   it("weekly pool-2 wording is unchanged", () => {
     const rec = recommend([q("kimi", 47, 5.2)], "any", new Map(), NOW);
-    expect(rec.reason).toBe("Measuring pace; 53% remains with 5.2d until reset");
+    expect(rec.reason).toBe("Measuring pace; 53% remains with 5d 4h until reset");
     expect(rec.bindingWindow).toBe("weekly");
   });
 });

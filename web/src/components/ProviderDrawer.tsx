@@ -29,6 +29,7 @@ import {
   resetClock,
   resetDateClock,
   timeLeft,
+  unusedLine,
   type PaceBadge,
   type PaceHeadline,
 } from "./PaceBar.js";
@@ -202,6 +203,19 @@ export function paceBasis(provider: ProviderView, asOfMs?: number): string {
   return "No current reading";
 }
 
+/**
+ * The rate the verdict and waste are priced at, named once so "forecast
+ * pace" in the copy points at a visible figure. Null unless both inputs of
+ * the blend exist: with one input the forecast equals a figure already
+ * shown in the grid.
+ */
+export function forecastBasis(provider: ProviderView): string | null {
+  const a = provider.advisory;
+  if (!a || isMonthlyBound(provider) || a.burnRate === null) return null;
+  if (a.recentRate == null || a.baselineRate == null) return null;
+  return `forecast ${a.burnRate.toFixed(1)}%/day (24h blended with history)`;
+}
+
 export function credentialLabel(provider: ProviderView): string {
   const source = provider.quota?.source;
   if (provider.id === "opencode-go" && source === "api") {
@@ -346,7 +360,7 @@ export interface Verdict {
 
 /**
  * Drawer verdict band from lane, binding window, and forecast fields.
- * Precedence: excluded or monthly-exhausted, monthly-bound, use-more lane,
+ * Precedence: excluded or monthly-exhausted, capped, monthly-bound, use-more lane,
  * ease-off lane or at-risk/watch status, otherwise on track.
  */
 export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
@@ -369,6 +383,11 @@ export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
   if (!advisory) {
     return { tone: "neutral", label: "• On track", detail: forecastLine(provider) };
   }
+  if (advisory.remaining <= 0 || paceBadge(provider) === "Quota exhausted") {
+    const reset = quotaResetsAt(provider);
+    const clock = reset ? resetClock(reset) : null;
+    return { tone: "neutral", label: "• Capped", detail: clock ? `until ${clock}` : "quota fully used" };
+  }
   if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining > 0) {
     return {
       tone: "use-more",
@@ -378,32 +397,17 @@ export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
   }
   const lane = laneOf(advisory, provider.exclusionReason);
   if (lane === "use-more") {
-    const waste =
-      advisory.wastePct !== null && Number.isFinite(advisory.wastePct)
-        ? Math.round(advisory.wastePct)
-        : null;
-    const quotaReset = quotaResetsAt(provider);
-    const left =
-      quotaReset && asOfMs !== undefined
-        ? timeLeft(quotaReset, asOfMs)
-        : Number.isFinite(advisory.bindingDaysLeft ?? advisory.daysLeft)
-          ? daysToDuration(advisory.bindingDaysLeft ?? advisory.daysLeft)
-          : null;
     const detail =
-      waste !== null && left
-        ? `${waste}% waste forecast · resets in ${left}`
-        : waste !== null
-          ? `${waste}% waste forecast`
-          : forecastLine(provider);
+      advisory.wastePct !== null && Number.isFinite(advisory.wastePct)
+        ? unusedLine(provider, advisory.wastePct)
+        : forecastLine(provider);
     return { tone: "use-more", label: "↑ Use more", detail };
   }
   if (lane === "ease-off" || advisory.status === "at risk" || advisory.status === "watch") {
     const detail =
-      advisory.remaining <= 0 || paceBadge(provider) === "Quota exhausted"
-        ? "quota fully used"
-        : advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-          ? `exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-          : paceBadge(provider);
+      advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
+        ? `exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+        : paceBadge(provider);
     return { tone: "ease-off", label: "↓ Ease off", detail };
   }
   return { tone: "neutral", label: "• On track", detail: forecastLine(provider) };
@@ -432,7 +436,7 @@ export async function submitProviderRename(
 /**
  * Compact forecast for a drawer limit line. The verdict band and Pace
  * section carry the full pace story, so the row keeps only the outcome:
- * status words and "at current pace" are dropped, and a status-only
+ * status words and "at forecast pace" are dropped, and a status-only
  * headline with no figure is left to the verdict.
  */
 export function compactLimitForecast(provider: ProviderView): PaceHeadline | null {
@@ -443,7 +447,7 @@ export function compactLimitForecast(provider: ProviderView): PaceHeadline | nul
     .replace(/^(Cap risk|Watch) · /, "")
     .replace(/^Measuring pace · /, "")
     .replace(/^Exhausted · /, "")
-    .replace(/ at current pace$/, "");
+    .replace(/ at forecast pace$/, "");
   if (!/\d/.test(text) && text !== "quota fully used") return null;
   return { ...headline, text };
 }
@@ -644,10 +648,13 @@ export function ProviderDrawer({
   }
   const showCredential = provider.id === "opencode-go" && provider.quota?.source === "api";
   const paceFigs = paceFigures(provider.advisory);
-  const paceBasisLine =
+  const forecastNote = forecastBasis(provider);
+  const paceBasisLine = [
     provider.advisory && paceFigs.avg === null && paceFigs.recent !== null
       ? PACE_TIPS.recent
-      : paceBasis(provider, asOfMs);
+      : paceBasis(provider, asOfMs),
+    forecastNote,
+  ].filter(Boolean).join(" · ");
 
   const weeklyResetLine = underlineParts ? (
     <div className="winrow-sub reset-line">

@@ -36,12 +36,14 @@ describe("limitStamp", () => {
     expect(stamp).toBe(
       [
         when.toLocaleDateString("en-US", { weekday: "short" }),
-        when.toLocaleDateString("en-US", { month: "short" }),
         when.toLocaleDateString("en-US", { day: "numeric" }),
+        when.toLocaleDateString("en-US", { month: "short" }),
         stamp!.split(" ").at(-1),
       ].join(" "),
     );
-    expect(stamp).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}$/);
+    expect(stamp).toMatch(/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/);
+    // Within a week of now the weekday alone is unambiguous.
+    expect(limitStamp(IN_THREE_HOURS, NOW.getTime())).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
   });
 });
 
@@ -56,8 +58,8 @@ describe("rateLimitWaits", () => {
         window: "five-hour",
         label: "5h limit",
         resetsAt: IN_THREE_HOURS,
-        until: limitStamp(IN_THREE_HOURS),
-        text: `5h limit until ${limitStamp(IN_THREE_HOURS)}`,
+        until: limitStamp(IN_THREE_HOURS, NOW.getTime()),
+        text: `5h limit until ${limitStamp(IN_THREE_HOURS, NOW.getTime())}`,
       },
     ]);
   });
@@ -102,7 +104,7 @@ describe("rateLimitWaits", () => {
       },
     });
     expect(rateLimitWaits(monthly, NOW).map((w) => w.text)).toEqual([
-      `Weekly limit until ${limitStamp(IN_SIX_DAYS)}`,
+      `Weekly limit until ${limitStamp(IN_SIX_DAYS, NOW.getTime())}`,
     ]);
 
     const weeklyPlan = source({
@@ -183,11 +185,11 @@ describe("pace surfaces stay on the reset window", () => {
     const snap = { ...exampleStateSnapshot, providers: [ps], asOf: NOW.toISOString() };
     const wide = renderWide(snap, { now: NOW });
     expect(wide).toContain(forecastText(ps, NOW));
-    expect(wide).toContain(`5h limit until ${limitStamp(IN_THREE_HOURS)}`);
+    expect(wide).toContain(`5h limit until ${limitStamp(IN_THREE_HOURS, NOW.getTime())}`);
     expect(renderRecommendationSummary(snap, NOW)).toBe(
       [
         `${snap.recommendation.use}: ${snap.recommendation.reason}`,
-        `Claude: 5h limit until ${limitStamp(IN_THREE_HOURS)}`,
+        `Claude: 5h limit until ${limitStamp(IN_THREE_HOURS, NOW.getTime())}`,
       ].join("\n"),
     );
   });

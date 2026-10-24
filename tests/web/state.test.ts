@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { exampleStateSnapshotJson, staleStateSnapshotJson } from "../fixtures/stable-state.js";
-import { toViewModel, firstRun, ageLabel, nextRefreshLabel, displayPlan, shortWindowLabel } from "../../web/src/state.js";
+import { toViewModel, firstRun, ageLabel, nextRefreshLabel, displayPlan, oldestReadingAt, shortWindowLabel } from "../../web/src/state.js";
 
 describe("state mapping", () => {
   it("keeps server words and flags untouched", () => {
@@ -35,6 +35,19 @@ describe("state mapping", () => {
     expect(ageLabel(new Date(now - 30_000).toISOString(), now)).toBe("read 30s ago");
     expect(ageLabel(new Date(now - 5 * 60_000).toISOString(), now)).toBe("read 5m ago");
     expect(ageLabel(new Date(now - 2 * 3_600_000).toISOString(), now)).toBe("read 2h ago");
+  });
+  it("dates the header by the oldest reading the advice uses", () => {
+    const asOf = "2026-09-10T12:00:00.000Z";
+    const p = (id: string, fetchedAt: string, over: any = {}) =>
+      ({ id, enabled: true, exclusionReason: null, quota: { fetchedAt }, ...over }) as any;
+    const providers = [
+      p("a", "2026-09-10T11:57:00.000Z"),
+      p("b", "2026-09-10T11:59:00.000Z"),
+      p("stale", "2026-09-01T00:00:00.000Z", { exclusionReason: "stale" }),
+      p("off", "2026-08-01T00:00:00.000Z", { enabled: false }),
+    ];
+    expect(oldestReadingAt(providers, asOf)).toBe("2026-09-10T11:57:00.000Z");
+    expect(oldestReadingAt([], asOf)).toBe(asOf);
   });
   it("labels next refresh from lastCompletedPollAt and the default interval", () => {
     const now = Date.parse("2026-09-10T12:00:00Z");

@@ -29,10 +29,12 @@ export function connectionBadge(provider: ProviderView): string {
   return age ? `${status} · ${age} ago` : status;
 }
 
-export type SettingsStatus = "Ready" | "Stale" | "Failed" | "Invalid" | "Reset passed" | "Not reporting";
+export type SettingsStatus = "Ready" | "Disabled" | "Stale" | "Failed" | "Invalid" | "Reset passed" | "Not reporting";
 
-/** Short status from server exclusion and attempt fields. */
+/** Short status from server exclusion and attempt fields. A disabled
+ *  provider reads Disabled, whatever its last attempt did. */
 export function providerStatus(provider: ProviderView): SettingsStatus {
+  if (!provider.enabled) return "Disabled";
   switch (provider.exclusionReason) {
     case "stale":
       return "Stale";

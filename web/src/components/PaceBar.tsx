@@ -1,42 +1,17 @@
 import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
+import { stateWord, type StateWord } from "../../../src/format/rows.js";
+import { clockText, dayText, durationFromDays, durationText, unusedAtReset } from "../../../src/format/time.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring" | "Monthly exhausted" | "Quota exhausted";
+export type PaceBadge = StateWord;
 
 /**
- * Pace-state badge from the mapping table. Exclusion always wins; a blocked
- * month next; otherwise status "at risk" wins, then "watch", then "unknown";
- * on-track rows ahead of cumulative elapsed time read Ahead of pace,
- * except a finish inside the horizon tube, which stays On track;
- * otherwise urgency decides. No client thresholds.
+ * Pace-state badge: the CLI's state word, from the one mapping table in
+ * src/format/rows.ts, so the dashboard and the CLI never word a row apart.
  */
 export function paceBadge(provider: ProviderView): PaceBadge {
-  if (provider.exclusionReason !== null) return "Not reporting";
-  const advisory = provider.advisory;
-  if (!advisory) return "Not reporting";
-  if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return "Monthly exhausted";
-  const quotaUsed = quotaUsedPct(provider);
-  const isExhausted =
-    (typeof advisory.bindingRemaining === "number" && advisory.bindingRemaining <= 0) ||
-    (typeof advisory.remaining === "number" && advisory.remaining <= 0) ||
-    (quotaUsed !== null && quotaUsed >= 100);
-  if (isExhausted) return "Quota exhausted";
-  if (advisory.status === "at risk") return "Cap risk";
-  if (advisory.status === "watch") return "Watch";
-  if (advisory.status === "unknown") return "Measuring";
-  if (advisory.status === "on track" && advisory.closeToReset === true) return "On track";
-  if (advisory.aheadOfElapsed === true) return "Ahead of pace";
-  switch (advisory.urgency) {
-    case "burn now":
-    case "use soon":
-    case "save":
-      return "Behind pace";
-    case "slow down":
-      return "Ahead of pace";
-    case "on track":
-      return "On track";
-  }
+  return stateWord(provider);
 }
 
 /**
@@ -109,6 +84,14 @@ export function quotaElapsedPct(provider: ProviderView, asOfMs: number): number 
   if (!Number.isFinite(startMs) || !Number.isFinite(resetMs) || resetMs <= startMs) return null;
   if (!Number.isFinite(asOfMs)) return null;
   return Math.min(100, Math.max(0, ((asOfMs - startMs) / (resetMs - startMs)) * 100));
+}
+
+/** True when the quota window has nothing left: the ideal pace is then meaningless. */
+function paceExhausted(advisory: { remaining?: number; bindingRemaining?: number }): boolean {
+  return (
+    (typeof advisory.remaining === "number" && advisory.remaining <= 0) ||
+    (typeof advisory.bindingRemaining === "number" && advisory.bindingRemaining <= 0)
+  );
 }
 
 /** Even pace that lands on 100% at the quota reset: binding remaining ÷ binding days left. */
@@ -214,7 +197,8 @@ export function PaceStats({ provider, asOf }: { provider: ProviderView; asOf: st
   // is not tracked), so a monthly-bound grid reads "—" there.
   const avg = quotaAvgPace(provider, asOfMs);
   const pace = paceCells(provider.advisory);
-  const ideal = advisory ? `${quotaIdealRate(advisory).toFixed(1)}%/day` : "—";
+  // A used-up quota has no pace to aim for until it resets.
+  const ideal = advisory && !paceExhausted(advisory) ? `${quotaIdealRate(advisory).toFixed(1)}%/day` : "—";
   const resetIso = quotaResetsAt(provider);
   const resetsIn = resetIso ? timeLeft(resetIso, asOfMs) : null;
   return (
@@ -244,7 +228,7 @@ export function PaceStats({ provider, asOf }: { provider: ProviderView; asOf: st
 /** Hover explanations shared by cards and rows. Plain words, no jargon. */
 export const PACE_TIPS = {
   avg: "Window average — quota used ÷ days elapsed. Your overall pace this window.",
-  recent: "Burn over the last 24 hours. Forecasts use this rate when recent readings exist.",
+  recent: "Burn over the last 24 hours. Forecasts blend this rate with your history.",
   ideal: "The even pace that lands exactly on 100% at reset: remaining ÷ days left.",
 } as const;
 
@@ -273,7 +257,7 @@ export function paceLines(
   const lines: PaceLine[] = [];
   if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day`, tip: PACE_TIPS.avg });
   if (!monthly && recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
-  lines.push({ label: "Ideal", value: `${ideal.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
+  if (!paceExhausted(advisory)) lines.push({ label: "Ideal", value: `${ideal.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
   return lines;
 }
 
@@ -298,87 +282,40 @@ export function isEstimated(provider: ProviderView): boolean {
   return provider.evidence.includes("estimated-reset");
 }
 
-/** Weekday plus 24h clock, e.g. "Thu 21:00". Null when unparseable. */
-export function resetClock(resetsAt: string, locale?: string): string | null {
+/** Weekday plus 24h clock, e.g. "Thu 21:00": the shared clock's within-a-week form. Null when unparseable. */
+export function resetClock(resetsAt: string): string | null {
   const ms = Date.parse(resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(locale, { weekday: "short" });
-  const time = when.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${day} ${time}`;
+  return Number.isFinite(ms) ? clockText(resetsAt, ms) : null;
 }
 
-/** Weekday, calendar date and 24h clock, e.g. "Thu Oct 22 23:05". Monthly
- *  resets sit weeks out, where resetClock's weekday-only reading ("Thu 23:05")
- *  scans as this coming Thursday. Null when unparseable. */
-export function resetDateClock(resetsAt: string, locale?: string): string | null {
-  const ms = Date.parse(resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(locale, { weekday: "short" });
-  const date = when.toLocaleDateString(locale, { day: "numeric", month: "short" });
-  const time = when.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${day} ${date} ${time}`;
+/** Weekday, calendar date and 24h clock, e.g. "Thu 22 Oct 23:05": the shared
+ *  clock's dated form. Monthly resets sit weeks out, where the weekday alone
+ *  ("Thu 23:05") scans as this coming Thursday. Null when unparseable. */
+export function resetDateClock(resetsAt: string): string | null {
+  return clockText(resetsAt);
 }
 
-/** Short weekday plus calendar date in the locked English copy, e.g.
- *  "Tue Sep 15". Mirrors dayOf in src/format/rows.ts, including its pinned
- *  en-US locale, so the CLI and the dashboard word the same sentence
- *  identically on any machine. */
+/** Short weekday plus calendar date, e.g. "Tue 15 Sep". Same helper as the
+ *  CLI's dayOf in src/format/rows.ts, so both word the sentence identically. */
 export function resetDay(iso: string | undefined): string {
-  const when = new Date(iso ?? "");
-  return `${when.toLocaleDateString("en-US", { weekday: "short" })} ${when.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+  return dayText(iso);
 }
 
-/** "6d 12h" style time left from server timestamps. Null when unparseable. */
+/** "6d 12h" style time left from server timestamps, floored. Null when unparseable or passed. */
 export function timeLeft(resetsAt: string, asOfMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
   if (!Number.isFinite(resetMs) || !Number.isFinite(asOfMs)) return null;
   const diffMs = resetMs - asOfMs;
   if (diffMs <= 0) return null;
-  const totalMinutes = Math.floor(diffMs / 60_000);
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  if (days >= 1) return `${days}d ${hours}h`;
-  if (hours >= 1) return `${hours}h ${minutes}m`;
-  return `${Math.max(1, minutes)}m`;
+  return durationText(diffMs);
 }
 
-/**
- * Days-to-duration formatter mirroring timeLeft: under 1h `Xm`, under 48h
- * `Xh Ym`, at 48h+ `Xd Xh`. Hours in the days branch round to the nearest
- * hour so 2.4d reads "2d 10h".
- */
+/** Fractional days in the same floored form as timeLeft. */
 export function daysToDuration(days: number): string {
-  if (!Number.isFinite(days) || days <= 0) return "0m";
-  const totalMinutes = Math.round(days * 24 * 60);
-  if (totalMinutes < 60) return `${Math.max(1, totalMinutes)}m`;
-  if (totalMinutes < 48 * 60) {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours}h ${minutes}m`;
-  }
-  let d = Math.floor(totalMinutes / (24 * 60));
-  const remainderMinutes = totalMinutes - d * 24 * 60;
-  let h = Math.round(remainderMinutes / 60);
-  if (h === 24) {
-    d += 1;
-    h = 0;
-  }
-  return `${d}d ${h}h`;
+  return durationFromDays(days);
 }
 
 export const formatDurationDays = daysToDuration;
-export const durationFromDays = daysToDuration;
 
 /**
  * Reset rendering for a row. Estimated resets carry "(est.)"; reset-passed
@@ -616,7 +553,7 @@ export function isQuotaExhaustedBeforeReset(provider: ProviderView, asOfMs?: num
 
 /**
  * Headline forecast shared by the card bar and the drawer quota row:
- * "expires unused" wording when a waste hatch applies, otherwise the
+ * "unused at reset" wording when a waste hatch applies, otherwise the
  * one-line forecast. Null when there is nothing to forecast.
  */
 export function paceHeadline(provider: ProviderView, asOfMs?: number): PaceHeadline | null {
@@ -635,7 +572,7 @@ export function paceHeadline(provider: ProviderView, asOfMs?: number): PaceHeadl
     };
   }
   const text =
-    hatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
+    hatch && badge === "Behind pace" ? unusedLine(provider, wastePct!) : forecastLine(provider);
   if (!text) return null;
   const kind: PaceHeadlineKind = monthlyBinds
     ? provider.advisory!.bindingRemaining === 0
@@ -725,6 +662,21 @@ export function PaceBar({
   );
 }
 
+/**
+ * The shared waste sentence against the quota reset, e.g. "16% unused at
+ * reset (Fri 13:14)". The clock form is judged from the reading's own time,
+ * as the CLI judges it from its clock, so both pick the same form.
+ */
+export function unusedLine(provider: ProviderView, wastePct: number): string {
+  const fetched = provider.quota?.fetchedAt ? Date.parse(provider.quota.fetchedAt) : NaN;
+  return unusedAtReset(wastePct, quotaResetsAt(provider), Number.isFinite(fetched) ? fetched : undefined);
+}
+
+/** Shared with src/format/rows.ts so the CLI and the dashboard agree. */
+export const LANDS_NEAR_FULL = "Lands near 100% at reset";
+/** On track by forecast, yet the faster 24h pace spends the remainder (waste 0). */
+export const NO_SPARE = "No spare quota at 24h pace";
+
 /** One-line forecast from server fields. Unknown pace shows no rate or waste. */
 export function forecastLine(provider: ProviderView): string | null {
   if (provider.exclusionReason === "not-reporting" || !provider.quota) return "Not reporting yet.";
@@ -756,16 +708,18 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   if (advisory.status === "at risk") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Cap risk · exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-      : "Cap risk at current pace";
+      ? `Cap risk · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Cap risk at forecast pace";
   }
   if (advisory.status === "watch") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Watch · exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-      : "Watch at current pace";
+      ? `Watch · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Watch at forecast pace";
   }
-  if (advisory.wastePct !== null) {
-    return `${Math.round(advisory.wastePct)}% waste in ${daysToDuration(advisory.daysLeft)}`;
+  if (advisory.closeToReset === true) return LANDS_NEAR_FULL;
+  if (advisory.wastePct !== null && Math.round(advisory.wastePct) >= 1) {
+    return unusedLine(provider, advisory.wastePct);
   }
+  if (advisory.wastePct !== null) return NO_SPARE;
   return "On track.";
 }

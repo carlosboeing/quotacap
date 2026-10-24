@@ -6,7 +6,8 @@ import {
 import type { StateSnapshot } from "../advisory/types.js";
 import { validateForecastProvider, validateTask } from "../advisory/validate.js";
 import { getDbPath, readConfig } from "../config.js";
-import { forecastText, stateWord } from "../format/rows.js";
+import { bindingResetsAt, forecastText, shownProviders, sortProviders, stateWord } from "../format/rows.js";
+import { rateLimitWaits } from "../format/rate-limit-wait.js";
 import { renderMarkdownTable, renderRecommendationSummary, renderModelsMarkdownTable } from "../format/markdown.js";
 import { createServiceClientForBase, ServiceUnavailable, type ServiceClient } from "../runtime/client.js";
 import { CATALOG_CLIENT_TIMEOUT_MS } from "../catalog/index.js";
@@ -20,7 +21,7 @@ import {
 
 export const tools = [
   { name:"get_quotas", description:"All quotas with resets and health", inputSchema:{type:"object",properties:{}, required:[]} },
-  { name:"get_recommendation", description:"Which provider to use next (same advice for every task). Also names a full 5h limit or a full week on a monthly plan, and when that limit clears.", inputSchema:{type:"object",properties:{task:{type:"string",enum:["any","heavy","light"]}}} },
+  { name:"get_recommendation", description:"Which provider to use next (same advice for every task), plus each other provider's state, availability and reset. Also names a full 5h limit or a full week on a monthly plan, and when that limit clears. Pass verbose: true for every quota, advisory and model list.", inputSchema:{type:"object",properties:{verbose:{type:"boolean",description:"Return the full recommendation payload (all quotas, advisories and model lists)"}}} },
   { name:"get_models", description:"Currently listed models per quota bucket (inventory, not a task ranking)", inputSchema:{type:"object",properties:{provider:{type:"string"}}} },
   { name:"forecast", description:"Burn (24h + window avg) vs ideal + waste for a provider", inputSchema:{type:"object",properties:{provider:{type:"string"}}, required:["provider"]} },
 ];
@@ -50,6 +51,36 @@ async function resolveState(): Promise<{ snapshot: StateSnapshot; source: Snapsh
   }
 }
 
+const UNAVAILABLE = new Set(["Quota exhausted", "Monthly exhausted", "Not reporting"]);
+
+/**
+ * The default get_recommendation payload: the pick, its reason, and the
+ * other shown providers in recommended order with what an agent needs to
+ * choose. The full projection is behind `verbose: true`.
+ */
+export function compactRecommendation(snapshot: StateSnapshot, now: Date) {
+  const rec = snapshot.recommendation;
+  const others = sortProviders(shownProviders(snapshot.providers), "recommended", rec.use).filter((p) => p.id !== rec.use);
+  return {
+    use: rec.use,
+    reason: rec.reason,
+    wastePct: rec.wastePct,
+    recommendationBasis: rec.recommendationBasis,
+    bindingWindow: rec.bindingWindow,
+    alternatives: others.map((p) => {
+      const state = stateWord(p);
+      const waits = rateLimitWaits(p, now);
+      return {
+        provider: p.id,
+        state,
+        available: !UNAVAILABLE.has(state) && waits.length === 0,
+        resetsAt: bindingResetsAt(p),
+        ...(waits.length > 0 ? { wait: waits.map((w) => w.text).join(", ") } : {}),
+      };
+    }),
+  };
+}
+
 function rejectMissingProvider(args: any): void {
   try {
     validateForecastProvider(args?.provider, { registered: [], storedIds: [] });
@@ -73,14 +104,18 @@ export async function handleTool(name:string, args:any){
     };
   }
   if(name==="get_recommendation") {
+    // task is no longer advertised; old clients that send it still validate.
     const task = validateTask(args?.task ?? "any");
     const { snapshot, source } = await resolveState();
     if (source === "offline") console.error(OFFLINE_LABEL);
     const now = new Date();
+    const body = args?.verbose === true
+      ? projectRecommendationResponse(snapshot, task)
+      : compactRecommendation(snapshot, now);
     return {
       content: [
         { type:"text", text: renderRecommendationSummary(snapshot, now) },
-        { type:"text", text: JSON.stringify(projectRecommendationResponse(snapshot, task), null, 2) },
+        { type:"text", text: JSON.stringify(body, null, 2) },
       ],
     };
   }

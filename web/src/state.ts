@@ -244,6 +244,24 @@ export function shortWindowLabel(id: string): string | null {
   }
 }
 
+/**
+ * Fetch time of the oldest reading the advice uses, so the header never
+ * claims fresher data than a card's "Updated" line. Falls back to `asOf`.
+ */
+export function oldestReadingAt(providers: ProviderView[], asOf: string): string {
+  let iso = asOf;
+  let oldest = Date.parse(asOf);
+  for (const p of providers) {
+    if (!p.enabled || p.exclusionReason !== null || !p.quota?.fetchedAt) continue;
+    const ms = Date.parse(p.quota.fetchedAt);
+    if (Number.isFinite(ms) && (!Number.isFinite(oldest) || ms < oldest)) {
+      oldest = ms;
+      iso = p.quota.fetchedAt;
+    }
+  }
+  return iso;
+}
+
 /** "read Xm ago" from the last good snapshot's server timestamp. */
 export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
   const diff = nowMs - Date.parse(asOf);

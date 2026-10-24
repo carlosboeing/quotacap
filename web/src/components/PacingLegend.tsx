@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 
+// What each badge means. Actions belong to the Use more / Ease off lanes.
 const STATES: Array<{ label: string; cls: string; meaning: string }> = [
-  { label: "On track", cls: "pace-ontrack", meaning: "Burning at a rate the window sustains" },
-  { label: "Behind pace", cls: "pace-behind", meaning: "Burning slow; risk of unused quota waste" },
-  { label: "Ahead of pace", cls: "pace-ahead", meaning: "Burning faster than time; monitor usage" },
-  { label: "Cap risk", cls: "pace-cap", meaning: "Will hit cap before reset window closes" },
-  { label: "Quota exhausted", cls: "pace-cap", meaning: "Quota is 100% consumed until next reset" },
-  { label: "Watch", cls: "pace-watch", meaning: "Pace points at the cap, but position or the reset clock is uncertain" },
-  { label: "Measuring", cls: "pace-out", meaning: "Not enough data yet; pace appears after 6h" },
-  { label: "Not reporting", cls: "pace-out", meaning: "No usable reading; excluded from ranking" },
+  { label: "On track", cls: "pace-ontrack", meaning: "The forecast lands at or near 100% at reset" },
+  { label: "Behind pace", cls: "pace-behind", meaning: "The forecast leaves quota unused at reset" },
+  { label: "Ahead of pace", cls: "pace-ahead", meaning: "More used than time elapsed; the forecast still reaches reset" },
+  { label: "Cap risk", cls: "pace-cap", meaning: "The forecast runs out well before reset, and usage is ahead of time" },
+  { label: "Quota exhausted", cls: "pace-cap", meaning: "Quota is 100% used until the next reset" },
+  { label: "Watch", cls: "pace-watch", meaning: "The forecast runs out near or before reset, or the reset time is estimated" },
+  { label: "Measuring", cls: "pace-out", meaning: "Under 6 hours of readings; no forecast yet" },
+  { label: "Not reporting", cls: "pace-out", meaning: "No usable reading; left out of the advice" },
 ];
 
 export function PacingLegend() {

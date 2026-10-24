@@ -2,7 +2,7 @@
 // the terminal renderers, in GitHub-flavored markdown.
 import type { StateSnapshot } from "../advisory/types.js";
 import { rateLimitWaitLines } from "./rate-limit-wait.js";
-import { buildRow, sortProviders } from "./rows.js";
+import { buildRow, shownProviders, sortProviders, useName } from "./rows.js";
 
 function esc(cell: string): string {
   return cell.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
@@ -10,7 +10,7 @@ function esc(cell: string): string {
 
 export function renderMarkdownTable(snapshot: StateSnapshot, now: Date): string {
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, "recommended", use);
+  const sorted = sortProviders(shownProviders(snapshot.providers), "recommended", use);
   const lines = sorted.map((p) => {
     const row = buildRow(p, now);
     const name = p.id === use && use !== "none" ? `★ ${p.displayName}` : p.displayName;
@@ -28,8 +28,8 @@ export function renderMarkdownTable(snapshot: StateSnapshot, now: Date): string 
 
 export function renderRecommendationSummary(snapshot: StateSnapshot, now = new Date(snapshot.asOf)): string {
   const rec = snapshot.recommendation;
-  const waits = rateLimitWaitLines(snapshot.providers, now);
-  return [`${rec.use}: ${rec.reason}`, ...waits].join("\n");
+  const waits = rateLimitWaitLines(shownProviders(snapshot.providers), now);
+  return [`${useName(snapshot)}: ${rec.reason}`, ...waits].join("\n");
 }
 
 export function renderModelsMarkdownTable(models: any[]): string {
@@ -41,7 +41,7 @@ export function renderModelsMarkdownTable(models: any[]): string {
     return `| ${esc(name)} | ${leftover} | ${esc(status)} | ${esc(ids)} |`;
   });
   return [
-    "| Provider | Leftover | Status | Models |",
+    "| Provider | Leftover | Catalog | Models |",
     "|---|---|---|---|",
     ...lines,
   ].join("\n");
