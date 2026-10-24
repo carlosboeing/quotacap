@@ -13,17 +13,19 @@ import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 export type Lane = "use-more" | "ease-off";
 
 /**
- * Lane membership from server urgency only. Any exclusionReason, or an
- * exhausted binding month, keeps the provider out of both lanes; "on track"
- * belongs to neither lane.
+ * Lane membership from server urgency only. Any exclusionReason, an
+ * exhausted binding month, or a fully used quota keeps the provider out of
+ * both lanes; "on track" belongs to neither lane.
  */
 export function laneOf(
-  advisory: { urgency: Urgency; bindingWindow?: "weekly" | "monthly"; bindingRemaining?: number },
+  advisory: { urgency: Urgency; bindingWindow?: "weekly" | "monthly"; bindingRemaining?: number; remaining?: number },
   exclusionReason: ExclusionReason
 ): Lane | null {
   if (exclusionReason !== null) return null;
   // A blocked month vetoes weekly leftover: no lane, exactly like an exclusion.
   if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return null;
+  // A capped quota has nothing to ease off from until it resets.
+  if (typeof advisory.remaining === "number" && advisory.remaining <= 0) return null;
   switch (advisory.urgency) {
     case "burn now":
     case "use soon":

@@ -9,6 +9,7 @@ import {
   credentialLabel,
   drawerModel,
   fiveHourElapsedPct,
+  forecastBasis,
   fiveHourResetLine,
   monthlyElapsedPct,
   monthlyMeta,
@@ -239,6 +240,14 @@ describe("provider drawer", () => {
     );
     expect(htmlGrok).not.toContain("5h limit");
   });
+  it("names the forecast rate only when it blends two inputs", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const kimi = s.providers.find((p) => p.id === "kimi")!;
+    const blended = { ...kimi, advisory: { ...kimi.advisory!, burnRate: 11.56, recentRate: 19.4, baselineRate: 3.71, bindingWindow: "weekly" } };
+    expect(forecastBasis(blended as any)).toBe("forecast 11.6%/day (24h blended with history)");
+    const single = { ...blended, advisory: { ...blended.advisory, recentRate: null } };
+    expect(forecastBasis(single as any)).toBeNull();
+  });
   it("derives the ease-off verdict with the shared duration formatter", () => {
     const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
     const kimi = s.providers.find((p) => p.id === "kimi")!;
@@ -249,7 +258,7 @@ describe("provider drawer", () => {
     expect(verdictFor(risky as any, Date.parse(s.asOf))).toEqual({
       tone: "ease-off",
       label: "↓ Ease off",
-      detail: "exhausts in 2d 10h at current pace",
+      detail: "exhausts in 2d 10h at forecast pace",
     });
     const html = renderToString(
       React.createElement(ProviderDrawer, {
@@ -260,7 +269,7 @@ describe("provider drawer", () => {
       })
     );
     expect(html).toContain('class="verdict ease-off"');
-    expect(html).toContain("exhausts in 2d 10h at current pace");
+    expect(html).toContain("exhausts in 2d 10h at forecast pace");
     // The limit line keeps only the outcome, without the status prefix.
     const limits = html.slice(html.indexOf("<h3>Limits</h3>"), html.indexOf("prov-foot")).replace(/<!-- -->/g, "");
     expect(limits).toContain("→ exhausts in 2d 10h");
@@ -318,7 +327,7 @@ describe("provider drawer", () => {
     expect(verdictFor(watchOnTrack as any, Date.parse(s.asOf))).toEqual({
       tone: "ease-off",
       label: "↓ Ease off",
-      detail: "exhausts in 2d 2h at current pace",
+      detail: "exhausts in 2d 2h at forecast pace",
     });
     const watchNoClock = { ...watchOnTrack, advisory: { ...watchOnTrack.advisory, daysToExhaust: null } };
     expect(verdictFor(watchNoClock as any, Date.parse(s.asOf)).detail).toBe("Watch");
@@ -341,8 +350,9 @@ describe("provider drawer", () => {
       },
     };
     const verdict = verdictFor(capped as any, Date.parse(s.asOf));
-    expect(verdict.tone).toBe("ease-off");
-    expect(verdict.label).toBe("↓ Ease off");
+    expect(verdict.tone).toBe("neutral");
+    expect(verdict.label).toBe("• Capped");
+    expect(verdict.detail).toMatch(/^until \w{3} \d{2}:\d{2}$/);
   });
   it("derives excluded, monthly-bound, monthly-exhausted, and on-track verdicts", () => {
     const stale = toViewModel(JSON.parse(staleStateSnapshotJson));

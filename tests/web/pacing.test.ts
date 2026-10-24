@@ -198,9 +198,39 @@ describe("pace figures", () => {
         ...over,
       },
     });
-    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at current pace");
-    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at current pace");
-    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
+    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at forecast pace");
+  });
+  it("never prints 0% waste: a tube finish lands near 100%, a spent 24h pace has no spare", () => {
+    const onTrack = (over: any = {}) => ({
+      exclusionReason: null,
+      quota: { weeklyPct: 80 },
+      advisory: {
+        remaining: 20,
+        paceSource: "recent",
+        burnRate: 3,
+        status: "on track",
+        urgency: "on track",
+        closeToReset: false,
+        daysToExhaust: 6.7,
+        wastePct: 0,
+        daysLeft: 6,
+        ...over,
+      },
+    });
+    expect(forecastLine(onTrack({ closeToReset: true }) as any)).toBe("Lands near 100% at reset");
+    expect(forecastLine(onTrack() as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 0.4 }) as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 12 }) as any)).toBe("12% waste in 6d 0h");
+  });
+  it("shows no ideal pace once the quota is used up", () => {
+    const view = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const base = view.providers.find((p) => p.advisory && p.quota)!;
+    const capped = { ...base, quota: { ...base.quota!, weeklyPct: 100 }, advisory: { ...base.advisory!, remaining: 0, bindingRemaining: 0, idealRate: 0 } };
+    const html = renderToString(React.createElement(PaceStats, { provider: capped as any, asOf: view.asOf }));
+    expect(html).not.toContain("0.0%/day");
+    expect(paceLines(capped.advisory as any).map((l) => l.label)).not.toContain("Ideal");
   });
   it("explains red and amber badges, confessing the estimated reset", () => {
     const rendered = (advisory: any, quota: any = { weeklyPct: 90 }) =>

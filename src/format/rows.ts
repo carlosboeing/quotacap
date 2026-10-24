@@ -281,15 +281,20 @@ export function forecastText(ps: ProviderSnapshot, now: Date): string {
     text = "Exhausted";
   } else if (adv.paceSource === "unknown" || adv.burnRate === null) {
     text = `Measuring pace; ${Math.round(adv.remaining)}% remains with ${adv.daysLeft.toFixed(1)}d until reset`;
-  } else if (adv.status === "watch") {
+  } else if (adv.status === "at risk" || adv.status === "watch") {
+    const word = adv.status === "at risk" ? "cap risk" : "watch";
     text =
       adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust)
-        ? `Exhausts in ${adv.daysToExhaust.toFixed(1)}d — watch`
-        : "Near the cap — watch";
-  } else if (adv.wastePct !== null && adv.wastePct > 0) {
+        ? `Exhausts in ${adv.daysToExhaust.toFixed(1)}d — ${word}`
+        : `Near the cap — ${word}`;
+  } else if (adv.closeToReset === true) {
+    // Same words as the dashboard (LANDS_NEAR_FULL in web PaceBar.tsx).
+    text = "Lands near 100% at reset";
+  } else if (adv.wastePct !== null && Math.round(adv.wastePct) >= 1) {
     text = `${Math.round(adv.wastePct)}% waste in ${adv.daysLeft.toFixed(1)}d`;
   } else {
-    text = "Exhausts before reset";
+    // Same words as the dashboard (NO_SPARE in web PaceBar.tsx).
+    text = "No spare quota at 24h pace";
   }
   // Engine estimate vocabulary, mirroring the snapshot reason transform.
   // A monthly quota forecast never carries the weekly estimate flag.

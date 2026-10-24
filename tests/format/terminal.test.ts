@@ -347,14 +347,32 @@ describe("forecast sentences (D7)", () => {
     expect(text).not.toMatch(/%\/day/);
     expect(text).not.toMatch(/per day/i);
   });
-  it("zero-waste rows forecast exhaustion without inventing a rate", () => {
+  it("cap-risk rows name the exhaustion clock like watch rows", () => {
     const p = ps({
       id: "x",
       quota: quota({ weeklyPct: 90 }),
       reporting: true,
-      advisory: advisory({ status: "at risk", wastePct: 0, urgency: "slow down" }),
+      advisory: advisory({ status: "at risk", wastePct: 0, urgency: "slow down", daysToExhaust: 1.5 }),
     });
-    expect(forecastText(p, FIXED_NOW)).toBe("Exhausts before reset");
+    expect(forecastText(p, FIXED_NOW)).toBe("Exhausts in 1.5d — cap risk");
+  });
+  it("a finish inside the tube lands near 100%, never 0% waste", () => {
+    const p = ps({
+      id: "x",
+      quota: quota({ weeklyPct: 80 }),
+      reporting: true,
+      advisory: advisory({ status: "on track", closeToReset: true, wastePct: 0, urgency: "on track" }),
+    });
+    expect(forecastText(p, FIXED_NOW)).toBe("Lands near 100% at reset");
+  });
+  it("an on-track row whose 24h pace spends the rest has no spare quota", () => {
+    const p = ps({
+      id: "x",
+      quota: quota({ weeklyPct: 25 }),
+      reporting: true,
+      advisory: advisory({ status: "on track", closeToReset: false, wastePct: 0, urgency: "on track" }),
+    });
+    expect(forecastText(p, FIXED_NOW)).toBe("No spare quota at 24h pace");
   });
   it("names exhausted windows without a rate", () => {
     const p = ps({

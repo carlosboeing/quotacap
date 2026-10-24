@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, it, expect, vi } from "vitest";
 import { exampleStateSnapshotJson, monthlyStateSnapshotJson } from "../fixtures/stable-state.js";
-import { AdviceDrawer } from "../../web/src/components/AdviceDrawer.js";
+import { AdviceDrawer, forecastBasisWords } from "../../web/src/components/AdviceDrawer.js";
 import { CopyButton } from "../../web/src/components/CopyButton.js";
 import { toViewModel } from "../../web/src/state.js";
 
@@ -59,6 +59,31 @@ describe("advice drawer", () => {
     ).replace(/<!-- -->/g, "");
     expect(html).toContain("5% of month left in 8.7d");
     expect(html).not.toContain("unused quota expires in");
+  });
+
+  it("names the blend when the forecast mixes the 24h rate with history", () => {
+    const base = { paceSource: "recent" } as any;
+    expect(forecastBasisWords({ ...base, recentRate: 9, baselineRate: 4 })).toBe("24h pace blended with history");
+    expect(forecastBasisWords({ ...base, recentRate: 9, baselineRate: null })).toBe("24h pace");
+    expect(forecastBasisWords({ paceSource: "window-average", recentRate: null, baselineRate: 4 } as any)).toBe("window-average pace");
+  });
+
+  it("a month-bound use-more row reads the month, like its card", () => {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const pick = s.recommendation.use;
+    const other = s.providers.find((p) => p.id !== pick && p.advisory)!;
+    const advisories = s.recommendation.advisories.map((a) =>
+      a.provider === other.id
+        ? { ...a, urgency: "save" as const, wastePct: 95, bindingWindow: "monthly" as const, bindingRemaining: 60 }
+        : a,
+    );
+    const html = renderToString(
+      React.createElement(AdviceDrawer, {
+        open: true, recommendation: { ...s.recommendation, advisories }, providers: s.providers, asOf: s.asOf, onClose: () => {},
+      })
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("60% of month left");
+    expect(html).not.toContain("95% unused");
   });
 
   it("uses the trimmed subtitle, one-sentence pick body, and prose stats with mono figures", () => {

@@ -20,6 +20,10 @@ describe("recommendation lanes", () => {
       if (a.urgency === "on track") expect(laneOf(a, null)).toBeNull();
     }
   });
+  it("a used-up quota sits in no lane", () => {
+    expect(laneOf({ urgency: "slow down", remaining: 0 }, null)).toBeNull();
+    expect(laneOf({ urgency: "slow down", remaining: 4 }, null)).toBe("ease-off");
+  });
   it("excluded providers never lane, unknown pace never forecasts", () => {
     expect(laneOf({ urgency: "burn now" }, "stale")).toBeNull();
     expect(laneOf({ urgency: "burn now" }, "reset-passed")).toBeNull();

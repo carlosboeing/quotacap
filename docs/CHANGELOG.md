@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- One forecast story: waste is priced at the faster of the 24h rate and the forecast, so a provider whose measured pace already spends its quota is no longer recommended for more use while it reads Ahead of pace. Copy that said "current pace" now says "forecast pace", and the drawer's Pace caption shows the forecast rate when it blends the 24h rate with history. A finish near the reset reads "Lands near 100% at reset" on the dashboard and the CLI instead of "0% waste" and "Exhausts before reset". A used-up quota sits in no lane, its drawer reads "Capped until <time>", and its ideal pace shows "—". A month-bound provider in the advice drawer reads its monthly figure, like its card. The 24h rate ignores readings from before a verified window opened, so Codex reads Measuring for the first 6 hours of a new window instead of a cap-risk rate.
 - History accuracy: a usage drop inside the window still open no longer shows as last week's leftover, and a window that dropped more than once shows one bar. The history baseline prices each close over the days it actually ran, so an early provider reset no longer drags the forecast down; a close that ran under one day is skipped. History bars for an early reset are dated when the reset was seen and read "reset 2d early" instead of "read 2d early". MCP and HTTP `advisories` now cover only the providers in the ranking, so a disabled or stale provider no longer appears with an urgency. The Muse plan name no longer carries terminal escape codes.
 
 ## 0.0.58

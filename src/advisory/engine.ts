@@ -177,7 +177,10 @@ export function computeAdvisory(
   const gate = elapsed !== null && !estimated && q.weeklyPct >= elapsed * (1 - GATE_TOL);
   const aheadOfElapsed = elapsed !== null && !estimated && q.weeklyPct > elapsed * (1 + GATE_TOL);
 
-  const wastePct = Math.max(0, remaining - burnRate*daysLeft);
+  // Waste never assumes a pace slower than the one measured now: the blend
+  // may lean on a quieter history, but a provider whose 24h rate already
+  // spends its remainder has nothing spare to recommend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate)*daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - RISK_MARGIN);
   const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;

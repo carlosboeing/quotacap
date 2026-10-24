@@ -282,6 +282,7 @@ export function getAllLatest(db:any){
 export const getQuotas = getAllLatest;
 export function getSnapshots(db:any){ return db.prepare(`SELECT * FROM snapshots ORDER BY day DESC`).all(); }
 interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
+interface RatePoint extends BurnPoint { periodStart: string | null; estimated: boolean }
 
 // Readings since the last reset. A reset happened between two consecutive
 // readings when usage fell, or when the earlier reading's own resetsAt had both
@@ -300,27 +301,35 @@ function currentCycle<T extends BurnPoint>(sorted: T[]): T[] {
 
 export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   // Burn is the used-pct delta over a real rolling window of poll history
-  // (up to 24h) within the current cycle.
-  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`).all() as {
+  // (up to 24h) within the current cycle. Readings taken before the latest
+  // window opened are dropped: a rolling window that opens on first use
+  // (Codex) would otherwise price its first hours over idle time from before
+  // it existed. An estimated reset derives periodStart from the poll time,
+  // so the drop applies to verified clocks only.
+  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, resets_at, period_start, resets_at_estimated FROM quotas`).all() as {
     provider: string;
     used_pct: number;
     fetched_at: string;
     resets_at: string | null;
+    period_start: string | null;
+    resets_at_estimated: number | null;
   }[];
 
-  const byProvider = new Map<string, BurnPoint[]>();
+  const byProvider = new Map<string, RatePoint[]>();
   for (const r of rows) {
     const t = new Date(r.fetched_at).getTime();
     if (Number.isNaN(t) || t > now) continue;
     const pts = byProvider.get(r.provider) ?? [];
-    pts.push({ usedPct: r.used_pct, t, resetsAt: r.resets_at });
+    pts.push({ usedPct: r.used_pct, t, resetsAt: r.resets_at, periodStart: r.period_start, estimated: !!r.resets_at_estimated });
     byProvider.set(r.provider, pts);
   }
 
   const out = new Map<string, number>();
   for (const [provider, all] of byProvider) {
-    const sorted = currentCycle(all.sort((a, b) => a.t - b.t));
+    let sorted = currentCycle(all.sort((a, b) => a.t - b.t));
     const latest = sorted[sorted.length - 1];
+    const opened = latest.estimated || !latest.periodStart ? NaN : Date.parse(latest.periodStart);
+    if (Number.isFinite(opened)) sorted = sorted.filter((p) => p.t >= opened || p === latest);
     const cutoff = latest.t - 86400000;
     const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
     const days = (latest.t - windowStart.t) / 86400000;

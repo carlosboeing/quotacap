@@ -111,6 +111,14 @@ export function quotaElapsedPct(provider: ProviderView, asOfMs: number): number 
   return Math.min(100, Math.max(0, ((asOfMs - startMs) / (resetMs - startMs)) * 100));
 }
 
+/** True when the quota window has nothing left: the ideal pace is then meaningless. */
+function paceExhausted(advisory: { remaining?: number; bindingRemaining?: number }): boolean {
+  return (
+    (typeof advisory.remaining === "number" && advisory.remaining <= 0) ||
+    (typeof advisory.bindingRemaining === "number" && advisory.bindingRemaining <= 0)
+  );
+}
+
 /** Even pace that lands on 100% at the quota reset: binding remaining ÷ binding days left. */
 export function quotaIdealRate(
   advisory: { idealRate: number; bindingWindow?: string; bindingRemaining?: number; bindingDaysLeft?: number },
@@ -214,7 +222,8 @@ export function PaceStats({ provider, asOf }: { provider: ProviderView; asOf: st
   // is not tracked), so a monthly-bound grid reads "—" there.
   const avg = quotaAvgPace(provider, asOfMs);
   const pace = paceCells(provider.advisory);
-  const ideal = advisory ? `${quotaIdealRate(advisory).toFixed(1)}%/day` : "—";
+  // A used-up quota has no pace to aim for until it resets.
+  const ideal = advisory && !paceExhausted(advisory) ? `${quotaIdealRate(advisory).toFixed(1)}%/day` : "—";
   const resetIso = quotaResetsAt(provider);
   const resetsIn = resetIso ? timeLeft(resetIso, asOfMs) : null;
   return (
@@ -244,7 +253,7 @@ export function PaceStats({ provider, asOf }: { provider: ProviderView; asOf: st
 /** Hover explanations shared by cards and rows. Plain words, no jargon. */
 export const PACE_TIPS = {
   avg: "Window average — quota used ÷ days elapsed. Your overall pace this window.",
-  recent: "Burn over the last 24 hours. Forecasts use this rate when recent readings exist.",
+  recent: "Burn over the last 24 hours. Forecasts blend this rate with your history.",
   ideal: "The even pace that lands exactly on 100% at reset: remaining ÷ days left.",
 } as const;
 
@@ -273,7 +282,7 @@ export function paceLines(
   const lines: PaceLine[] = [];
   if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day`, tip: PACE_TIPS.avg });
   if (!monthly && recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
-  lines.push({ label: "Ideal", value: `${ideal.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
+  if (!paceExhausted(advisory)) lines.push({ label: "Ideal", value: `${ideal.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
   return lines;
 }
 
@@ -725,6 +734,11 @@ export function PaceBar({
   );
 }
 
+/** Shared with src/format/rows.ts so the CLI and the dashboard agree. */
+export const LANDS_NEAR_FULL = "Lands near 100% at reset";
+/** On track by forecast, yet the faster 24h pace spends the remainder (waste 0). */
+export const NO_SPARE = "No spare quota at 24h pace";
+
 /** One-line forecast from server fields. Unknown pace shows no rate or waste. */
 export function forecastLine(provider: ProviderView): string | null {
   if (provider.exclusionReason === "not-reporting" || !provider.quota) return "Not reporting yet.";
@@ -756,16 +770,18 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   if (advisory.status === "at risk") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Cap risk · exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-      : "Cap risk at current pace";
+      ? `Cap risk · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Cap risk at forecast pace";
   }
   if (advisory.status === "watch") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Watch · exhausts in ${daysToDuration(advisory.daysToExhaust)} at current pace`
-      : "Watch at current pace";
+      ? `Watch · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Watch at forecast pace";
   }
-  if (advisory.wastePct !== null) {
+  if (advisory.closeToReset === true) return LANDS_NEAR_FULL;
+  if (advisory.wastePct !== null && Math.round(advisory.wastePct) >= 1) {
     return `${Math.round(advisory.wastePct)}% waste in ${daysToDuration(advisory.daysLeft)}`;
   }
+  if (advisory.wastePct !== null) return NO_SPARE;
   return "On track.";
 }
