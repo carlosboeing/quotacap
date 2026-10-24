@@ -14,6 +14,8 @@ export const STEM_PX = 14;
 const RAIL_REF_PX = 1072;
 /** Below this rail width separate pins collide (phone width), so pins group. */
 export const NARROW_RAIL_PX = 480;
+/** On a narrow rail a collision window spans one pill, not COLLISION_PCT. */
+const NARROW_COLLISION_PX = 100;
 /** Gap kept between dodged pills. */
 const DODGE_GAP_PX = 6;
 /** Computed overlap tolerated before pins dodge; pills may touch slightly. */
@@ -128,11 +130,15 @@ export function placePins(
   }
   candidates.sort((a, b) => a.resetMs - b.resetMs);
 
-  // Group adjacent candidates into collision windows.
+  const width = opts?.railWidthPx && opts.railWidthPx > 0 ? opts.railWidthPx : RAIL_REF_PX;
+  // Group adjacent candidates into collision windows. A percentage window
+  // shrinks with the rail, so a phone-width rail measures it in pixels.
+  const collisionPct =
+    width < NARROW_RAIL_PX ? Math.max(COLLISION_PCT, (NARROW_COLLISION_PX / width) * 100) : COLLISION_PCT;
   const windows: typeof candidates[] = [];
   for (const c of candidates) {
     const last = windows[windows.length - 1];
-    if (last && c.positionPct - last[0].positionPct < COLLISION_PCT) {
+    if (last && c.positionPct - last[0].positionPct < collisionPct) {
       last.push(c);
     } else {
       windows.push([c]);
@@ -172,7 +178,6 @@ export function placePins(
     target.band = index % 2 === 0 ? "above" : "below";
   });
 
-  const width = opts?.railWidthPx && opts.railWidthPx > 0 ? opts.railWidthPx : RAIL_REF_PX;
   const cap = Math.min(MAX_GROUP_SPREAD_PX, width * 0.3);
   for (const band of ["above", "below"] as const) {
     const lane = items
