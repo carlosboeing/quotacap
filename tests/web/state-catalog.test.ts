@@ -254,7 +254,7 @@ describe("state catalog: server-rendered components", () => {
       })
     );
     expect(html).toContain(String(Math.round(s.recommendation.wastePct as number)));
-    expect(html).toContain("unused quota forecast");
+    expect(html).toContain("unused at reset");
     expect(html).toContain("lane-use-more");
     expect(html).toContain("Use more");
     expect(html).toMatch(/7(<!-- -->)? tracked/);

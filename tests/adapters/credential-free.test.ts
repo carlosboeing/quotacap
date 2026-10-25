@@ -368,7 +368,11 @@ describe("Credential-free adapters regression", () => {
       const origHome = process.env.HOME;
       const origQcHome = process.env.QUOTACAP_HOME;
       const origEnvKey = process.env.OPENCODE_API_KEY;
+      const origDb = process.env.OPENCODE_DB;
+      const origXdg = process.env.XDG_DATA_HOME;
       delete process.env.OPENCODE_API_KEY;
+      delete process.env.OPENCODE_DB;
+      delete process.env.XDG_DATA_HOME;
       const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(mockHome);
       process.env.HOME = mockHome;
       delete process.env.QUOTACAP_HOME;
@@ -421,6 +425,10 @@ describe("Credential-free adapters regression", () => {
         else process.env.QUOTACAP_HOME = origQcHome;
         if (origEnvKey === undefined) delete process.env.OPENCODE_API_KEY;
         else process.env.OPENCODE_API_KEY = origEnvKey;
+        if (origDb === undefined) delete process.env.OPENCODE_DB;
+        else process.env.OPENCODE_DB = origDb;
+        if (origXdg === undefined) delete process.env.XDG_DATA_HOME;
+        else process.env.XDG_DATA_HOME = origXdg;
         await fsp.rm(mockHome, { recursive: true, force: true });
       }
     });

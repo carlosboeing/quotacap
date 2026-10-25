@@ -10,7 +10,7 @@ import {
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { toViewModel } from "../../web/src/state.js";
-import { Badge, PaceBar, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock, resetDateClock, resetDay } from "../../web/src/components/PaceBar.js";
+import { Badge, PaceBar, PaceStats, forecastLine, hatchGradient, paceBadge, paceCells, paceFigures, paceLines, resetClock, resetDateClock, resetDay } from "../../web/src/components/PaceBar.js";
 import { ProviderCard } from "../../web/src/components/ProviderCard.js";
 import { ProviderRow } from "../../web/src/components/ProviderRow.js";
 import { sortProviders } from "../../web/src/components/SubscriptionList.js";
@@ -42,6 +42,13 @@ describe("pace badges", () => {
     expect(paceBadge({ exclusionReason: null, advisory: { status: "at risk", urgency: "on track" } } as any)).toBe(
       "Cap risk"
     );
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        quota: { weeklyPct: 100 },
+        advisory: { status: "at risk", urgency: "slow down", remaining: 0, bindingRemaining: 0 },
+      } as any),
+    ).toBe("Quota exhausted");
     expect(paceBadge({ exclusionReason: null, advisory: { status: "on track", urgency: "slow down" } } as any)).toBe(
       "Ahead of pace"
     );
@@ -71,6 +78,12 @@ describe("pace badges", () => {
         advisory: { status: "on track", urgency: "on track", aheadOfElapsed: true },
       } as any),
     ).toBe("Ahead of pace");
+    expect(
+      paceBadge({
+        exclusionReason: null,
+        advisory: { status: "on track", urgency: "on track", aheadOfElapsed: true, closeToReset: true },
+      } as any),
+    ).toBe("On track");
   });
 });
 
@@ -185,9 +198,39 @@ describe("pace figures", () => {
         ...over,
       },
     });
-    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2.1d at current pace");
-    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at current pace");
-    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
+    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at forecast pace");
+  });
+  it("never prints 0% waste: a tube finish lands near 100%, a spent 24h pace has no spare", () => {
+    const onTrack = (over: any = {}) => ({
+      exclusionReason: null,
+      quota: { weeklyPct: 80 },
+      advisory: {
+        remaining: 20,
+        paceSource: "recent",
+        burnRate: 3,
+        status: "on track",
+        urgency: "on track",
+        closeToReset: false,
+        daysToExhaust: 6.7,
+        wastePct: 0,
+        daysLeft: 6,
+        ...over,
+      },
+    });
+    expect(forecastLine(onTrack({ closeToReset: true }) as any)).toBe("Lands near 100% at reset");
+    expect(forecastLine(onTrack() as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 0.4 }) as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 12 }) as any)).toBe("12% unused at reset");
+  });
+  it("shows no ideal pace once the quota is used up", () => {
+    const view = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const base = view.providers.find((p) => p.advisory && p.quota)!;
+    const capped = { ...base, quota: { ...base.quota!, weeklyPct: 100 }, advisory: { ...base.advisory!, remaining: 0, bindingRemaining: 0, idealRate: 0 } };
+    const html = renderToString(React.createElement(PaceStats, { provider: capped as any, asOf: view.asOf }));
+    expect(html).not.toContain("0.0%/day");
+    expect(paceLines(capped.advisory as any).map((l) => l.label)).not.toContain("Ideal");
   });
   it("explains red and amber badges, confessing the estimated reset", () => {
     const rendered = (advisory: any, quota: any = { weeklyPct: 90 }) =>
@@ -210,19 +253,19 @@ describe("pace figures", () => {
 
 describe("reset clock", () => {
   it("formats weekday and 24h time with a space, not a middot", () => {
-    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
-    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).not.toContain("·");
-    expect(resetClock("not-a-date", "en-US")).toBeNull();
+    expect(resetClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetClock("2026-09-10T21:00:00+10:00")).not.toContain("·");
+    expect(resetClock("not-a-date")).toBeNull();
   });
 
   it("resetDateClock adds the calendar date a monthly reset needs", () => {
     // Shape, not the clock reading: the time renders in the machine zone.
-    expect(resetDateClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}$/);
-    expect(resetDateClock("not-a-date", "en-US")).toBeNull();
+    expect(resetDateClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetDateClock("not-a-date")).toBeNull();
   });
 
   it("resetDay pins weekday plus date in English", () => {
-    expect(resetDay("2026-09-15T12:00:00.000Z")).toBe("Tue Sep 15");
+    expect(resetDay("2026-09-15T12:00:00.000Z")).toBe("Tue 15 Sep");
   });
 });
 
@@ -329,16 +372,116 @@ describe("monthly headline", () => {
     expect(html).toContain("out-behind");
     expect(html).toContain("→ 5% of month left");
     expect(html).not.toContain("pace-hatch");
-    expect(html).not.toContain("expires unused");
+    expect(html).not.toContain("unused at reset");
   });
 
-  it("empty month: → unused until Tue Sep 15, cap colour, no hatch, red badge", () => {
+  it("empty month: → unused until Tue 15 Sep, cap colour, no hatch, red badge", () => {
     const html = bar(monthlyExhaustedStateSnapshotJson);
     expect(html).toContain("out-cap");
-    expect(html).toContain("→ unused until Tue Sep 15");
+    expect(html).toContain("→ unused until Tue 15 Sep");
     expect(html).not.toContain("pace-hatch");
     const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
     expect(badge).toContain("pace-cap");
     expect(badge).toContain("Monthly exhausted");
   });
+
+  it("drives main bar, PaceStats, and table row from the monthly quota window, not weekly", () => {
+    const s = toViewModel(JSON.parse(monthlyStateSnapshotJson));
+    const provider = s.providers.find((p) => p.id === "opencode-go")!;
+    const barHtml = bar(monthlyStateSnapshotJson);
+    expect(barHtml).toContain("95% used");
+    expect(barHtml).not.toContain("44% used");
+
+    const statsHtml = renderToString(
+      React.createElement(PaceStats, { provider, asOf: s.asOf }),
+    ).replace(/<!-- -->/g, "");
+    expect(statsHtml).toContain("8d 16h");
+    expect(statsHtml).not.toContain("3d 4h");
+    expect(statsHtml).toContain("4.3%/day");
+    expect(statsHtml).toContain("0.6%/day");
+
+    const lines = paceLines(provider.advisory, provider, Date.parse(s.asOf));
+    expect(lines.map((l) => `${l.label}:${l.value}`)).toEqual(["Avg:4.3%/day", "Ideal:0.6%/day"]);
+
+    const rowHtml = renderToString(
+      React.createElement(ProviderRow, { provider, recommended: false, asOf: s.asOf, onSelect: () => {} }),
+    ).replace(/<!-- -->/g, "");
+    expect(rowHtml).toContain("in 8d 16h");
+    // The weekly countdown shows only on the Wk rate-limit chip (label and tag), never as the reset.
+    expect(rowHtml).toContain("Wk 44% in 3d 4h");
+  });
 });
+
+describe("non-reporting provider bar styling and headline", () => {
+  const asOf = "2026-10-20T04:43:00.000Z";
+  const baseProvider = {
+    id: "muse",
+    displayName: "Muse",
+    builtinName: null,
+    vendor: "Meta",
+    harness: "muse",
+    description: null,
+    enabled: true,
+    reporting: false,
+    stale: false,
+    resetPassed: false,
+    ageMs: 7200000,
+    evidence: [],
+    exclusionReason: "provider-failed" as const,
+    lastAttempt: {
+      provider: "muse",
+      attemptedAt: asOf,
+      completedAt: asOf,
+      succeededAt: "2026-10-20T02:46:00.000Z",
+      success: false,
+      failureCategory: "unknown" as const,
+      summary: "Muse usage currently unavailable",
+    },
+    lastSuccessAt: "2026-10-20T02:46:00.000Z",
+    advisory: null,
+    lastCloses: [],
+  };
+
+  it("100% used provider that failed poll paints cap red bar and shows Exhausted headline before reset", () => {
+    const provider = {
+      ...baseProvider,
+      quota: {
+        provider: "muse",
+        plan: "High Usage",
+        weeklyPct: 100,
+        usedPct: 100,
+        resetsAt: "2026-10-26T00:00:00.000Z", // future
+        periodStart: "2026-10-19T00:00:00.000Z",
+        source: "tui",
+        fetchedAt: "2026-10-20T02:46:00.000Z",
+      },
+    };
+    const html = renderToString(React.createElement(PaceBar, { provider, asOf })).replace(/<!-- -->/g, "");
+    expect(html).toContain("var(--fill-cap)");
+    expect(html).toContain("out-cap");
+    expect(html).toContain("Exhausted · Provider failed. Excluded from ranking.");
+  });
+
+  it("<100% used provider that failed poll stays neutral grey and unadorned failure headline", () => {
+    const provider = {
+      ...baseProvider,
+      quota: {
+        provider: "muse",
+        plan: "High Usage",
+        weeklyPct: 60,
+        usedPct: 60,
+        resetsAt: "2026-10-26T00:00:00.000Z", // future
+        periodStart: "2026-10-19T00:00:00.000Z",
+        source: "tui",
+        fetchedAt: "2026-10-20T02:46:00.000Z",
+      },
+    };
+    const html = renderToString(React.createElement(PaceBar, { provider, asOf })).replace(/<!-- -->/g, "");
+    expect(html).toContain("var(--fill-out)");
+    expect(html).not.toContain("var(--fill-cap)");
+    expect(html).toContain("out-none");
+    expect(html).toContain("→ Provider failed. Excluded from ranking.");
+    expect(html).not.toContain("Exhausted");
+  });
+});
+

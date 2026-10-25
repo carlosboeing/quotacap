@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { recommend, computeAdvisory, averagePace } from "../../src/advisory/engine.js";
+import { paceTube } from "../../src/advisory/types.js";
 import type { Quota } from "../../src/adapters/types.js";
 
 const DAY_MS = 86400000;
@@ -109,6 +110,25 @@ describe("advisory", () => {
     expect(Math.round(adv.wastePct!)).toBe(82);  // 97 - 3*5; the constant gave 87
   });
 
+  it("never recommends using more of a provider whose 24h pace already spends it", () => {
+    // Grok 1 day in at 25%: 18%/day measured, 4%/day history, blend 11%/day.
+    // The blend alone leaves 75 - 11*6 = 9% spare; at 18%/day it caps in 4.2d.
+    const q = boardQuota("grok", 25, 100 / 7);
+    const rec = recommend([q], "any", new Map([["grok", { recent: 18, baseline: 4 }]]), BOARD_NOW);
+    const adv = rec.advisories[0];
+    expect(adv.burnRate).toBeCloseTo(11, 5);
+    expect(adv.wastePct).toBe(0);
+    expect(adv.urgency).not.toBe("save");
+    expect(rec.use).toBe("none");
+  });
+
+  it("keeps the blended waste when the 24h pace is the slower one", () => {
+    const q = boardQuota("grok", 25, 100 / 7);
+    const adv = boardAdv(q, 2, 6);
+    expect(adv.burnRate).toBeCloseTo(4, 5);
+    expect(adv.wastePct).toBeCloseTo(75 - 4 * 6, 5);
+  });
+
   it("treats pace as unknown when window is under 1 hour and has no history", () => {
     // 1% used after 30 minutes with no history
     const now = new Date("2026-08-28T06:30:00+10:00");
@@ -129,7 +149,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 99% remains with 7\.0d until reset/);
+    expect(rec.reason).toBe("Measuring pace; 99% remains with 6d 23h until reset");
   });
 
   it("prefers measured positive waste over unknown providers", () => {
@@ -149,7 +169,7 @@ describe("advisory", () => {
     const rec = recommend([freshKimi, measuredClaude], "any", new Map([["claude", { recent: null, baseline: 10 / 3 }]]), now);
     expect(rec.use).toBe("claude");
     expect(rec.recommendationBasis).toBe("known-waste");
-    expect(rec.reason).toMatch(/77% waste in 4\.0d/);
+    expect(rec.reason).toBe("77% unused at reset (Fri 06:00)");
     expect(rec.advisories.find(a => a.provider === "kimi")?.paceSource).toBe("unknown");
     expect(rec.advisories.find(a => a.provider === "claude")?.paceSource).toBe("window-average");
   });
@@ -173,7 +193,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 98% remains with 2\.0d until reset/);
+    expect(rec.reason).toBe("Measuring pace; 98% remains with 2d 0h until reset");
     const claudeAdv = rec.advisories.find(a => a.provider === "claude");
     expect(claudeAdv?.status).toBe("at risk");
     expect(claudeAdv?.wastePct).toBe(0);
@@ -200,7 +220,7 @@ describe("advisory", () => {
     expect(rec.use).toBe("kimi");
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.wastePct).toBeNull();
-    expect(rec.reason).toMatch(/Measuring pace; 90% remains with 3\.0d until reset/);
+    expect(rec.reason).toMatch(/^Measuring pace; 90% remains with (3d 0h|2d 23h) until reset$/);
   });
 
   it("retains all providers in advisories and alternatives output", () => {
@@ -249,7 +269,7 @@ describe("advisory", () => {
   it("returns no priority when the only measured provider sits on the boundary with no waste", () => {
     const now = new Date("2026-08-31T06:00:00+10:00");
     // 50% used with 5 days left -> ideal rate = 10%/day. A forecast exactly on
-    // the ideal sits inside the deadband (Watch) and leaves no avoidable waste.
+    // the ideal sits inside the tube (on track) and leaves no avoidable waste.
     const boundaryClaude = {
       provider: "claude",
       weeklyPct: 50,
@@ -259,10 +279,9 @@ describe("advisory", () => {
     const rec = recommend([boundaryClaude], "any", new Map([["claude", { recent: 10, baseline: null }]]), now);
     expect(rec.use).toBe("none");
     expect(rec.recommendationBasis).toBe("none");
-    // The all-Watch board routes to the no-candidate step; its copy must name
-    // the amber tier, not just risk and exhaustion.
-    expect(rec.reason).toBe("all quotas at risk, watch, or exhausted");
-    expect(rec.advisories[0].status).toBe("watch");
+    expect(rec.reason).toBe("no avoidable waste");
+    expect(rec.advisories[0].status).toBe("on track");
+    expect(rec.advisories[0].closeToReset).toBe(true);
     expect(rec.advisories[0].wastePct).toBe(0);
   });
 
@@ -371,14 +390,17 @@ describe("pace source derivation", () => {
 });
 
 describe("verdict partition (16 Sept board)", () => {
-  it("Antigravity: 6% used in the marginal band reads Watch, never Cap risk", () => {
+  it("Antigravity: 6% used near the reset with days left reads On track, never Cap risk", () => {
     // One heavy 24h day (recent 25) against a small history (baseline 5)
-    // blends to 15%/day: exhausts at 6.27d against 6.3d left -> deadband.
+    // blends to 15%/day: exhausts at 6.27d against 6.3d left. That miss is
+    // inside the tube, so the row is on track rather than Watch or Cap risk.
     const adv = boardAdv(boardQuota("agy", 6, 10), 25, 5);
     expect(adv.burnRate).toBeCloseTo(15, 5);
     expect(adv.recentRate).toBe(25);
     expect(adv.baselineRate).toBe(5);
-    expect(adv.status).toBe("watch");
+    expect(adv.daysLeft).toBeGreaterThan(6);
+    expect(adv.status).toBe("on track");
+    expect(adv.closeToReset).toBe(true);
     expect(adv.aheadOfElapsed).toBe(false);
     expect(adv.wastePct).toBe(0);
   });
@@ -420,9 +442,11 @@ describe("verdict partition (16 Sept board)", () => {
   it("Claude: gate passes and a hair over pace is Cap risk (baseline-sensitive per design 12.5)", () => {
     const q = boardQuota("claude", 65, 60);
     expect(boardAdv(q, 20, 10).status).toBe("at risk");
-    // The same reading with a lower history baseline lands inside the
-    // deadband: this verdict is the one the backtest must keep stable.
-    expect(boardAdv(q, 20, 5).status).toBe("watch");
+    // The same reading with a lower history baseline lands on the reset.
+    // At 2.8 days left that finish is inside the tube, so it reads on track.
+    const cooled = boardAdv(q, 20, 5);
+    expect(cooled.status).toBe("on track");
+    expect(cooled.closeToReset).toBe(true);
   });
 });
 
@@ -440,12 +464,36 @@ describe("verdict partition table", () => {
     expect(adv.aheadOfElapsed).toBe(false);
   });
 
-  it("marginal on either side of the reset boundary is Watch", () => {
-    const q = boardQuota("codex", 50, 50); // gate passes at 50% used vs 50% elapsed
-    const justUnder = boardAdv(q, 26, 0); // 13%/day exhausts just after the reset
-    const justOver = boardAdv(q, 30, 0); // 15%/day exhausts just before the reset
-    expect(justUnder.status).toBe("watch");
-    expect(justOver.status).toBe("watch");
+  it("a near-full finish is on track while days remain, and Watch near the reset", () => {
+    // 50% elapsed leaves 3.5 days. Both misses sit inside the tube.
+    const mid = boardQuota("codex", 50, 50);
+    const justAfter = boardAdv(mid, 26, 0); // 13%/day exhausts just after the reset
+    const justBefore = boardAdv(mid, 30, 0); // 15%/day exhausts just before the reset
+    expect(justAfter.daysLeft).toBeCloseTo(3.5, 5);
+    expect(Math.abs(justAfter.daysToExhaust! - justAfter.daysLeft) / justAfter.daysLeft).toBeLessThan(paceTube(justAfter.daysLeft));
+    expect(justAfter.status).toBe("on track");
+    expect(justAfter.closeToReset).toBe(true);
+    expect(justBefore.status).toBe("on track");
+    expect(justBefore.closeToReset).toBe(true);
+
+    // One day left. The tube is about ±1.7h; a 3h miss is still in the shell.
+    const near = boardQuota("codex", 50, (6 / 7) * 100);
+    const early = boardAdv(near, 50 / (1 - 3 / 24), 50 / (1 - 3 / 24));
+    const late = boardAdv(near, 50 / (1 + 3 / 24), 50 / (1 + 3 / 24));
+    expect(early.daysLeft).toBeCloseTo(1, 5);
+    expect(early.status).toBe("watch");
+    expect(early.closeToReset).toBe(false);
+    expect(late.status).toBe("watch");
+    expect(late.closeToReset).toBe(false);
+
+    // Six days left, 13h after the reset: the Claude reading that prompted the tube.
+    const far = boardQuota("claude", 13, (0.8 / 7) * 100);
+    const calm = boardAdv(far, 16.75, 8.96);
+    expect(calm.daysLeft).toBeGreaterThan(6);
+    expect(calm.daysToExhaust).toBeGreaterThan(calm.daysLeft);
+    expect(calm.status).toBe("on track");
+    expect(calm.closeToReset).toBe(true);
+    expect(calm.urgency).toBe("on track");
   });
 
   it("on track splits by urgency: burn now, use soon, save, on track", () => {
@@ -475,6 +523,15 @@ describe("verdict partition table", () => {
 });
 
 describe("estimated clocks", () => {
+  it("keeps an estimated clock at Watch inside the on-track tube", () => {
+    const far = boardQuota("claude", 13, (0.8 / 7) * 100, { resetsAtEstimated: true });
+    const adv = boardAdv(far, 16.75, 8.96);
+    expect(adv.daysToExhaust).toBeGreaterThan(adv.daysLeft);
+    expect(adv.status).toBe("watch");
+    expect(adv.closeToReset).toBe(false);
+    expect(adv.aheadOfElapsed).toBe(false);
+  });
+
   it("caps an over-pace forecast at Watch and forces aheadOfElapsed false", () => {
     const adv = boardAdv(boardQuota("grok", 60, 40, { resetsAtEstimated: true }), 110, 10);
     expect(adv.status).toBe("watch");
@@ -527,5 +584,30 @@ describe("recommend verified-first ranking", () => {
     const rec = recommend([freshKimi, freshClaude], "any", new Map(), BOARD_NOW);
     expect(rec.recommendationBasis).toBe("unknown-headroom");
     expect(rec.use).toBe("kimi");
+  });
+
+  it("locks averagePace to exhaustedAt when 100% used rather than deflating over subsequent days", () => {
+    const start = new Date("2026-10-19T00:00:00.000Z");
+    const exhaustedAt = "2026-10-20T00:00:00.000Z"; // Exactly 1.0 day to reach 100%
+    const q = {
+      provider: "muse",
+      weeklyPct: 100,
+      periodStart: start.toISOString(),
+      resetsAt: "2026-10-26T00:00:00.000Z",
+      fetchedAt: "2026-10-22T00:00:00.000Z",
+    } as any;
+
+    // Checked 3 days later: without exhaustedAt, pace would be 100 / 3 = 33.3%/day
+    const now3DaysLater = new Date("2026-10-22T00:00:00.000Z");
+    const paceWithoutLock = averagePace(q, now3DaysLater);
+    expect(paceWithoutLock).toBeCloseTo(33.33, 1);
+
+    // With exhaustedAt locked to day 1, pace is preserved at 100%/day
+    const paceWithLock = averagePace(q, now3DaysLater, exhaustedAt);
+    expect(paceWithLock).toBeCloseTo(100.0, 1);
+
+    const adv = computeAdvisory(q, null, null, now3DaysLater, exhaustedAt);
+    expect(adv.exhaustedAt).toBe(exhaustedAt);
+    expect(adv.avgPace).toBeCloseTo(100.0, 1);
   });
 });

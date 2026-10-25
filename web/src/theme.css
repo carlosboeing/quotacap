@@ -59,8 +59,10 @@
   --warn-soft: oklch(0.965 0.055 90);
   --danger: oklch(0.49 0.17 25);
   --danger-soft: oklch(0.945 0.042 25);
-  --ahead: oklch(0.50 0.15 52);
-  --ahead-soft: oklch(0.955 0.05 52);
+  /* Ahead is informational (the forecast still reaches reset), so it sits
+     on a cool hue well away from Watch's amber-orange. */
+  --ahead: oklch(0.50 0.12 245);
+  --ahead-soft: oklch(0.955 0.035 245);
   --watch: oklch(0.50 0.15 40);
   --watch-soft: oklch(0.955 0.05 40);
   --scrim: oklch(0.25 0.02 292 / 0.42);
@@ -119,8 +121,8 @@ html[data-theme="dark"] {
   --warn-soft: oklch(0.29 0.06 88);
   --danger: oklch(0.75 0.15 25);
   --danger-soft: oklch(0.28 0.055 25);
-  --ahead: oklch(0.79 0.15 52);
-  --ahead-soft: oklch(0.29 0.06 52);
+  --ahead: oklch(0.79 0.11 245);
+  --ahead-soft: oklch(0.29 0.05 245);
   --watch: oklch(0.79 0.15 40);
   --watch-soft: oklch(0.29 0.06 40);
   --scrim: oklch(0.08 0.02 295 / 0.62);
@@ -1284,39 +1286,6 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   min-width: 0;
 }
 
-/* Closed-week strip: the live PaceBar reduced to fill + leftover hatch. */
-.weeks {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--s3);
-}
-.weeks .week .track {
-  height: 10px;
-}
-.weeks .week .fill {
-  background: var(--fill-out);
-  box-shadow: none;
-}
-.weeks .week .lab {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 6px;
-  font-size: var(--t-2);
-  color: var(--ink-soft);
-}
-.weeks .week .lab b {
-  color: var(--ink);
-  font-weight: 600;
-  font-size: var(--t-2);
-}
-.weeks .stale-note {
-  font-weight: 500;
-}
-.weeks ~ .cell-s {
-  margin-top: var(--s2);
-}
-
 /* Pace Bars */
 .trackwrap {
   margin-top: 6px;
@@ -1378,6 +1347,28 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   color: var(--ink-soft);
   margin-top: 5px;
   gap: var(--s2);
+}
+
+/* Full short window. Separate from the pace badge and the forecast. */
+.rate-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.lrow .rate-wait { margin-top: 8px; }
+.drawer > .rate-wait {
+  margin: 0;
+  border-radius: 0;
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
 }
 
 /* Windows row: 5h and monthly tags under the weekly bar (treatment E). */
@@ -1818,10 +1809,47 @@ footer.health .dot {
 }
 .drawer-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--s3);
   padding: var(--s5);
   border-bottom: 1px solid var(--line);
+}
+/* Title block stacks: name line, then subtitle on its own line. The
+   badge rides the title row at the right, aligned with the name. */
+.drawer-head .who {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.drawer-head > .pace {
+  margin-top: 5px;
+  flex: none;
+}
+.drawer-head h2 span {
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.drawer-head .pace {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+/* Quota tag: sits on the limit title line as a small sentence-case
+   pill, quieter than the header badges so it marks the window without
+   outweighing the title. */
+.quota-tag {
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--good);
+  background: var(--good-soft);
+  border: 1px solid color-mix(in oklch, var(--good) 28%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
 }
 .drawer-head h2 {
   margin: 0;
@@ -1852,6 +1880,514 @@ footer.health .dot {
 }
 .drawer-close:active {
   transform: scale(0.95);
+}
+
+/* Verdict band: lane action with arrow, directly under the header. */
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s5);
+  font-size: var(--t-3);
+  border-bottom: 1px solid var(--line);
+}
+.verdict b {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.verdict.use-more {
+  background: var(--warn-soft);
+}
+.verdict.use-more b {
+  color: var(--warn);
+}
+.verdict.ease-off {
+  background: var(--danger-soft);
+}
+.verdict.ease-off b {
+  color: var(--danger);
+}
+.verdict.neutral {
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+}
+/* Limit rows: one identical pattern per window — title line, reset
+   line left-aligned under the title, then the bar with its elapsed mark. */
+.limit-row {
+  padding: var(--s4) 0;
+}
+.limit-row + .limit-row {
+  border-top: 1px solid var(--line);
+}
+.limit-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.limit-name {
+  font-size: var(--t-4);
+  font-weight: 700;
+  color: var(--ink);
+}
+.limit-pct {
+  margin-left: auto;
+  font-size: var(--t-3);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.limit-row .track {
+  height: 8px;
+  margin-top: var(--s3);
+}
+.winrow-sub {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+/* Reset line and forecast share one line: reset left, forecast right. */
+.limit-sub {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+.limit-sub .winrow-sub {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.limit-sub .out {
+  margin-left: auto;
+  text-align: right;
+  font-size: var(--t-2);
+  font-weight: 600;
+  flex: none;
+  white-space: nowrap;
+}
+/* Legend sits below the rows, divided from them so it never reads as
+   another limit: a "Legend" label plus one swatch per bar mark. */
+.limit-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: var(--s4) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.legend-label {
+  font-size: var(--t-1);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.legend-mark {
+  width: 2.5px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--ink);
+  flex: none;
+}
+.legend-hatch {
+  width: 24px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+  background:
+    repeating-linear-gradient(45deg, color-mix(in oklch, var(--ink) 20%, transparent) 0 1.5px, transparent 1.5px 7px),
+    var(--track);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+/* Rolling-limit fill: neutral until the cap threshold. */
+.track .fill.is-neutral {
+  background: var(--fill-out);
+  box-shadow: inset 0 0 0 1.5px var(--edge-out);
+}
+/* Breathing room between the verdict band and the provider description. */
+.drawer-desc {
+  margin: var(--s3) var(--s4) var(--s3);
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+/* Reset date/time is the drawer's most actionable figure: full ink + weight. */
+.reset-line {
+  color: var(--ink-soft);
+}
+.reset-line strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+.pcard-underline.reset-line {
+  font-size: var(--t-3);
+  font-weight: 600;
+}
+.track .fill.is-cap {
+  background: var(--fill-cap);
+  box-shadow: inset 0 0 0 1.5px var(--edge-cap);
+}
+.track .fill.is-ontrack {
+  background: var(--fill-ontrack);
+  box-shadow: inset 0 0 0 1.5px var(--edge-ontrack);
+}
+.track .fill.is-out {
+  background: var(--fill-out);
+}
+/* Burn-down chart: used vs elapsed with the ideal diagonal. Solid = measured, hollow = forecast. */
+.burn-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+.burn-head h3 {
+  margin: 0;
+}
+.burn-win {
+  font-size: var(--t-1);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.burn {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.burn .grid {
+  stroke: var(--line);
+}
+.burn .grid-tick {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.burn .ylab {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  text-anchor: end;
+  font-family: var(--font-mono);
+}
+.burn .xlab {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.burn .xlab.end {
+  text-anchor: end;
+}
+.burn .xlab.mid {
+  text-anchor: middle;
+}
+.burn .axis-y {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-anchor: middle;
+}
+.burn .axis-x {
+  fill: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-anchor: middle;
+}
+.burn .now-lab {
+  fill: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.burn .ideal {
+  stroke: var(--ink-soft);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
+}
+.burn .ideal-lab {
+  fill: var(--ink-soft);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  paint-order: stroke fill;
+  stroke: var(--surface);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+.burn .now {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.burn .actual {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  fill: none;
+}
+.burn .actual.cap {
+  stroke: var(--danger);
+}
+.burn .actual.behind {
+  stroke: var(--warn);
+}
+.burn .actual.ontrack {
+  stroke: var(--ahead);
+}
+.burn .proj {
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  fill: none;
+}
+.burn .proj.cap {
+  stroke: var(--danger);
+}
+.burn .proj.behind {
+  stroke: var(--warn);
+}
+.burn .proj.ontrack {
+  stroke: var(--ahead);
+}
+.burn .dot.cap {
+  fill: var(--danger);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.burn .dot.behind {
+  fill: var(--warn);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.burn .dot.ontrack {
+  fill: var(--ahead);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.burn .dot.hollow {
+  fill: var(--surface);
+  stroke-width: 2;
+}
+.burn .dot.hollow.cap {
+  stroke: var(--danger);
+}
+.burn .dot.hollow.behind {
+  stroke: var(--warn);
+}
+.burn .dot.hollow.ontrack {
+  stroke: var(--ahead);
+}
+.burn-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: var(--s3) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.burn-swatch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--ink-soft);
+}
+.burn-swatch-dot.cap {
+  background: var(--danger);
+}
+.burn-swatch-dot.behind {
+  background: var(--warn);
+}
+.burn-swatch-dot.ontrack {
+  background: var(--ahead);
+}
+.burn-swatch-proj {
+  position: relative;
+  width: 22px;
+  height: 8px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.burn-swatch-proj::before {
+  content: "";
+  width: 14px;
+  border-top: 2px dashed var(--ink-soft);
+}
+.burn-swatch-proj::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-soft);
+  background: var(--surface);
+  box-sizing: border-box;
+  margin-left: 1px;
+}
+.burn-swatch-proj.cap::before,
+.burn-swatch-proj.cap::after {
+  border-color: var(--danger);
+}
+.burn-swatch-proj.behind::before,
+.burn-swatch-proj.behind::after {
+  border-color: var(--warn);
+}
+.burn-swatch-proj.ontrack::before,
+.burn-swatch-proj.ontrack::after {
+  border-color: var(--ahead);
+}
+.dsec > .pstats {
+  margin-top: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.dsec > .pstats div {
+  padding-bottom: var(--s3);
+}
+.pacecap {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  margin-top: var(--s2);
+}
+.pacecap .basis {
+  display: block;
+  margin-top: 2px;
+}
+/* History bar chart: used solid, leftover hatched cap, 100% datum. */
+.hchart {
+  position: relative;
+  display: flex;
+  gap: var(--s3);
+  padding-top: 16px;
+}
+.hgrid {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--line-strong);
+}
+.hgrid span {
+  position: absolute;
+  top: -15px;
+  right: 0;
+  font-size: 10px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+}
+.hcol {
+  flex: 1;
+  min-width: 0;
+  cursor: help;
+}
+.hbars {
+  position: relative;
+  height: 84px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.hbar {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  max-width: 72%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px 6px 0 0;
+  overflow: hidden;
+}
+.hbar .solid {
+  background: var(--fill-out);
+}
+.hbar .hatch {
+  background: repeating-linear-gradient(45deg, color-mix(in oklch, var(--ink) 20%, transparent) 0 1.5px, transparent 1.5px 7px);
+  border-bottom: 1.5px solid color-mix(in oklch, var(--ink) 42%, transparent);
+}
+.hlab {
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+  margin-top: 6px;
+  line-height: 1.45;
+  text-align: center;
+}
+.hlab b {
+  display: block;
+  color: var(--ink);
+  font-size: var(--t-2);
+  font-weight: 600;
+}
+/* Conditional notes: render only when there is something to say. */
+.notes-list {
+  display: grid;
+  gap: var(--s2);
+}
+.notes-list .note {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  font-size: var(--t-3);
+}
+.notes-list .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  transform: translateY(-1px);
+}
+.notes-list .dot.warn {
+  background: var(--warn);
+}
+.notes-list .dot.bad {
+  background: var(--danger);
+}
+/* Provenance footer: one quiet line replaces the grid section. */
+.prov-foot {
+  padding: var(--s3) var(--s5) var(--s4);
+  font-size: var(--t-2);
+  color: var(--ink-soft);
+}
+.prov-foot .cred {
+  display: block;
+  margin-top: 2px;
+}
+/* Rename affordance: pencil button only, 28px target, ghost until hover. */
+.rename-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.rename-btn:hover {
+  background: var(--surface-raised);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.rename-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.rename-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .dsec {
@@ -1946,14 +2482,13 @@ footer.health .dot {
   line-height: 1.2;
 }
 .advice-card-stats {
-  font-family: var(--font-mono);
   font-size: var(--t-2);
   color: var(--ink-soft);
-  white-space: nowrap;
 }
 .advice-card-stats b {
   color: var(--ink);
   font-weight: 600;
+  font-family: var(--font-mono);
 }
 .advice-card-body {
   font-size: var(--t-3);
@@ -1975,6 +2510,49 @@ footer.health .dot {
   overflow-x: auto;
   margin: 0;
 }
+/* Fleet pacing renders one row per provider instead of comma-joined prose. */
+.lane-group { margin: 0; }
+.lane-group dt { font-size: var(--t-3); font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+.lane-group dt.um { color: var(--warn); }
+.lane-group dt.eo { color: var(--danger); }
+.lane-group dd { margin: 0 0 var(--s3); }
+.lane-group dd:last-child { margin-bottom: 0; }
+.lane-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); padding: 7px 0; font-size: var(--t-3); }
+.lane-row .nm { font-weight: 600; font-size: var(--t-2); }
+.lane-row .meta { font-family: var(--font-mono); color: var(--ink-soft); text-align: right; font-size: var(--t-2); }
+.lane-row .meta.st { font-family: var(--font-ui); }
+/* CLI snippet gets a copy button with polite live-region feedback. */
+.cli-wrap { position: relative; }
+.cli-wrap .btn { position: absolute; top: 6px; right: 6px; }
+.cli-wrap .advice-cli { padding-right: 76px; }
+.cli-wrap pre { padding-right: 76px; }
+.sr-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+/* Cross-link from the advice pick card into the provider drawer. */
+.goto-link { font-size: var(--t-2); font-weight: 600; color: var(--ink); text-underline-offset: 3px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; text-decoration: underline; }
+.goto-link:hover { color: var(--rec); }
+/* Settings panels (moved from inline styles to classes). */
+.settings-drawer { width: min(580px, 100vw); }
+.settings-head-main { flex: 1; }
+.settings-title { margin: 0 0 2px; }
+.settings-tabs { margin: var(--s4) var(--s5) 0; display: flex; height: 32px; }
+.settings-tabs .settings-tab { flex: 1; justify-content: center; display: flex; align-items: center; }
+.settings-panel { padding: var(--s4) var(--s5) var(--s6); overflow-y: auto; }
+.settings-h3 { font-size: var(--t-3); font-weight: 700; margin: 0 0 var(--s2); }
+.settings-desc { font-size: var(--t-2); color: var(--ink-soft); margin: 0 0 var(--s3); }
+.settings-note { font-size: var(--t-1); color: var(--ink-soft); margin-top: var(--s3); }
+.settings-list { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; background: var(--surface); margin-bottom: var(--s5); }
+.settings-row { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: var(--s3); }
+.settings-row:last-child { border-bottom: none; }
+.settings-row-name { font-size: var(--t-3); }
+.settings-row-source { display: block; font-size: var(--t-1); color: var(--ink-soft); }
+.settings-row-actions { display: flex; align-items: center; flex: none; gap: 8px; }
+.pill { font-size: var(--t-1); padding: 2px 8px; border-radius: 999px; border: 1px solid; font-weight: 600; display: inline-flex; align-items: center; }
+.pill-ready { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.pill-warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.pill-danger { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.cli-block { margin-bottom: var(--s4); }
+.cli-block-label { font-size: var(--t-2); display: block; margin-bottom: 4px; }
+.cli-snippet { background: var(--canvas); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: var(--t-2); margin: 0; overflow-x: auto; }
 .draw-code-head {
   display: flex;
   justify-content: space-between;
@@ -2244,6 +2822,26 @@ footer.health .dot {
   .topbar-inner {
     padding: var(--s2) var(--s3);
   }
+  /* Four pace cells do not fit a phone: two by two, rules between cells only. */
+  .pstats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pstats div:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .pstats div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* Narrow head: badge drops below the title instead of crowding it. */
+@media (max-width: 430px) {
+  .drawer-head { flex-wrap: wrap; }
+  .drawer-head .who { flex: 1 1 calc(100% - 110px); }
+  .drawer-head .pace { order: 5; }
+  .lane-row .nm { white-space: nowrap; }
+  .lane-row .meta { font-size: var(--t-1); }
 }
 
 /* Motion safety */

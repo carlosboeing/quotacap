@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.0.59
 
-- Dashboard crash hardening: each subscription card, table row, and the provider drawer now degrades to fallback UI when its render throws, instead of blanking the whole dashboard. A fresh reading or a newly selected provider retries the render. The e2e suite fails on any uncaught page error, and the drawer canary opens every provider drawer across all fixture states.
+- CLI and MCP (#169): MCP `get_recommendation` now returns about 1 KB by default instead of about 14 KB — `use`, `reason`, `wastePct`, `recommendationBasis`, `bindingWindow`, and the other enabled providers in recommended order as `{provider, state, available, resetsAt}` (plus `wait` when a short window is full). Pass `verbose: true` for the previous full payload; the `task` argument is still accepted but no longer advertised. `advise` and `status --compact` print display names, `status` and the MCP table leave out disabled providers like the dashboard, and Settings shows a disabled provider as Disabled. `--compact` uses one glyph per state (no mark on track, `<` behind, `>` ahead, `~` watch, `!` cap risk, `x` exhausted, `?` measuring, `-` not reporting), listed in `status --help`. `advise --help` no longer offers the ignored `--task`. `quotacap models` names its status column CATALOG. New readings store timestamps as UTC ISO, and a reset written with two offsets reads as one boundary. The dashboard header dates the oldest reading in the advice instead of the snapshot time.
+- Phone layout (#169): under 480 px the four pace cells stack two by two instead of clipping "Resets in", and the Upcoming resets rail groups its pins at phone width so labels no longer overlap; the stored Separate choice returns on a wider screen. Ahead of pace moves to a blue hue so it no longer reads like the amber Watch badge.
+- One vocabulary (#169): the dashboard, the CLI, the MCP text and the engine reason share one floored duration ("6d 23h", "5h 12m", "45m"), one clock ("Sat 14:46" within a week, else "Sun 22 Nov 23:05"), and one waste sentence ("16% unused at reset (Fri 13:14)"), which replaces "waste in 5.9d", "waste forecast", "expires unused" and "unused quota forecast to expire in". The `advise` reason and the MCP `reason` field use the new sentence. The CLI RESETS column widens to fit. The dashboard badge renders the CLI's state-word table instead of a copy. The pacing legend says what each badge means and leaves the actions to the lanes.
+- One forecast story (#169): waste is priced at the faster of the 24h rate and the forecast, so a provider whose measured pace already spends its quota is no longer recommended for more use while it reads Ahead of pace. Copy that said "current pace" now says "forecast pace", and the drawer's Pace caption shows the forecast rate when it blends the 24h rate with history. A finish near the reset reads "Lands near 100% at reset" on the dashboard and the CLI instead of "0% waste" and "Exhausts before reset". A used-up quota sits in no lane, its drawer reads "Capped until <time>", and its ideal pace shows "—". A month-bound provider in the advice drawer reads its monthly figure, like its card. The 24h rate ignores readings from before a verified window opened, so Codex reads Measuring for the first 6 hours of a new window instead of a cap-risk rate.
+- History accuracy (#168): a usage drop inside the window still open no longer shows as last week's leftover, and a window that dropped more than once shows one bar. The history baseline prices each close over the days it actually ran, so an early provider reset no longer drags the forecast down; a close that ran under one day is skipped. History bars for an early reset are dated when the reset was seen and read "reset 2d early" instead of "read 2d early". MCP and HTTP `advisories` now cover only the providers in the ranking, so a disabled or stale provider no longer appears with an urgency. The Muse plan name no longer carries terminal escape codes.
+
+## 0.0.58
+
+- Short-window wait (#166): a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the dashboard, the CLI row, and the advice text agents read. Pace, forecast, and which provider to use next stay on the reset window.
+
+## 0.0.57
+
+- Pace verdict (#164): a forecast that finishes near the reset reads On track while several days remain. The on-track band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain. Between that band and 15%, the row stays Watch, so a small miss still warns near the reset. A finish more than 15% early stays Cap risk when usage is ahead of elapsed time. An estimated reset inside the band stays Watch. The badge and the CLI state word stay On track for a finish inside the band, including when usage is slightly ahead of elapsed time. An on-track board with no spare quota reports "no avoidable waste" instead of the at-risk sentence.
+
+## 0.0.56
+
+- Polling cadence copy (#162): updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence.
+
+## 0.0.55
+
+- Pace chart exhaustion lock (#160): when a quota is 100% used, the burn-down pace chart locks its actual slope line and red dot to the moment quota exhausted (`exhaustedAt`) rather than moving with `now`. A flat plateau connects exhaustion time to `now` and projects a flat dashed forecast to the reset boundary. Average pace and basis wording calculate across the days taken to reach 100% instead of continuously deflating. The provider drawer banner renders `Quota exhausted · quota fully used`.
+- Polling interval default (#160): daemon and dashboard default polling interval lowered from 15 to 10 minutes (`pollMinutes`), configurable in `~/.quotacap/config.json`.
+
+## 0.0.54
+
+- Quota exhausted badge (#158): providers with 100% used quota (0% remaining) display the badge `Quota exhausted` instead of `Cap risk`, distinguishing active exhaustion from an account that is burning fast but still has quota remaining.
+
+## 0.0.53
+
+- Muse quota exhaustion recovery (#156): when Muse Code weekly quota is 100% exhausted, `/usage` in the TUI becomes unavailable and CLI warm recovery returns 429 `Subscription quota exhausted. Your usage window resets at <ISO>`. The adapter parses this error directly into a 100% quota reading with its reset time instead of failing the provider and retrying doomed warm executions.
+- Exhausted window rendering (#156): cards, tables, terminal rows, and provider drawers display 100% exhausted usage with a red cap bar even when the provider is temporarily not reporting, so long as the reset timestamp remains in the future. Non-reporting providers with `< 100%` usage remain neutral grey because unobserved usage may have changed.
+- Passed 5h rate limit window zeroing (#156): when a provider's recorded 5h reset timestamp has passed, the secondary 5h sub-window resets to 0% used and removes red heat styling across the cards, table rows, and provider drawer.
+
+## 0.0.52
+
+- Drawer revamp and quota-window alignment (#154): provider drawer reorganizes into verdict band, quota progress, rate limits (`5h` with recorded reset time and `7d` for monthly-bound providers), burn-down `Pace` chart (actual + forecast trajectory against ideal pace, callout lane, and legend), dynamic `History` bars (`Weekly quota window` or `Monthly quota window`), and provenance footer; Advice drawer adds provider cross-links and CLI copy button; Settings simplifies daemon and CLI panels.
+- Quota reset vs rate-limit windows (#154): cards, table rows, reset rail (`Quota resets`), recommendation banner, CLI `status`/`advise`/`models`, and `lastCloses` history now follow each provider's binding quota reset window (`monthly` for monthly-bound providers such as OpenCode Go, `weekly` otherwise) while surfacing `fiveHourResetsAt` and `7d` rate limits separately.
+- OpenCode Go (#153): reads the bearer the v2 CLI stores in `opencode.db` (active `opencode-go` credential, else `opencode`: API key or OAuth access token) and falls back to the legacy `auth.json` key. The refresh token is not read.
+- Dashboard crash hardening (#149): each subscription card, table row, and the provider drawer now degrades to fallback UI when its render throws, instead of blanking the whole dashboard. A fresh reading or a newly selected provider retries the render. The e2e suite fails on any uncaught page error, and the drawer canary opens every provider drawer across all fixture states.
 
 ## 0.0.51
 

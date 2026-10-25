@@ -36,6 +36,11 @@ export interface ServiceDeps {
   lintPlist?: (plistFile: string) => void;
   waitReady?: (port: number) => Promise<boolean>;
   waitReleased?: (port: number) => Promise<boolean>;
+  /** Internal: the caller just stopped this job and is replacing it, so a
+   *  still-loaded record at bootstrap time is the dying one — keep
+   *  retrying until it clears instead of treating it as already loaded.
+   *  Only restart sets this; a plain start keeps the idempotent shortcut. */
+  expectReplace?: boolean;
   print?: (msg: string) => void;
   error?: (msg: string) => void;
   now?: () => Date;
@@ -535,7 +540,7 @@ export async function start(deps: ServiceDeps = {}): Promise<void> {
   const { home, uid, dataDir, print, run, sleep, bootstrapTimeoutMs } = resolved(deps);
   const plistFile = plistFileFor(home);
   await bootstrapWithRetry(run, uid, plistFile, {
-    expectReplace: false,
+    expectReplace: deps.expectReplace ?? false,
     sleep,
     timeoutMs: bootstrapTimeoutMs,
   });
@@ -572,7 +577,11 @@ export async function restart(deps: ServiceDeps = {}): Promise<void> {
       `port ${port} is still in use after stopping; starting anyway`,
     );
   }
-  await start(deps);
+  // The record we just booted out can still be clearing when start
+  // bootstraps: error 5 plus a loaded record would read as an idempotent
+  // double-start and skip the bootstrap entirely, leaving nothing running
+  // once the old record finishes clearing. Replace, don't shortcut.
+  await start({ ...deps, expectReplace: true });
 }
 
 export interface ServiceStatus {

@@ -1,6 +1,7 @@
 import type { Quota } from "../adapters/types.js";
 import type { Advisory, Urgency, BurnStatus, PaceSource, RecommendationBasis, BindingWindow } from "./types.js";
-import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL } from "./types.js";
+import { MIN_PACE_SPAN_DAYS, BLEND_K, RISK_MARGIN, GATE_TOL, paceTube } from "./types.js";
+import { durationFromDays, unusedAtReset } from "../format/time.js";
 
 const DAY_MS = 86400000;
 
@@ -13,13 +14,19 @@ const DAY_MS = 86400000;
  * when less than MIN_PACE_SPAN_DAYS has elapsed (annualizing a smaller
  * denominator fabricates verdicts).
  */
-export function averagePace(q: Quota, now = new Date()): number | null {
+export function averagePace(q: Quota, now = new Date(), exhaustedAt?: string | null): number | null {
   if (!q.periodStart) return null;
   const start = new Date(q.periodStart).getTime();
   if (Number.isNaN(start)) return null;
-  const elapsedDays = (now.getTime() - start) / DAY_MS;
-  if (elapsedDays < MIN_PACE_SPAN_DAYS) return null;
-  const pace = q.weeklyPct / elapsedDays;
+  const endMs =
+    exhaustedAt && q.weeklyPct >= 100
+      ? new Date(exhaustedAt).getTime()
+      : now.getTime();
+  if (Number.isNaN(endMs)) return null;
+  const elapsedDays = (endMs - start) / DAY_MS;
+  const effectiveDays = q.weeklyPct >= 100 ? Math.max(MIN_PACE_SPAN_DAYS, elapsedDays) : elapsedDays;
+  if (effectiveDays < MIN_PACE_SPAN_DAYS) return null;
+  const pace = q.weeklyPct / effectiveDays;
   if (!Number.isFinite(pace)) return null;
   return Math.max(0, pace);
 }
@@ -54,15 +61,22 @@ function elapsedPctOf(q: Quota, now: Date): number | null {
   return Math.min(100, Math.max(0, (elapsed / span) * 100));
 }
 
-export function computeAdvisory(q: Quota, recent: number | null, baseline: number | null, now = new Date()): Advisory {
+export function computeAdvisory(
+  q: Quota,
+  recent: number | null,
+  baseline: number | null,
+  now = new Date(),
+  exhaustedTimestamps?: string | { weekly?: string | null; monthly?: string | null } | null,
+): Advisory {
   const resets = new Date(q.resetsAt);
   const daysLeft = Math.max(0.1, (resets.getTime()-now.getTime())/DAY_MS);
   const remaining = 100 - q.weeklyPct;
   const idealRate = remaining / daysLeft;
-  const avgPace = averagePace(q, now);
-  // Nothing left to burn: force the capped verdict even when the recent
-  // window is flat (burn 0 at 100% used must not read "on track").
-  const exhausted = remaining <= 0;
+  const weeklyExhaustedAt =
+    typeof exhaustedTimestamps === "string"
+      ? exhaustedTimestamps
+      : exhaustedTimestamps?.weekly ?? (q.weeklyPct >= 100 ? (q.fetchedAt ?? null) : null);
+  const avgPace = averagePace(q, now, weeklyExhaustedAt);
   const burnRate = blendForecast(recent, baseline);
 
   // Above every return: the unknown-pace path below is exactly what pool 2
@@ -87,6 +101,19 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
     }
   }
 
+  const monthlyExhaustedAt =
+    typeof exhaustedTimestamps === "object" && exhaustedTimestamps !== null
+      ? exhaustedTimestamps.monthly ?? (bindingRemaining <= 0 ? (q.fetchedAt ?? null) : null)
+      : null;
+
+  const monthlyExhausted = bindingWindow === "monthly" && bindingRemaining <= 0;
+  const exhausted = remaining <= 0;
+  const exhaustedAt: string | null = monthlyExhausted
+    ? monthlyExhaustedAt
+    : exhausted
+      ? weeklyExhaustedAt
+      : null;
+
   // paceSource describes recent availability; the blend's composition is
   // carried by recentRate and baselineRate.
   const paceSource: PaceSource = recent !== null ? "recent" : burnRate !== null ? "window-average" : "unknown";
@@ -102,6 +129,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured: false,
       paceSource: "unknown",
@@ -112,6 +140,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       bindingWindow,
       bindingRemaining,
       bindingDaysLeft,
+      exhaustedAt,
     };
   }
   if (exhausted) {
@@ -124,6 +153,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured,
       paceSource,
@@ -134,24 +164,34 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
       bindingWindow,
       bindingRemaining,
       bindingDaysLeft,
+      exhaustedAt,
     };
   }
 
   // Red needs a deadband margin and a cumulatively-ahead position on a
   // verified clock; a missing or estimated clock caps at Watch.
+  // The on-track tube widens with time left: a near-full finish reads on
+  // track while the reset is days away, and the shell out to RISK_MARGIN
+  // stays Watch so a small miss still warns near the reset.
   const elapsed = elapsedPctOf(q, now);
   const estimated = q.resetsAtEstimated === true;
   const gate = elapsed !== null && !estimated && q.weeklyPct >= elapsed * (1 - GATE_TOL);
   const aheadOfElapsed = elapsed !== null && !estimated && q.weeklyPct > elapsed * (1 + GATE_TOL);
 
-  const wastePct = Math.max(0, remaining - burnRate*daysLeft);
+  // Waste never assumes a pace slower than the one measured now: the blend
+  // may lean on a quieter history, but a provider whose 24h rate already
+  // spends its remainder has nothing spare to recommend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate)*daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - RISK_MARGIN);
-  const marginal = !over && daysToExhaust < daysLeft * (1 + RISK_MARGIN);
+  const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;
+  const insideTube = missFrac <= paceTube(daysLeft);
+  const inShell = !over && !insideTube && daysToExhaust < daysLeft * (1 + RISK_MARGIN);
   let status: BurnStatus;
   if (over && gate) status = "at risk";
-  else if (over || marginal) status = "watch";
+  else if (over || inShell || (insideTube && estimated)) status = "watch";
   else status = "on track";
+  const closeToReset = status === "on track" && insideTube;
 
   let urgency:Urgency = "on track";
   if(wastePct>30 && daysLeft<3) urgency="burn now";
@@ -160,7 +200,7 @@ export function computeAdvisory(q: Quota, recent: number | null, baseline: numbe
   else if(wastePct>10) urgency="save";
   if (estimated && urgency === "burn now") urgency = "use soon";
 
-  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft };
+  return { provider:q.provider, daysLeft, remaining, idealRate, burnRate, recentRate: recent, baselineRate: baseline, aheadOfElapsed, closeToReset, avgPace, burnMeasured, paceSource, daysToExhaust, status, wastePct, urgency, bindingWindow, bindingRemaining, bindingDaysLeft, exhaustedAt };
 }
 
 /**
@@ -214,8 +254,8 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     return {
       use: use.provider,
       reason: use.bindingWindow === "monthly"
-        ? `${Math.round(use.bindingRemaining)}% of month left in ${use.bindingDaysLeft.toFixed(1)}d`
-        : `${Math.round(use.wastePct)}% waste in ${use.daysLeft.toFixed(1)}d`,
+        ? `${Math.round(use.bindingRemaining)}% of month left in ${durationFromDays(use.bindingDaysLeft)}`
+        : unusedAtReset(use.wastePct, quotas.find(q => q.provider === use.provider)?.resetsAt, now.getTime()),
       wastePct: rankWaste(use),
       idealRate: use.idealRate,
       recommendationBasis: "known-waste" as RecommendationBasis,
@@ -237,8 +277,8 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     return {
       use: use.provider,
       reason: use.bindingWindow === "monthly"
-        ? `Measuring pace; ${Math.round(use.bindingRemaining)}% of month left with ${use.bindingDaysLeft.toFixed(1)}d until reset`
-        : `Measuring pace; ${Math.round(use.remaining)}% remains with ${use.daysLeft.toFixed(1)}d until reset`,
+        ? `Measuring pace; ${Math.round(use.bindingRemaining)}% of month left with ${durationFromDays(use.bindingDaysLeft)} until reset`
+        : `Measuring pace; ${Math.round(use.remaining)}% remains with ${durationFromDays(use.daysLeft)} until reset`,
       wastePct: null,
       idealRate: use.idealRate,
       recommendationBasis: "unknown-headroom" as RecommendationBasis,
@@ -248,10 +288,12 @@ export function recommend(quotas:Quota[], _task:string, paceByProvider=new Map<s
     };
   }
 
-  // 3. No meaningful candidate (e.g. all quotas at risk, watch, or exhausted).
+  // 3. No meaningful candidate. A hot board names the amber and red tiers.
+  // An on-track board with nothing spare (a finish inside the tube) does not.
+  const hot = advisories.some(a => a.status === "at risk" || a.status === "watch");
   return {
     use: "none",
-    reason: "all quotas at risk, watch, or exhausted",
+    reason: hot ? "all quotas at risk, watch, or exhausted" : "no avoidable waste",
     wastePct: 0,
     idealRate: 0,
     recommendationBasis: "none" as RecommendationBasis,

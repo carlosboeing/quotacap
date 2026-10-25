@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { exampleStateSnapshotJson, staleStateSnapshotJson } from "../fixtures/stable-state.js";
-import { toViewModel, firstRun, ageLabel, nextRefreshLabel, displayPlan, shortWindowLabel } from "../../web/src/state.js";
+import { toViewModel, firstRun, ageLabel, nextRefreshLabel, displayPlan, oldestReadingAt, shortWindowLabel } from "../../web/src/state.js";
 
 describe("state mapping", () => {
   it("keeps server words and flags untouched", () => {
@@ -36,11 +36,24 @@ describe("state mapping", () => {
     expect(ageLabel(new Date(now - 5 * 60_000).toISOString(), now)).toBe("read 5m ago");
     expect(ageLabel(new Date(now - 2 * 3_600_000).toISOString(), now)).toBe("read 2h ago");
   });
+  it("dates the header by the oldest reading the advice uses", () => {
+    const asOf = "2026-09-10T12:00:00.000Z";
+    const p = (id: string, fetchedAt: string, over: any = {}) =>
+      ({ id, enabled: true, exclusionReason: null, quota: { fetchedAt }, ...over }) as any;
+    const providers = [
+      p("a", "2026-09-10T11:57:00.000Z"),
+      p("b", "2026-09-10T11:59:00.000Z"),
+      p("stale", "2026-09-01T00:00:00.000Z", { exclusionReason: "stale" }),
+      p("off", "2026-08-01T00:00:00.000Z", { enabled: false }),
+    ];
+    expect(oldestReadingAt(providers, asOf)).toBe("2026-09-10T11:57:00.000Z");
+    expect(oldestReadingAt([], asOf)).toBe(asOf);
+  });
   it("labels next refresh from lastCompletedPollAt and the default interval", () => {
     const now = Date.parse("2026-09-10T12:00:00Z");
     expect(nextRefreshLabel(null, "idle", now)).toBe("Next automatic refresh pending");
     expect(nextRefreshLabel("2026-09-10T11:52:00Z", "idle", now)).toBe(
-      "Next automatic refresh in 7m",
+      "Next automatic refresh in 2m",
     );
     expect(nextRefreshLabel("2026-09-10T11:00:00Z", "idle", now)).toBe(
       "Next automatic refresh due",
@@ -55,18 +68,18 @@ describe("state mapping", () => {
     expect(displayPlan("Plus")).toBe("Plus");
     expect(displayPlan("SuperGrok")).toBe("SuperGrok");
   });
-  it("names each short window as 5h Limit", () => {
-    expect(shortWindowLabel("codex")).toBe("5h Limit");
-    expect(shortWindowLabel("kimi")).toBe("5h Limit");
-    expect(shortWindowLabel("agy")).toBe("5h Limit");
-    expect(shortWindowLabel("agy:3p")).toBe("5h Limit");
-    expect(shortWindowLabel("claude")).toBe("5h Limit");
-    expect(shortWindowLabel("muse")).toBe("5h Limit");
+  it("names each short window as 5h limit", () => {
+    expect(shortWindowLabel("codex")).toBe("5h limit");
+    expect(shortWindowLabel("kimi")).toBe("5h limit");
+    expect(shortWindowLabel("agy")).toBe("5h limit");
+    expect(shortWindowLabel("agy:3p")).toBe("5h limit");
+    expect(shortWindowLabel("claude")).toBe("5h limit");
+    expect(shortWindowLabel("muse")).toBe("5h limit");
     expect(shortWindowLabel("grok")).toBeNull();
     expect(shortWindowLabel("manual")).toBeNull();
   });
   it("labels the opencode-go short window like the other 5h providers", () => {
-    expect(shortWindowLabel("opencode-go")).toBe("5h Limit");
+    expect(shortWindowLabel("opencode-go")).toBe("5h limit");
   });
   it("normalizes detectedProviders with an empty default for older daemons", () => {
     const vm = toViewModel({ asOf: "x", runtime: { available: true, ready: true, polling: "idle", lastCompletedPollAt: null, version: "t" } as any, providers: [], recommendation: {} as any });

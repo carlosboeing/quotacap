@@ -98,6 +98,7 @@ describe("parseAgyUsage", () => {
     expect(gemini.plan).toBe("unknown");
     expect(gemini.weeklyPct).toBe(25);
     expect(gemini.fiveHourPct).toBe(0);
+    expect(gemini.fiveHourResetsAt).toBe("2026-08-30T20:15:19.000Z");
     expect(gemini.resetsAt).toBe(new Date("2026-09-01T13:42:08Z").toISOString());
     expect(gemini.periodStart).toBe(new Date(Date.parse("2026-09-01T13:42:08Z") - 7 * 86400000).toISOString());
     expect(gemini.source).toBe("cli");

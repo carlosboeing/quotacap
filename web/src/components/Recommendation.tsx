@@ -6,24 +6,27 @@ import type {
   RecommendationView,
   Urgency,
 } from "../state.js";
-import { ageLabel } from "../state.js";
-import { timeLeft } from "./PaceBar.js";
+import { ageLabel, oldestReadingAt } from "../state.js";
+import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
+import { clockText } from "../../../src/format/time.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export type Lane = "use-more" | "ease-off";
 
 /**
- * Lane membership from server urgency only. Any exclusionReason, or an
- * exhausted binding month, keeps the provider out of both lanes; "on track"
- * belongs to neither lane.
+ * Lane membership from server urgency only. Any exclusionReason, an
+ * exhausted binding month, or a fully used quota keeps the provider out of
+ * both lanes; "on track" belongs to neither lane.
  */
 export function laneOf(
-  advisory: { urgency: Urgency; bindingWindow?: "weekly" | "monthly"; bindingRemaining?: number },
+  advisory: { urgency: Urgency; bindingWindow?: "weekly" | "monthly"; bindingRemaining?: number; remaining?: number },
   exclusionReason: ExclusionReason
 ): Lane | null {
   if (exclusionReason !== null) return null;
   // A blocked month vetoes weekly leftover: no lane, exactly like an exclusion.
   if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return null;
+  // A capped quota has nothing to ease off from until it resets.
+  if (typeof advisory.remaining === "number" && advisory.remaining <= 0) return null;
   switch (advisory.urgency) {
     case "burn now":
     case "use soon":
@@ -90,9 +93,12 @@ function LaneSection({
       </span>
       <div className="items">
         {members.map((m) => {
-          const quota = byId.get(m.provider)?.quota;
-          const left = quota ? timeLeft(quota.resetsAt, asOfMs) : null;
-          const name = byId.get(m.provider)?.displayName ?? m.provider;
+          const memberProvider = byId.get(m.provider);
+          const quota = memberProvider?.quota;
+          const resetIso = memberProvider ? quotaResetsAt(memberProvider) : null;
+          const left = resetIso ? timeLeft(resetIso, asOfMs) : null;
+          const usedPct = memberProvider ? quotaUsedPct(memberProvider) : null;
+          const name = memberProvider?.displayName ?? m.provider;
           return (
             <div key={m.provider} className="rsub">
               <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
@@ -111,7 +117,7 @@ function LaneSection({
               <span className="rnum">
                 {quota ? (
                   <>
-                    <b>{quota.weeklyPct}%</b> used
+                    <b>{usedPct}%</b> used
                     {left ? (
                       <>
                         {" · "}
@@ -165,7 +171,8 @@ export function Recommendation({
       : "tint-ahead";
   const easeLane = easeTint === "tint-cap" ? "l-cap" : easeTint === "tint-watch" ? "l-watch" : "l-ahead";
   const pick = providers.find((p) => p.id === recommendation.use);
-  const pickLeft = pick?.quota ? timeLeft(pick.quota.resetsAt, asOfMs) : null;
+  const pickReset = pick ? quotaResetsAt(pick) : null;
+  const pickClock = clockText(pickReset, asOfMs);
   const openAdvice = () => {
     onViewAdvice?.();
   };
@@ -174,7 +181,7 @@ export function Recommendation({
     <div className="section-head">
       <h2>Quota Advice & Pacing</h2>
       <span className="note">
-        {tracked} tracked · {ageLabel(asOf)}
+        {tracked} tracked · {ageLabel(oldestReadingAt(providers, asOf))}
       </span>
     </div>
   );
@@ -245,8 +252,8 @@ export function Recommendation({
               {recommendation.wastePct !== null && recommendation.bindingWindow !== "monthly" ? (
                 <>
                   {" — "}
-                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused quota forecast
-                  {pickLeft ? <> to expire in <strong>{pickLeft}</strong></> : null}.
+                  <strong>{Math.round(recommendation.wastePct)}%</strong> unused at reset
+                  {pickClock ? <> (<strong>{pickClock}</strong>)</> : null}.
                 </>
               ) : (
                 <> — {recommendation.reason}</>
@@ -272,7 +279,7 @@ export function Recommendation({
             type="button"
             className="btn"
             data-testid="view-advice"
-            title="Open recommended provider"
+            title="Open quota advice"
             onClick={openAdvice}
           >
             View advice

@@ -1,7 +1,8 @@
 // MCP markdown table reusing the row model: the same words and numbers as
 // the terminal renderers, in GitHub-flavored markdown.
 import type { StateSnapshot } from "../advisory/types.js";
-import { buildRow, sortProviders } from "./rows.js";
+import { rateLimitWaitLines } from "./rate-limit-wait.js";
+import { buildRow, shownProviders, sortProviders, useName } from "./rows.js";
 
 function esc(cell: string): string {
   return cell.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
@@ -9,24 +10,26 @@ function esc(cell: string): string {
 
 export function renderMarkdownTable(snapshot: StateSnapshot, now: Date): string {
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, "recommended", use);
+  const sorted = sortProviders(shownProviders(snapshot.providers), "recommended", use);
   const lines = sorted.map((p) => {
     const row = buildRow(p, now);
     const name = p.id === use && use !== "none" ? `★ ${p.displayName}` : p.displayName;
     const used = row.usedPct === null ? "—" : `${row.usedPct}%`;
     const elapsed = row.elapsedPct === null ? "—" : `${row.elapsedPct}%`;
-    return `| ${esc(name)} | ${used} | ${elapsed} | ${esc(row.pace)} | ${esc(row.countdown)} | ${esc(row.state)} | ${esc(row.forecast)} |`;
+    const wait = row.wait === "" ? "—" : row.wait;
+    return `| ${esc(name)} | ${used} | ${elapsed} | ${esc(row.pace)} | ${esc(row.countdown)} | ${esc(row.state)} | ${esc(row.forecast)} | ${esc(wait)} |`;
   });
   return [
-    "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |",
-    "|---|---|---|---|---|---|---|",
+    "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast | Wait |",
+    "|---|---|---|---|---|---|---|---|",
     ...lines,
   ].join("\n");
 }
 
-export function renderRecommendationSummary(snapshot: StateSnapshot): string {
+export function renderRecommendationSummary(snapshot: StateSnapshot, now = new Date(snapshot.asOf)): string {
   const rec = snapshot.recommendation;
-  return `${rec.use}: ${rec.reason}`;
+  const waits = rateLimitWaitLines(shownProviders(snapshot.providers), now);
+  return [`${useName(snapshot)}: ${rec.reason}`, ...waits].join("\n");
 }
 
 export function renderModelsMarkdownTable(models: any[]): string {
@@ -38,7 +41,7 @@ export function renderModelsMarkdownTable(models: any[]): string {
     return `| ${esc(name)} | ${leftover} | ${esc(status)} | ${esc(ids)} |`;
   });
   return [
-    "| Provider | Leftover | Status | Models |",
+    "| Provider | Leftover | Catalog | Models |",
     "|---|---|---|---|",
     ...lines,
   ].join("\n");

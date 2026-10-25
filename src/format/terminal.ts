@@ -5,12 +5,16 @@ import type { StateSnapshot } from "../advisory/types.js";
 import {
   buildRow,
   compactSuffix,
+  shownProviders,
+  useName,
+  isMonthlyBound,
   sortProviders,
   weeklyPctOf,
   type RailCell,
   type SortKey,
   type StateWord,
 } from "./rows.js";
+import { rateLimitWaits } from "./rate-limit-wait.js";
 
 export interface RenderOptions {
   now: Date;
@@ -63,6 +67,7 @@ const STATE_COLORS: Record<StateWord, string> = {
   "Ahead of pace": "\x1b[93m",
   "Watch": "\x1b[38;5;214m",
   "Cap risk": "\x1b[31m",
+  "Quota exhausted": "\x1b[31m",
   "Measuring": "\x1b[90m",
   "Not reporting": "\x1b[90m",
   "Monthly exhausted": "\x1b[31m",
@@ -109,12 +114,16 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const g = opts.ascii ? ASCII : UNICODE;
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
+  const sorted = sortProviders(shownProviders(snapshot.providers), opts.sort ?? "recommended", use);
+  const width = provWidthFor(shownProviders(snapshot.providers).map((p) => p.displayName));
   const rows = sorted.map((p) => ({ p, row: buildRow(p, opts.now) }));
   const paceWidth = Math.max(
     "PACE (%/DAY)".length,
     ...rows.map(({ row }) => row.pace.length),
+  );
+  const resetsWidth = Math.max(
+    "RESETS".length,
+    ...rows.map(({ row }) => row.countdown.length),
   );
   const paint = (s: string, code: string): string => (color ? `${code}${s}${RESET}` : s);
   const resetsIndent = " ".repeat(
@@ -123,7 +132,8 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
   const leftoverLine = (p: (typeof sorted)[number]): string | null => {
     const close = p.lastCloses?.[0];
     if (!close) return null;
-    const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+    const unit = isMonthlyBound(p) ? "month" : "week";
+    const tail = `last ${unit} ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
     return `${resetsIndent}${paint(tail, DIM)}`;
   };
   const header = [
@@ -132,7 +142,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     "ELAPSED".padStart(8),
     "PACE (%/DAY)".padEnd(paceWidth),
     "USED VS TIME".padEnd(20),
-    "RESETS".padEnd(9),
+    "RESETS".padEnd(resetsWidth),
     "STATE".padEnd(19),
     "FORECAST",
   ].join(GAP);
@@ -143,9 +153,12 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
     const elapsed = (row.elapsedPct === null ? g.dash : `${row.elapsedPct}%`).padStart(8);
     const pace = (opts.ascii ? asciiText(row.pace) : row.pace).padEnd(paceWidth);
     const rail = renderRail(row.railCells, g, row.state, color);
-    const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(9);
+    const countdown = (opts.ascii ? asciiText(row.countdown) : row.countdown).padEnd(resetsWidth);
     const state = row.state.padEnd(19);
     const forecast = opts.ascii ? asciiText(row.forecast) : row.forecast;
+    const wait = row.wait
+      ? `${GAP}${opts.ascii ? "-" : "·"}${GAP}${paint(opts.ascii ? asciiText(row.wait) : row.wait, STATE_COLORS["Quota exhausted"])}`
+      : "";
     const main = [
       color ? colorProviderField(name, recommended, row.state) : name,
       used,
@@ -154,7 +167,7 @@ export function renderWide(snapshot: StateSnapshot, opts: RenderOptions): string
       rail,
       countdown,
       paint(state, STATE_COLORS[row.state]),
-      forecast,
+      forecast + wait,
     ].join(GAP);
     const leftover = leftoverLine(p);
     return leftover ? `${main}\n${leftover}` : main;
@@ -166,8 +179,8 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
   const g = opts.ascii ? ASCII : UNICODE;
   const color = !!opts.color && !opts.ascii;
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, opts.sort ?? "recommended", use);
-  const width = provWidthFor(snapshot.providers.map((p) => p.displayName));
+  const sorted = sortProviders(shownProviders(snapshot.providers), opts.sort ?? "recommended", use);
+  const width = provWidthFor(shownProviders(snapshot.providers).map((p) => p.displayName));
   const lines: string[] = [];
   for (const p of sorted) {
     const row = buildRow(p, opts.now);
@@ -181,14 +194,18 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
     const pace = opts.ascii ? asciiText(row.pace) : row.pace;
     const paceBits = row.pace === "—" ? pace : `${pace} %/day`;
     const state = color ? `${STATE_COLORS[row.state]}${row.state}${RESET}` : row.state;
+    const wait = row.wait
+      ? ` ${g.sep} ${color ? `${STATE_COLORS["Quota exhausted"]}${opts.ascii ? asciiText(row.wait) : row.wait}${RESET}` : opts.ascii ? asciiText(row.wait) : row.wait}`
+      : "";
     lines.push(
       `${color ? colorProviderField(name, recommended, row.state) : name} ${used} used ${g.sep} ${elapsed} elapsed ${g.sep} ${paceBits}`,
-      `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}`,
+      `${rail} resets ${countdown} ${g.sep} ${state} ${g.sep} ${forecast}${wait}`,
     );
     const close = p.lastCloses?.[0];
     if (close) {
       const indent = " ".repeat(row.railCells.length + " resets ".length);
-      const tail = `last week ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
+      const unit = isMonthlyBound(p) ? "month" : "week";
+      const tail = `last ${unit} ${close.leftoverPct}% leftover${close.resetsAtEstimated ? " (est.)" : ""}`;
       lines.push(`${indent}${color ? `${DIM}${tail}${RESET}` : tail}`);
     }
   }
@@ -197,17 +214,22 @@ export function renderNarrow(snapshot: StateSnapshot, opts: RenderOptions): stri
 
 // Always ASCII, never ANSI, even on a TTY: prompt-safe by construction.
 // Takes the fixed clock for signature parity; compact shows no ages.
-export function renderCompact(snapshot: StateSnapshot, _now?: Date): string {
-  void _now;
+export function renderCompact(snapshot: StateSnapshot, now: Date = new Date()): string {
   const use = snapshot.recommendation.use;
-  const sorted = sortProviders(snapshot.providers, "recommended", use);
+  const sorted = sortProviders(shownProviders(snapshot.providers), "recommended", use);
   const entries = sorted
     .filter((p) => p.quota !== null)
     .map((p) => {
       const u = weeklyPctOf(p.quota);
       const used = typeof u === "number" && Number.isFinite(u) ? String(Math.round(u)) : "?";
-      return `[${p.id}:${used}%${compactSuffix(p)}]`;
+      return `[${p.displayName}:${used}%${compactSuffix(p)}]`;
     });
   if (entries.length === 0) return "(use: none)";
-  return `${entries.join(" | ")}  (use: ${use})`;
+  const waits = sorted.flatMap((p) => {
+    const found = rateLimitWaits(p, now);
+    if (found.length === 0) return [];
+    return [`${p.displayName} ${found.map((w) => w.text).join(", ")}`];
+  });
+  const base = `${entries.join(" | ")}  (use: ${useName(snapshot)})`;
+  return waits.length === 0 ? base : `${base}  (wait: ${waits.join("; ")})`;
 }

@@ -15,14 +15,12 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
 export function SettingsDrawer({
   open,
   providers,
-  onRefresh,
   refreshing,
   onSetProviderEnabled,
   onClose,
 }: {
   open: boolean;
   providers: ProviderView[];
-  onRefresh: () => void;
   refreshing: boolean;
   onSetProviderEnabled?: (id: string, enabled: boolean) => void;
   onClose: () => void;
@@ -85,13 +83,12 @@ export function SettingsDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="drawer is-open"
-        style={{ width: "min(580px, 100vw)" }}
+        className="drawer is-open settings-drawer"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="drawer-head">
-          <div style={{ flex: 1 }}>
-            <h2 id={titleId} style={{ margin: "0 0 2px" }}>
+          <div className="settings-head-main">
+            <h2 id={titleId} className="settings-title">
               Settings &amp; Configuration
             </h2>
             <span className="sub">
@@ -119,12 +116,7 @@ export function SettingsDrawer({
           </button>
         </div>
 
-        <div
-          className="seg"
-          role="tablist"
-          aria-label="Settings sections"
-          style={{ margin: "var(--s4) var(--s5) 0", display: "flex", height: 32 }}
-        >
+        <div className="seg settings-tabs" role="tablist" aria-label="Settings sections">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -133,21 +125,16 @@ export function SettingsDrawer({
               className={`settings-tab${tab === t.id ? " is-active" : ""}`}
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              style={{ flex: 1, justifyContent: "center" }}
             >
               {t.label}
             </button>
           ))}
         </div>
 
-        <div
-          role="tabpanel"
-          style={{ padding: "var(--s4) var(--s5) var(--s6)", overflowY: "auto" }}
-        >
+        <div role="tabpanel" className="settings-panel">
           {tab === "providers" && (
             <ProvidersPanel
               providers={providers}
-              onRefresh={onRefresh}
               refreshing={refreshing}
               onSetProviderEnabled={onSetProviderEnabled}
             />
@@ -159,4 +146,3 @@ export function SettingsDrawer({
     </>
   );
 }
-

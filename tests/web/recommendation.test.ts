@@ -20,6 +20,10 @@ describe("recommendation lanes", () => {
       if (a.urgency === "on track") expect(laneOf(a, null)).toBeNull();
     }
   });
+  it("a used-up quota sits in no lane", () => {
+    expect(laneOf({ urgency: "slow down", remaining: 0 }, null)).toBeNull();
+    expect(laneOf({ urgency: "slow down", remaining: 4 }, null)).toBe("ease-off");
+  });
   it("excluded providers never lane, unknown pace never forecasts", () => {
     expect(laneOf({ urgency: "burn now" }, "stale")).toBeNull();
     expect(laneOf({ urgency: "burn now" }, "reset-passed")).toBeNull();
@@ -38,7 +42,7 @@ describe("recommendation lanes", () => {
     const pick = s.providers.find((p: any) => p.id === s.recommendation.use);
     expect(pick.advisory.wastePct).toBe(s.recommendation.wastePct);
     expect(forecastLine(pick)).toContain(`${Math.round(pick.advisory.wastePct)}%`);
-    expect(forecastLine(pick)).toContain(`${pick.advisory.daysLeft.toFixed(1)}d`);
+    expect(forecastLine(pick)).toContain("unused at reset");
   });
 });
 
@@ -49,8 +53,8 @@ describe("monthly-bound pick", () => {
     const html = renderToString(React.createElement(Recommendation, {
       recommendation: s.recommendation, providers: s.providers, asOf: s.asOf,
     })).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota forecast");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset");
     expect(html).not.toContain("Measuring");
   });
 });

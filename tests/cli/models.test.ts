@@ -83,7 +83,7 @@ describe("CLI quotacap models", () => {
     const output = logs.join("\n");
     expect(output).toContain("PROVIDER");
     expect(output).toContain("LEFTOVER");
-    expect(output).toContain("STATUS");
+    expect(output).toContain("CATALOG");
     expect(output).toContain("MODELS");
     expect(output).toContain("Claude");
     expect(output).toContain("75%");

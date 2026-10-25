@@ -15,6 +15,7 @@ describe("parseClaudeUsage", () => {
     const q = parseClaudeUsage(sample, new Date("2026-08-28T06:00:00+10:00"));
     expect(q.weeklyPct).toBe(25);
     expect(q.fiveHourPct).toBe(46);
+    expect(new Date(q.fiveHourResetsAt!).getTime()).toBe(Date.parse("2026-08-28T06:30:00.000Z"));
     expect(q.provider).toBe("claude");
     expect(q.plan).toBe("unknown");
     expect(q.resetsAt).toMatch(/2026-09-03/);

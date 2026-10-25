@@ -1,34 +1,146 @@
 import React from "react";
 import type { ExclusionReason, ProviderView } from "../state.js";
 import { ageDuration } from "../state.js";
+import { stateWord, type StateWord } from "../../../src/format/rows.js";
+import { clockText, dayText, durationFromDays, durationText, unusedAtReset } from "../../../src/format/time.js";
 
-export type PaceBadge = "Not reporting" | "Cap risk" | "Watch" | "Behind pace" | "Ahead of pace" | "On track" | "Measuring" | "Monthly exhausted";
+export type PaceBadge = StateWord;
 
 /**
- * Pace-state badge from the mapping table. Exclusion always wins; a blocked
- * month next; otherwise status "at risk" wins, then "watch", then "unknown";
- * on-track rows ahead of cumulative elapsed time read Ahead of pace;
- * otherwise urgency decides. No client thresholds.
+ * Pace-state badge: the CLI's state word, from the one mapping table in
+ * src/format/rows.ts, so the dashboard and the CLI never word a row apart.
  */
 export function paceBadge(provider: ProviderView): PaceBadge {
-  if (provider.exclusionReason !== null) return "Not reporting";
-  const advisory = provider.advisory;
-  if (!advisory) return "Not reporting";
-  if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0) return "Monthly exhausted";
-  if (advisory.status === "at risk") return "Cap risk";
-  if (advisory.status === "watch") return "Watch";
-  if (advisory.status === "unknown") return "Measuring";
-  if (advisory.aheadOfElapsed === true) return "Ahead of pace";
-  switch (advisory.urgency) {
-    case "burn now":
-    case "use soon":
-    case "save":
-      return "Behind pace";
-    case "slow down":
-      return "Ahead of pace";
-    case "on track":
-      return "On track";
+  return stateWord(provider);
+}
+
+/**
+ * Quota-window resolution. The advisory `bindingWindow` names the window
+ * that actually rations the account (weekly for most providers, monthly
+ * for OpenCode Go / Kimi when the month is scarcer). Every standalone
+ * reset, pace figure, and main bar reads this window; the other windows
+ * stay visible only inside Limits / the windows row as rate-limit detail.
+ * Weekly-bound providers are untouched: every helper falls back to the
+ * weekly fields.
+ */
+export function isMonthlyBound(provider: ProviderView): boolean {
+  return (
+    provider.advisory?.bindingWindow === "monthly" &&
+    !!provider.quota?.monthlyResetsAt &&
+    typeof provider.quota?.monthlyPct === "number"
+  );
+}
+
+/** Reset instant of the quota window, or null without a quota reading. */
+export function quotaResetsAt(provider: ProviderView): string | null {
+  if (!provider.quota) return null;
+  if (isMonthlyBound(provider)) return provider.quota.monthlyResetsAt ?? null;
+  return provider.quota.resetsAt ?? null;
+}
+
+/** Used percent of the quota window. Null without a quota reading. */
+export function quotaUsedPct(provider: ProviderView): number | null {
+  if (!provider.quota) return null;
+  if (isMonthlyBound(provider)) return provider.quota.monthlyPct ?? null;
+  return provider.quota.weeklyPct ?? null;
+}
+
+/** Display name of the quota window ("Monthly" / "Weekly"). */
+export function quotaWindowName(provider: ProviderView): "Monthly" | "Weekly" {
+  return isMonthlyBound(provider) ? "Monthly" : "Weekly";
+}
+
+/**
+ * Start of the monthly window. Providers report only the monthly reset,
+ * so the start is one calendar month before it (same inference the
+ * drawer Limits bars use).
+ */
+export function monthlyWindowStartIso(resetsAt: string): string | null {
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return null;
+  const start = new Date(resetMs);
+  start.setMonth(start.getMonth() - 1);
+  return start.toISOString();
+}
+
+/** Start instant of the quota window. Null when unusable. */
+export function quotaWindowStartIso(provider: ProviderView): string | null {
+  if (!provider.quota) return null;
+  if (isMonthlyBound(provider)) {
+    return provider.quota.monthlyResetsAt
+      ? monthlyWindowStartIso(provider.quota.monthlyResetsAt)
+      : null;
   }
+  return provider.quota.periodStart ?? null;
+}
+
+/** Elapsed share (0..100) of the quota window. Null when either stamp is unusable. */
+export function quotaElapsedPct(provider: ProviderView, asOfMs: number): number | null {
+  const startIso = quotaWindowStartIso(provider);
+  const resetIso = quotaResetsAt(provider);
+  if (!startIso || !resetIso) return null;
+  const startMs = Date.parse(startIso);
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(startMs) || !Number.isFinite(resetMs) || resetMs <= startMs) return null;
+  if (!Number.isFinite(asOfMs)) return null;
+  return Math.min(100, Math.max(0, ((asOfMs - startMs) / (resetMs - startMs)) * 100));
+}
+
+/** True when the quota window has nothing left: the ideal pace is then meaningless. */
+function paceExhausted(advisory: { remaining?: number; bindingRemaining?: number }): boolean {
+  return (
+    (typeof advisory.remaining === "number" && advisory.remaining <= 0) ||
+    (typeof advisory.bindingRemaining === "number" && advisory.bindingRemaining <= 0)
+  );
+}
+
+/** Even pace that lands on 100% at the quota reset: binding remaining ÷ binding days left. */
+export function quotaIdealRate(
+  advisory: { idealRate: number; bindingWindow?: string; bindingRemaining?: number; bindingDaysLeft?: number },
+): number {
+  if (
+    advisory.bindingWindow === "monthly" &&
+    typeof advisory.bindingRemaining === "number" &&
+    typeof advisory.bindingDaysLeft === "number" &&
+    advisory.bindingDaysLeft > 0
+  ) {
+    return advisory.bindingRemaining / advisory.bindingDaysLeft;
+  }
+  return advisory.idealRate;
+}
+
+/**
+ * Window-average pace of the quota window. Weekly reads the server
+ * `avgPace`; monthly divides the monthly used percent by the elapsed
+ * monthly days. Null under a 6h span, mirroring the server minimum.
+ */
+export function quotaAvgPace(provider: ProviderView, asOfMs: number): number | null {
+  if (!provider.quota || !provider.advisory) return null;
+  if (!isMonthlyBound(provider)) return provider.advisory.avgPace ?? null;
+  const used = provider.quota.monthlyPct;
+  if (typeof used !== "number" || !Number.isFinite(used)) return null;
+  const startIso = quotaWindowStartIso(provider);
+  if (!startIso) return null;
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs) || !Number.isFinite(asOfMs)) return null;
+  const isExhausted = provider.advisory.bindingRemaining <= 0 || used >= 100;
+  const endMs =
+    isExhausted && provider.advisory.exhaustedAt
+      ? Date.parse(provider.advisory.exhaustedAt)
+      : asOfMs;
+  const elapsedDays = (endMs - startMs) / 86_400_000;
+  if (elapsedDays < 0.25) return null;
+  const pace = used / elapsedDays;
+  return Number.isFinite(pace) ? Math.max(0, pace) : null;
+}
+
+/** Estimated-reset flag for the quota window; monthly resets are reported, never estimated. */
+export function quotaResetEstimated(provider: ProviderView): boolean {
+  if (isMonthlyBound(provider)) return false;
+  if (provider.quota?.resetsAtEstimated === true) return true;
+  return Array.isArray(provider.evidence)
+    ? provider.evidence.includes("estimated-reset")
+    : false;
 }
 
 export interface PaceFigures {
@@ -70,10 +182,53 @@ export function paceCells(advisory: { avgPace?: number | null; burnRate: number 
   };
 }
 
+/**
+ * Four-cell pace grid shared by the provider card and the drawer Pace
+ * section, so both surfaces present the same figures the same way:
+ * average pace, 24h pace, ideal pace, and time until reset. Unknown
+ * figures read "—" rather than disappearing.
+ */
+export function PaceStats({ provider, asOf }: { provider: ProviderView; asOf: string }) {
+  const asOfMs = Date.parse(asOf);
+  const advisory = provider.advisory;
+  const monthly = isMonthlyBound(provider);
+  // Pace follows the quota window: average and ideal are quota figures,
+  // and the 24h rate exists only for the weekly window (monthly history
+  // is not tracked), so a monthly-bound grid reads "—" there.
+  const avg = quotaAvgPace(provider, asOfMs);
+  const pace = paceCells(provider.advisory);
+  // A used-up quota has no pace to aim for until it resets.
+  const ideal = advisory && !paceExhausted(advisory) ? `${quotaIdealRate(advisory).toFixed(1)}%/day` : "—";
+  const resetIso = quotaResetsAt(provider);
+  const resetsIn = resetIso ? timeLeft(resetIso, asOfMs) : null;
+  return (
+    <div className="pstats">
+      <div title={PACE_TIPS.avg}>
+        <span className="l">Avg pace</span>
+        <span className="v">{avg !== null ? `${avg.toFixed(1)}%/day` : "—"}</span>
+      </div>
+      <div title={PACE_TIPS.recent}>
+        <span className="l">24h pace</span>
+        <span className="v">{monthly ? "—" : pace.recent}</span>
+      </div>
+      <div title={PACE_TIPS.ideal}>
+        <span className="l">Ideal pace</span>
+        <span className="v">{ideal}</span>
+      </div>
+      <div>
+        <span className="l">Resets in</span>
+        <span className="v">
+          {resetsIn ? `${resetsIn}${quotaResetEstimated(provider) ? " (est.)" : ""}` : resetCountdown(provider, asOfMs)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** Hover explanations shared by cards and rows. Plain words, no jargon. */
 export const PACE_TIPS = {
   avg: "Window average — quota used ÷ days elapsed. Your overall pace this window.",
-  recent: "Burn over the last 24 hours. Forecasts use this rate when recent readings exist.",
+  recent: "Burn over the last 24 hours. Forecasts blend this rate with your history.",
   ideal: "The even pace that lands exactly on 100% at reset: remaining ÷ days left.",
 } as const;
 
@@ -87,14 +242,22 @@ export interface PaceLine {
  * rate. Both paces always show when known (no collapsing) so rows read
  * uniformly. Empty when no advisory is present. */
 export function paceLines(
-  advisory: { avgPace?: number | null; burnRate: number | null; recentRate?: number | null; paceSource: string; idealRate: number } | null | undefined,
+  advisory: { avgPace?: number | null; burnRate: number | null; recentRate?: number | null; paceSource: string; idealRate: number; bindingWindow?: string; bindingRemaining?: number; bindingDaysLeft?: number } | null | undefined,
+  provider?: ProviderView,
+  asOfMs?: number,
 ): PaceLine[] {
   if (!advisory) return [];
-  const { avg, recent } = paceFigures(advisory);
+  // Quota-window pace: a monthly-bound row shows the monthly average and
+  // ideal; the 24h rate is weekly-only and drops out.
+  const monthly = provider ? isMonthlyBound(provider) : advisory.bindingWindow === "monthly";
+  const avg =
+    provider && asOfMs !== undefined ? quotaAvgPace(provider, asOfMs) : (paceFigures(advisory).avg);
+  const { recent } = paceFigures(advisory);
+  const ideal = quotaIdealRate(advisory) ?? advisory.idealRate;
   const lines: PaceLine[] = [];
   if (avg !== null) lines.push({ label: "Avg", value: `${avg.toFixed(1)}%/day`, tip: PACE_TIPS.avg });
-  if (recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
-  lines.push({ label: "Ideal", value: `${advisory.idealRate.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
+  if (!monthly && recent !== null) lines.push({ label: "24h", value: `${recent.toFixed(1)}%/day`, tip: PACE_TIPS.recent });
+  if (!paceExhausted(advisory)) lines.push({ label: "Ideal", value: `${ideal.toFixed(1)}%/day`, tip: PACE_TIPS.ideal });
   return lines;
 }
 
@@ -119,60 +282,40 @@ export function isEstimated(provider: ProviderView): boolean {
   return provider.evidence.includes("estimated-reset");
 }
 
-/** Weekday plus 24h clock, e.g. "Thu 21:00". Null when unparseable. */
-export function resetClock(resetsAt: string, locale?: string): string | null {
+/** Weekday plus 24h clock, e.g. "Thu 21:00": the shared clock's within-a-week form. Null when unparseable. */
+export function resetClock(resetsAt: string): string | null {
   const ms = Date.parse(resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(locale, { weekday: "short" });
-  const time = when.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${day} ${time}`;
+  return Number.isFinite(ms) ? clockText(resetsAt, ms) : null;
 }
 
-/** Weekday, calendar date and 24h clock, e.g. "Thu Oct 22 23:05". Monthly
- *  resets sit weeks out, where resetClock's weekday-only reading ("Thu 23:05")
- *  scans as this coming Thursday. Null when unparseable. */
-export function resetDateClock(resetsAt: string, locale?: string): string | null {
-  const ms = Date.parse(resetsAt);
-  if (!Number.isFinite(ms)) return null;
-  const when = new Date(ms);
-  const day = when.toLocaleDateString(locale, { weekday: "short" });
-  const date = when.toLocaleDateString(locale, { day: "numeric", month: "short" });
-  const time = when.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${day} ${date} ${time}`;
+/** Weekday, calendar date and 24h clock, e.g. "Thu 22 Oct 23:05": the shared
+ *  clock's dated form. Monthly resets sit weeks out, where the weekday alone
+ *  ("Thu 23:05") scans as this coming Thursday. Null when unparseable. */
+export function resetDateClock(resetsAt: string): string | null {
+  return clockText(resetsAt);
 }
 
-/** Short weekday plus calendar date in the locked English copy, e.g.
- *  "Tue Sep 15". Mirrors dayOf in src/format/rows.ts, including its pinned
- *  en-US locale, so the CLI and the dashboard word the same sentence
- *  identically on any machine. */
+/** Short weekday plus calendar date, e.g. "Tue 15 Sep". Same helper as the
+ *  CLI's dayOf in src/format/rows.ts, so both word the sentence identically. */
 export function resetDay(iso: string | undefined): string {
-  const when = new Date(iso ?? "");
-  return `${when.toLocaleDateString("en-US", { weekday: "short" })} ${when.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+  return dayText(iso);
 }
 
-/** "6d 12h" style time left from server timestamps. Null when unparseable. */
+/** "6d 12h" style time left from server timestamps, floored. Null when unparseable or passed. */
 export function timeLeft(resetsAt: string, asOfMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
   if (!Number.isFinite(resetMs) || !Number.isFinite(asOfMs)) return null;
   const diffMs = resetMs - asOfMs;
   if (diffMs <= 0) return null;
-  const totalMinutes = Math.floor(diffMs / 60_000);
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  if (days >= 1) return `${days}d ${hours}h`;
-  if (hours >= 1) return `${hours}h ${minutes}m`;
-  return `${Math.max(1, minutes)}m`;
+  return durationText(diffMs);
 }
+
+/** Fractional days in the same floored form as timeLeft. */
+export function daysToDuration(days: number): string {
+  return durationFromDays(days);
+}
+
+export const formatDurationDays = daysToDuration;
 
 /**
  * Reset rendering for a row. Estimated resets carry "(est.)"; reset-passed
@@ -181,13 +324,15 @@ export function timeLeft(resetsAt: string, asOfMs: number): string | null {
 export function resetCountdown(provider: ProviderView, asOfMs: number): string {
   if (provider.exclusionReason === "reset-passed") return "awaiting fresh window";
   if (!provider.quota) return "no readings";
-  const left = timeLeft(provider.quota.resetsAt, asOfMs);
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return "no readings";
+  const left = timeLeft(resetIso, asOfMs);
   if (left === null) {
-    const resetMs = Date.parse(provider.quota.resetsAt);
+    const resetMs = Date.parse(resetIso);
     if (Number.isFinite(resetMs) && resetMs <= asOfMs) return "awaiting fresh window";
     return "reset unknown";
   }
-  const estimated = isEstimated(provider) ? " (est.)" : "";
+  const estimated = quotaResetEstimated(provider) ? " (est.)" : "";
   return `in ${left}${estimated}`;
 }
 
@@ -206,12 +351,16 @@ export interface ResetCellLines {
 export function resetCellLines(provider: ProviderView, asOfMs: number): ResetCellLines {
   if (provider.exclusionReason === "reset-passed") return { top: "awaiting fresh window", bottom: null };
   if (!provider.quota) return { top: "no readings", bottom: null };
-  const clock = resetClock(provider.quota.resetsAt);
-  const left = timeLeft(provider.quota.resetsAt, asOfMs);
-  const estimated = isEstimated(provider) ? " (est.)" : "";
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return { top: "no readings", bottom: null };
+  // A monthly quota reset sits weeks out: it carries the calendar date,
+  // where the weekly clock's weekday alone would read as this week.
+  const clock = isMonthlyBound(provider) ? resetDateClock(resetIso) : resetClock(resetIso);
+  const left = timeLeft(resetIso, asOfMs);
+  const estimated = quotaResetEstimated(provider) ? " (est.)" : "";
   if (clock && left) return { top: `${clock}${estimated}`, bottom: `in ${left}` };
   if (left === null) {
-    const resetMs = Date.parse(provider.quota.resetsAt);
+    const resetMs = Date.parse(resetIso);
     if (Number.isFinite(resetMs) && resetMs <= asOfMs) return { top: "awaiting fresh window", bottom: null };
     return { top: "reset unknown", bottom: null };
   }
@@ -232,17 +381,11 @@ export interface BarGeometry {
   elapsedPct: number | null;
 }
 
-/** Bar geometry from server timestamps and percents. Presentation only. */
+/** Bar geometry of the quota window from server timestamps and percents. Presentation only. */
 export function barGeometry(provider: ProviderView, asOfMs: number): BarGeometry {
-  const usedPct = provider.quota ? Math.min(100, Math.max(0, provider.quota.weeklyPct)) : 0;
-  let elapsedPct: number | null = null;
-  if (provider.quota) {
-    const startMs = Date.parse(provider.quota.periodStart);
-    const resetMs = Date.parse(provider.quota.resetsAt);
-    if (Number.isFinite(startMs) && Number.isFinite(resetMs) && resetMs > startMs) {
-      elapsedPct = Math.min(1, Math.max(0, (asOfMs - startMs) / (resetMs - startMs))) * 100;
-    }
-  }
+  const usedRaw = quotaUsedPct(provider);
+  const usedPct = usedRaw !== null ? Math.min(100, Math.max(0, usedRaw)) : 0;
+  const elapsedPct = quotaElapsedPct(provider, asOfMs);
   return { usedPct, elapsedPct };
 }
 
@@ -256,6 +399,7 @@ export function badgeColor(badge: PaceBadge): string {
       return "var(--ahead)";
     case "Watch":
       return "var(--watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--danger)";
@@ -276,6 +420,7 @@ export function fillToken(badge: PaceBadge): string {
       return "var(--fill-ahead)";
     case "Watch":
       return "var(--fill-watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--fill-cap)";
@@ -296,6 +441,7 @@ export function edgeToken(badge: PaceBadge): string {
       return "var(--edge-ahead)";
     case "Watch":
       return "var(--edge-watch)";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "var(--edge-cap)";
@@ -312,6 +458,7 @@ export function outKind(badge: PaceBadge): "behind" | "watch" | "cap" | "ontrack
       return "behind";
     case "Watch":
       return "watch";
+    case "Quota exhausted":
     case "Monthly exhausted":
     case "Cap risk":
       return "cap";
@@ -336,7 +483,11 @@ export function hatchGradient(_badge?: PaceBadge): string {
  */
 export function badgeTitle(badge: PaceBadge, estimated: boolean): string | undefined {
   let title: string | undefined;
-  if (badge === "Cap risk") {
+  if (badge === "Quota exhausted") {
+    title = "Quota fully used until reset";
+  } else if (badge === "Monthly exhausted") {
+    title = "Monthly quota fully used until reset";
+  } else if (badge === "Cap risk") {
     title = "Burning faster than the window allows and ahead of elapsed time";
   } else if (badge === "Watch") {
     title = "Pace points at the cap, but position or the reset clock is uncertain";
@@ -345,7 +496,14 @@ export function badgeTitle(badge: PaceBadge, estimated: boolean): string | undef
   return title;
 }
 
-export function Badge({ provider }: { provider: ProviderView }) {
+export function Badge({
+  provider,
+  compact = false,
+}: {
+  provider: ProviderView;
+  /** Compact drops the exclusion detail from the label into the tooltip. */
+  compact?: boolean;
+}) {
   const badge = paceBadge(provider);
   const detail = exclusionDetail(provider.exclusionReason);
   const badgeClass =
@@ -357,19 +515,71 @@ export function Badge({ provider }: { provider: ProviderView }) {
       ? "pace-ahead"
       : badge === "Watch"
       ? "pace-watch"
-      : badge === "Cap risk" || badge === "Monthly exhausted"
+      : badge === "Cap risk" || badge === "Monthly exhausted" || badge === "Quota exhausted"
       ? "pace-cap"
       : "pace-out"; // Not reporting and Measuring share the neutral style
+  const title =
+    compact && detail
+      ? `${badge} · ${detail}`
+      : badgeTitle(badge, quotaResetEstimated(provider));
   return (
-    <span
-      data-testid="pace-badge"
-      className={`pace ${badgeClass}`}
-      title={badgeTitle(badge, provider.quota?.resetsAtEstimated === true)}
-    >
+    <span data-testid="pace-badge" className={`pace ${badgeClass}`} title={title}>
       {badge}
-      {detail ? ` · ${detail}` : ""}
+      {!compact && detail ? ` · ${detail}` : ""}
     </span>
   );
+}
+
+export type PaceHeadlineKind = "behind" | "watch" | "cap" | "ontrack" | "none";
+
+export interface PaceHeadline {
+  text: string;
+  kind: PaceHeadlineKind;
+  /** True when the projected-unused hatch belongs on the bar. */
+  hatch: boolean;
+}
+
+export function isQuotaExhaustedBeforeReset(provider: ProviderView, asOfMs?: number): boolean {
+  if (provider.resetPassed) return false;
+  const resetIso = quotaResetsAt(provider);
+  if (!resetIso) return false;
+  const resetMs = Date.parse(resetIso);
+  if (Number.isFinite(resetMs) && asOfMs !== undefined && resetMs <= asOfMs) return false;
+  const used = quotaUsedPct(provider);
+  if (used !== null && used >= 100) return true;
+  if (isMonthlyBound(provider) && provider.quota?.monthlyStatus === "exhausted") return true;
+  return false;
+}
+
+/**
+ * Headline forecast shared by the card bar and the drawer quota row:
+ * "unused at reset" wording when a waste hatch applies, otherwise the
+ * one-line forecast. Null when there is nothing to forecast.
+ */
+export function paceHeadline(provider: ProviderView, asOfMs?: number): PaceHeadline | null {
+  const badge = paceBadge(provider);
+  const monthlyBinds = provider.advisory?.bindingWindow === "monthly";
+  const wastePct = provider.advisory?.wastePct;
+  const hatch =
+    !monthlyBinds && wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
+  const is100Exhausted = isQuotaExhaustedBeforeReset(provider, asOfMs);
+  if (provider.exclusionReason !== null && is100Exhausted) {
+    const line = forecastLine(provider);
+    return {
+      text: line ? `Exhausted · ${line}` : "Exhausted · quota fully used",
+      kind: "cap",
+      hatch: false,
+    };
+  }
+  const text =
+    hatch && badge === "Behind pace" ? unusedLine(provider, wastePct!) : forecastLine(provider);
+  if (!text) return null;
+  const kind: PaceHeadlineKind = monthlyBinds
+    ? provider.advisory!.bindingRemaining === 0
+      ? "cap"
+      : "behind"
+    : outKind(badge);
+  return { text, kind, hatch };
 }
 
 /**
@@ -388,28 +598,26 @@ export function PaceBar({
   const badge = paceBadge(provider);
   const asOfMs = Date.parse(asOf);
   const { usedPct, elapsedPct } = barGeometry(provider, asOfMs);
-  const monthlyBinds = provider.advisory?.bindingWindow === "monthly";
   const wastePct = provider.advisory?.wastePct;
+  const headline = paceHeadline(provider, asOfMs);
   // A weekly-sized hatch under a month-bound card restates issue 109.
-  const showHatch =
-    !monthlyBinds && wastePct !== null && wastePct !== undefined && Number.isFinite(wastePct) && wastePct >= 3;
+  const showHatch = headline?.hatch ?? false;
+  const quotaUsed = quotaUsedPct(provider);
   const label = provider.quota
-    ? `${provider.id}: ${provider.quota.weeklyPct}% used, ${badge}`
+    ? `${provider.id}: ${quotaUsed ?? provider.quota.weeklyPct}% used, ${badge}`
     : `${provider.id}: no readings, ${badge}`;
-  const forecast =
-    showHatch && badge === "Behind pace" ? `${Math.round(wastePct!)}% expires unused` : forecastLine(provider);
-  const kind = monthlyBinds
-    ? provider.advisory!.bindingRemaining === 0 ? "cap" : "behind"
-    : outKind(badge);
+  const is100Exhausted = isQuotaExhaustedBeforeReset(provider, asOfMs);
+  const fillBg = is100Exhausted ? "var(--fill-cap)" : fillToken(badge);
+  const edgeBg = is100Exhausted ? "var(--edge-cap)" : edgeToken(badge);
   return (
     <div data-testid="pace-bar" role="img" aria-label={label} className="trackwrap">
       {showHeadline && provider.quota && (
         <div className="tline">
-          <span className="used">{provider.quota.weeklyPct}% used</span>
-          {forecast && kind !== "none" ? (
-            <span className={`out out-${kind}`}>→ {forecast}</span>
-          ) : forecast ? (
-            <span className="out out-none">→ {forecast}</span>
+          <span className="used">{quotaUsed ?? provider.quota.weeklyPct}% used</span>
+          {headline && headline.kind !== "none" ? (
+            <span className={`out out-${headline.kind}`}>→ {headline.text}</span>
+          ) : headline ? (
+            <span className="out out-none">→ {headline.text}</span>
           ) : null}
         </div>
       )}
@@ -419,8 +627,8 @@ export function PaceBar({
           className="fill"
           style={{
             width: `${usedPct}%`,
-            background: fillToken(badge),
-            ["--fill-edge" as string]: edgeToken(badge),
+            background: fillBg,
+            ["--fill-edge" as string]: edgeBg,
           }}
         />
         {showHatch && (
@@ -454,6 +662,21 @@ export function PaceBar({
   );
 }
 
+/**
+ * The shared waste sentence against the quota reset, e.g. "16% unused at
+ * reset (Fri 13:14)". The clock form is judged from the reading's own time,
+ * as the CLI judges it from its clock, so both pick the same form.
+ */
+export function unusedLine(provider: ProviderView, wastePct: number): string {
+  const fetched = provider.quota?.fetchedAt ? Date.parse(provider.quota.fetchedAt) : NaN;
+  return unusedAtReset(wastePct, quotaResetsAt(provider), Number.isFinite(fetched) ? fetched : undefined);
+}
+
+/** Shared with src/format/rows.ts so the CLI and the dashboard agree. */
+export const LANDS_NEAR_FULL = "Lands near 100% at reset";
+/** On track by forecast, yet the faster 24h pace spends the remainder (waste 0). */
+export const NO_SPARE = "No spare quota at 24h pace";
+
 /** One-line forecast from server fields. Unknown pace shows no rate or waste. */
 export function forecastLine(provider: ProviderView): string | null {
   if (provider.exclusionReason === "not-reporting" || !provider.quota) return "Not reporting yet.";
@@ -485,16 +708,18 @@ export function forecastLine(provider: ProviderView): string | null {
   }
   if (advisory.status === "at risk") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Cap risk · exhausts in ${advisory.daysToExhaust.toFixed(1)}d at current pace`
-      : "Cap risk at current pace";
+      ? `Cap risk · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Cap risk at forecast pace";
   }
   if (advisory.status === "watch") {
     return advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
-      ? `Watch · exhausts in ${advisory.daysToExhaust.toFixed(1)}d at current pace`
-      : "Watch at current pace";
+      ? `Watch · exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+      : "Watch at forecast pace";
   }
-  if (advisory.wastePct !== null) {
-    return `${Math.round(advisory.wastePct)}% waste in ${advisory.daysLeft.toFixed(1)}d`;
+  if (advisory.closeToReset === true) return LANDS_NEAR_FULL;
+  if (advisory.wastePct !== null && Math.round(advisory.wastePct) >= 1) {
+    return unusedLine(provider, advisory.wastePct);
   }
+  if (advisory.wastePct !== null) return NO_SPARE;
   return "On track.";
 }

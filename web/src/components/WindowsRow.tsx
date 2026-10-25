@@ -1,29 +1,21 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
-import { resetDateClock, resetDay } from "./PaceBar.js";
+import { resetDateClock, resetDay, timeLeft } from "./PaceBar.js";
 
-const MIN_MS = 60_000;
-const HOUR_MS = 60 * MIN_MS;
-const DAY_MS = 24 * HOUR_MS;
-
-/** One-unit countdown for a window tag: "7d", "4h" or "40m". Null when passed or unparseable. */
+/** Window tag countdown in the shared form, e.g. "1d 20h". Null when passed or unparseable. */
 export function windowCountdown(resetsAt: string, asOfMs: number): string | null {
-  const diff = Date.parse(resetsAt) - asOfMs;
-  if (!Number.isFinite(diff) || diff <= 0) return null;
-  if (diff >= DAY_MS) return `${Math.floor(diff / DAY_MS)}d`;
-  if (diff >= HOUR_MS) return `${Math.floor(diff / HOUR_MS)}h`;
-  return `${Math.max(1, Math.floor(diff / MIN_MS))}m`;
+  return timeLeft(resetsAt, asOfMs);
 }
 
 export interface WindowUnit {
-  win: "five" | "month";
-  tag: "5h" | "Mth";
+  win: "five" | "month" | "week";
+  tag: "5h" | "Mth" | "Wk";
   cardLabel: string;
   rowLabel: string;
   pct: number;
   /** Presentation-only heat: < 80 none, 80–99 hot, 100 or exhausted full. */
   heat: "" | "hot" | "full";
-  /** Tag time outside the pill: "in 7d", or the weekday plus date when the month is exhausted. */
+  /** Tag time outside the pill: "in 1d 20h", or the weekday plus date when the month is exhausted. */
   time: string | null;
   /** Expanded card track's reset line. */
   reset: string | null;
@@ -34,17 +26,35 @@ function heatOf(pct: number, exhausted: boolean): WindowUnit["heat"] {
   return pct >= 80 ? "hot" : "";
 }
 
-/** Present windows only; a unit with no data is not rendered at all. */
+/**
+ * Secondary (rate-limit) windows only. The quota window already owns the
+ * main bar, so it never repeats here: weekly-bound providers show 5h and
+ * monthly; monthly-bound providers show weekly and 5h, with the weekly
+ * reset kept as rate-limit detail.
+ */
 export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[] {
   const q = provider.quota;
   if (!q) return [];
+  const monthlyBound =
+    provider.advisory?.bindingWindow === "monthly" &&
+    q.monthlyKind === "included" &&
+    typeof q.monthlyPct === "number" &&
+    !!q.monthlyResetsAt;
   const units: WindowUnit[] = [];
-  if (typeof q.fiveHourPct === "number" && Number.isFinite(q.fiveHourPct)) {
-    // No adapter reports a 5h reset, so the 5h tag carries no time.
-    units.push({ win: "five", tag: "5h", cardLabel: "5h limit", rowLabel: "5h",
-      pct: q.fiveHourPct, heat: heatOf(q.fiveHourPct, false), time: null, reset: null });
+  if (monthlyBound && typeof q.weeklyPct === "number" && Number.isFinite(q.weeklyPct)) {
+    const left = windowCountdown(q.resetsAt, asOfMs);
+    units.push({ win: "week", tag: "Wk", cardLabel: "Weekly", rowLabel: "Week",
+      pct: q.weeklyPct, heat: heatOf(q.weeklyPct, false),
+      time: left ? `in ${left}` : null,
+      reset: left ? `in ${left}` : null });
   }
-  if (q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
+  if (typeof q.fiveHourPct === "number" && Number.isFinite(q.fiveHourPct)) {
+    const passed = q.fiveHourResetsAt ? Date.parse(q.fiveHourResetsAt) <= asOfMs : false;
+    const effectivePct = passed ? 0 : q.fiveHourPct;
+    units.push({ win: "five", tag: "5h", cardLabel: "5h limit", rowLabel: "5h",
+      pct: effectivePct, heat: heatOf(effectivePct, false), time: null, reset: null });
+  }
+  if (!monthlyBound && q.monthlyKind === "included" && typeof q.monthlyPct === "number" && q.monthlyResetsAt) {
     const exhausted = q.monthlyStatus === "exhausted";
     const left = windowCountdown(q.monthlyResetsAt, asOfMs);
     const clock = resetDateClock(q.monthlyResetsAt);
@@ -56,13 +66,21 @@ export function windowUnits(provider: ProviderView, asOfMs: number): WindowUnit[
   return units;
 }
 
-function trackFill(u: WindowUnit): React.CSSProperties {
-  const cap = u.pct >= 80 || u.heat === "full";
+/** Shared severity fill: cap colour at >= 80 (or exhausted/full), ontrack below. */
+export function trackFillForPct(pct: number, exhausted = false): React.CSSProperties {
+  const cap = exhausted || pct >= 80;
   return {
-    width: `${Math.min(100, Math.max(0, u.pct))}%`,
+    width: `${Math.min(100, Math.max(0, pct))}%`,
     background: cap ? "var(--fill-cap)" : "var(--fill-ontrack)",
     ["--fill-edge" as string]: cap ? "var(--edge-cap)" : "var(--edge-ontrack)",
   };
+}
+
+export const severityFill = trackFillForPct;
+export const windowTrackFill = trackFillForPct;
+
+export function trackFill(u: WindowUnit): React.CSSProperties {
+  return trackFillForPct(u.pct, u.heat === "full");
 }
 
 /**

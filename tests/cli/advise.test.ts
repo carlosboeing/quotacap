@@ -113,7 +113,7 @@ describe("advise process", () => {
       expect(rec.recommendationBasis).toBe("known-waste");
       const human = await runCli(home, ["advise"]);
       expect(human.code).toBe(0);
-      expect(human.stdout).toBe("my-plan: 76% waste in 7.0d\n");
+      expect(human.stdout).toBe("my-plan: 76% unused at reset (Mon 14 Sep 06:00)\n");
     } finally {
       await stub.close();
     }
@@ -167,12 +167,14 @@ describe("advise process", () => {
       const b = JSON.parse(offline.stdout);
       expect(b.use).toBe(a.use);
       expect(b.recommendationBasis).toBe(a.recommendationBasis);
-      expect(b.reason.replace(/[\d.]+/g, "#")).toBe(a.reason.replace(/[\d.]+/g, "#"));
+      // The clock may cross the 7-day dated form between the two runs.
+      const shape = (r: string) => r.replace(/\(.*\)/, "(clock)").replace(/[\d.]+/g, "#");
+      expect(shape(b.reason)).toBe(shape(a.reason));
       expect(b.wastePct).toBeCloseTo(a.wastePct, 0);
       const human = await runCli(home, ["advise"]);
       expect(human.code).toBe(0);
       expect(human.stderr).toContain(OFFLINE_LABEL);
-      expect(human.stdout).toMatch(/^my-plan: \d+% waste in 7\.0d\n$/);
+      expect(human.stdout).toMatch(/^my-plan: \d+% unused at reset \([^)]+\)\n$/);
     } finally {
       await stub.close();
     }
@@ -201,12 +203,12 @@ describe("advise process", () => {
     expect(human.stdout).toBe("none: no quotas yet\n");
   }, 15000);
 
-  it("help never claims task-specific ranking", async () => {
+  it("help never claims task-specific ranking and no longer offers --task", async () => {
     const home = tmpDir();
     const run = await runCli(home, ["advise", "--help"]);
     expect(run.code).toBe(0);
     expect(run.stdout).not.toMatch(/task-specific|ranked|tailored|optimized/i);
-    expect(run.stdout).toMatch(/same advice for every task/);
+    expect(run.stdout).not.toContain("--task");
   }, 15000);
 });
 
@@ -457,7 +459,7 @@ describe("advise wiring", () => {
     };
 
     await runWired(["advise"], onlineDeps({ createClient: () => client, now: () => FIXED_NOW }));
-    expect(logs[0]).toContain("claude:");
+    expect(logs[0]).toContain("Claude:");
     expect(logs).toContain("models: claude-sonnet-4-6, claude-opus-4-6");
 
     // Stale catalog
@@ -493,7 +495,7 @@ describe("advise wiring", () => {
     const db = openDb(dbPath);
     // Pre-catalog tables only (no model_catalogs)
     db.exec(`
-      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT);
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT, five_hour_resets_at TEXT);
       CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
       CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
       CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);

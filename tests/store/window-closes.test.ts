@@ -24,12 +24,12 @@ describe("window closes", () => {
     expect(closes).toHaveLength(1);
     expect(closes[0].usedPct).toBe(88);
     expect(closes[0].leftoverPct).toBe(12);
-    expect(closes[0].sampledAt).toBe("2026-09-10T02:20:00Z");
-    expect(closes[0].detectedAt).toBe("2026-09-10T02:40:00Z");
+    expect(closes[0].sampledAt).toBe("2026-09-10T02:20:00.000Z");
+    expect(closes[0].detectedAt).toBe("2026-09-10T02:40:00.000Z");
     expect(closes[0].reason).toBe("both");
     expect(closes[0].plan).toBe("Pro");
-    expect(closes[0].periodStart).toBe("2026-09-03T02:25:00Z");
-    expect(closes[0].resetsAt).toBe("2026-09-10T02:25:00Z");
+    expect(closes[0].periodStart).toBe("2026-09-03T02:25:00.000Z");
+    expect(closes[0].resetsAt).toBe("2026-09-10T02:25:00.000Z");
     expect(closes[0].resetsAtEstimated).toBe(false);
     const firstId = (db.prepare(`SELECT id FROM quotas ORDER BY id`).all() as any[])[0].id;
     expect(db.prepare(`SELECT sampled_quota_id, reason FROM window_closes`).all()).toEqual([
@@ -113,7 +113,7 @@ describe("window closes", () => {
     expect(getWindowCloses(db, "agy")[0].resetsAtEstimated).toBe(true);
   });
 
-  it("a monthly reset writes no window_closes row", () => {
+  it("a monthly reset writes no weekly window_closes row, and resolves under monthly window", () => {
     const db = openDb(":memory:"); migrate(db);
     const base = { provider: "opencode-go", plan: "unknown", source: "api", weeklyPct: 44,
       resetsAt: "2026-09-28T00:00:00.000Z", periodStart: "2026-09-21T00:00:00.000Z",
@@ -121,5 +121,49 @@ describe("window closes", () => {
     upsertQuota(db, { ...base, monthlyStatus: "exhausted", monthlyPct: 100, fetchedAt: "2026-09-22T12:00:00.000Z" });
     upsertQuota(db, { ...base, monthlyStatus: "ok", monthlyPct: 0, monthlyResetsAt: "2026-10-22T13:05:15.904Z", fetchedAt: "2026-09-22T14:00:00.000Z" });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM window_closes`).get()).toMatchObject({ n: 0 });
+    expect(getWindowCloses(db, "opencode-go", 4, "weekly")).toEqual([]);
+    const monthly = getWindowCloses(db, "opencode-go", 4, "monthly");
+    expect(monthly).toHaveLength(1);
+    expect(monthly[0]).toMatchObject({
+      provider: "opencode-go",
+      usedPct: 100,
+      leftoverPct: 0,
+      sampledAt: "2026-09-22T12:00:00.000Z",
+      resetsAt: "2026-09-22T13:05:15.904Z",
+      resetsAtEstimated: false,
+      detectedAt: "2026-09-22T14:00:00.000Z",
+      reason: "both",
+    });
+  });
+
+  it("collapses usage drops inside one window to the newest close", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, row({ usedPct: 11, fetchedAt: "2026-09-05T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 9, fetchedAt: "2026-09-05T02:40:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 88, fetchedAt: "2026-09-10T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 0, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM window_closes`).get()).toMatchObject({ n: 2 });
+    const closes = getWindowCloses(db, "agy");
+    expect(closes).toHaveLength(1);
+    expect(closes[0]).toMatchObject({ usedPct: 88, reason: "both" });
+  });
+
+  it("drops a usage drop from the window still open when given the current window", () => {
+    const db = openDb(":memory:"); migrate(db);
+    upsertQuota(db, row({ usedPct: 88, fetchedAt: "2026-09-10T02:20:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 0, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 43, fetchedAt: "2026-09-13T02:20:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    upsertQuota(db, row({ usedPct: 40, fetchedAt: "2026-09-13T02:40:00Z", resetsAt: "2026-09-17T02:25:00Z" }));
+    const current = { resetsAt: "2026-09-17T02:25:00Z" };
+    expect(getWindowCloses(db, "agy").map((c) => c.usedPct)).toEqual([43, 88]);
+    expect(getWindowCloses(db, "agy", 4, "weekly", current).map((c) => c.usedPct)).toEqual([88]);
+  });
+
+  it("reads one reset written with two offsets as one boundary", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // Stored before ingest normalized offsets, then read again as UTC after the reset passed.
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at) VALUES('agy','Pro',40,'2026-09-10T12:25:00+10:00','2026-09-03T12:25:00+10:00','cli','2026-09-10T02:20:00Z')`).run();
+    upsertQuota(db, row({ usedPct: 40, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    expect(getWindowCloses(db, "agy")).toEqual([]);
   });
 });
