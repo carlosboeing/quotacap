@@ -106,7 +106,7 @@ function LaneSection({
           return (
             <div key={m.provider} className="rsub">
               <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
-                <ProviderIcon title={name} size={13} />
+                <ProviderIcon id={m.provider} title={name} size={13} />
               </span>
               <div className="rnm-group">
                 <button

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Provider logo marks: replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity/Gemini, OpenCode Go, and Muse across cards, lane chips, and drawers, with graceful fallback to styled monograms for unknown providers.
+
 ## 0.0.60
 
 - Provider marks and lane wait (#171): each provider tile shows the first letter of its name in the provider colour, replacing the placeholder star, page and play glyphs. OpenCode Go gets its own colour, so its table dot is no longer blank. A provider in Use more or Ease off whose 5h limit is full, or whose week is full on a monthly plan, reads "back Sat 14:46" on its lane chip; on a phone the time takes its own line.
