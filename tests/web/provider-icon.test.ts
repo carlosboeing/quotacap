@@ -37,9 +37,12 @@ describe("provider mark", () => {
 
   it("every adapter has a colour token in both themes, so no tile or table dot renders blank", () => {
     const css = fs.readFileSync("web/src/theme.css", "utf8");
-    for (const id of ["claude", "codex", "kimi", "grok", "agy", "muse", "opencode-go"]) {
+    for (const id of ["claude", "codex", "kimi", "grok", "agy", "agy-3p", "muse", "opencode-go"]) {
       expect(css.match(new RegExp(`--p-${id}: oklch`, "g"))?.length).toBe(2);
-      expect(providerTint(id).color).toBe(`var(--p-${id}, var(--ink))`);
+      if (id !== "agy-3p") {
+        expect(providerTint(id).color).toBe(`var(--p-${id}, var(--ink))`);
+      }
     }
+    expect(providerTint("agy:3p").color).toBe("var(--p-agy-3p, var(--p-agy, var(--ink)))");
   });
 });

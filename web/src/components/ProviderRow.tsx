@@ -11,6 +11,7 @@ import {
 import { lastClose } from "./ClosedWeeks.js";
 import { WindowsRow } from "./WindowsRow.js";
 import { RateLimitNote } from "./RateLimitNote.js";
+import { providerColorKey } from "./ProviderIcon.js";
 
 export function ProviderRow({
   provider,
@@ -39,7 +40,7 @@ export function ProviderRow({
       <div className="prov" data-label="Provider">
         <span
           className="dot"
-          style={{ background: `var(--p-${provider.id.split(":")[0]}, var(--surface-raised))` }}
+          style={{ background: `var(--p-${providerColorKey(provider.id)}, var(--surface-raised))` }}
           aria-hidden="true"
         />
         <span>
