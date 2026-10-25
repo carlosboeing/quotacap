@@ -2,14 +2,37 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
-import { ProviderIcon, providerTint } from "../../web/src/components/ProviderIcon.js";
+import { ProviderIcon, providerTint, iconKey } from "../../web/src/components/ProviderIcon.js";
 
 describe("provider mark", () => {
-  it("is the display name's first letter, never a stand-in glyph", () => {
-    const html = renderToString(React.createElement(ProviderIcon, { title: "grok", size: 17 }));
-    expect(html).toContain(">G</span>");
+  it("renders official vector logo SVGs for all supported providers", () => {
+    const providers = [
+      { id: "claude", title: "Claude" },
+      { id: "codex", title: "Codex" },
+      { id: "kimi", title: "Kimi" },
+      { id: "grok", title: "Grok" },
+      { id: "agy", title: "Antigravity" },
+      { id: "agy:3p", title: "Antigravity 3P" },
+      { id: "opencode-go", title: "OpenCode Go" },
+      { id: "muse", title: "Muse" },
+    ];
+    for (const p of providers) {
+      const html = renderToString(React.createElement(ProviderIcon, { id: p.id, title: p.title, size: 18 }));
+      expect(html).toContain("<svg");
+      expect(html).toContain('viewBox="0 0 24 24"');
+      expect(html).toContain('fill="currentColor"');
+    }
+  });
+
+  it("resolves providers by title when id is omitted", () => {
+    const html = renderToString(React.createElement(ProviderIcon, { title: "Anthropic Claude" }));
+    expect(html).toContain("<svg");
+  });
+
+  it("falls back to a single-letter monogram for unknown providers", () => {
+    const html = renderToString(React.createElement(ProviderIcon, { id: "unknown-ai", title: "Unknown AI", size: 17 }));
+    expect(html).toContain(">U</span>");
     expect(html).not.toContain("<svg");
-    expect(html).toContain("font-size:15px");
   });
 
   it("every adapter has a colour token in both themes, so no tile or table dot renders blank", () => {
