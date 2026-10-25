@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.63 — 2026-10-25 (brand marks and palettes reconciliation)
+
+* Brand marks and palettes reconciliation — Grok product logo (circular slash) and Lobe Icons OpenAI mark; authentic brand color tokens for OpenCode Go (terminal charcoal), Codex (OpenAI emerald green), Grok (stark monochrome black/white), and Kimi (monochrome neutral) (#178)
+
 ## Recently shipped — 0.0.62 — 2026-10-25 (provider marks refinement)
 
 * Provider marks refinement — Antigravity arch mark, Meta mark for Muse, and dedicated emerald tint for Antigravity 3P (#176)

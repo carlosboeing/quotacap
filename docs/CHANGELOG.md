@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.63
+
+- Brand marks and palettes reconciliation (#178): update Grok mark to the official Grok product logo (circular slash) and Codex to Lobe Icons OpenAI mark; reconcile color tokens across light and dark themes with authentic brand palettes for OpenCode Go (terminal charcoal), Codex (OpenAI emerald green), Grok (stark monochrome black/white), and Kimi (monochrome neutral).
+
 ## 0.0.62
 
 - Provider marks refinement (#176): update Antigravity mark to official Lobe Icons arch, replace Muse with the Meta infinity loop, and add dedicated emerald tint token (`--p-agy-3p`) for Antigravity 3P.
