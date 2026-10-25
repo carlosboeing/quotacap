@@ -2,7 +2,7 @@
 
 ## 0.0.61
 
-- Provider logo marks (#173): replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity/Gemini, OpenCode Go, and Muse across cards, lane chips, and drawers, with graceful fallback to styled monograms for unknown providers.
+- Provider logo marks (#173): replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity (Lobe Icons arch), OpenCode Go, and Muse (Meta) across cards, lane chips, and drawers, with graceful fallback to styled monograms for unknown providers and a distinct colour token (--p-agy-3p) for Antigravity 3P.
 - Dependencies & security: Fastify 5.12.7 (fixes GHSA-389g-gv7q-r4x8 and GHSA-4mh8-r7rc-xpvc, #142), Vite 8.3.5 (#141), React and React DOM 19.3.1 (#174), @types/node 26.6.5 (#138), tsx 4.23.15 (#139), and updated GitHub Actions runner pins (#150, #151, #152).
 
 ## 0.0.60
