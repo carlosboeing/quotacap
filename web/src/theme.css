@@ -731,6 +731,10 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-weight: 700;
   font-size: 11px;
 }
+.rsub .sq svg {
+  width: 13px;
+  height: 13px;
+}
 .rnm-group {
   display: inline-flex;
   align-items: center;
@@ -1142,6 +1146,10 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-size: 15px;
   color: var(--ink);
   background: var(--surface-raised);
+}
+.picon svg {
+  width: 18px;
+  height: 18px;
 }
 .pmono {
   font-weight: 700;
@@ -2468,6 +2476,10 @@ footer.health .dot {
   display: grid;
   place-items: center;
   flex: none;
+}
+.advice-card-lead .sq svg {
+  width: 16px;
+  height: 16px;
 }
 .advice-card-lead .name {
   font-size: var(--t-4);
