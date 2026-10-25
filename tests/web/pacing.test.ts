@@ -198,9 +198,39 @@ describe("pace figures", () => {
         ...over,
       },
     });
-    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at current pace");
-    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at current pace");
-    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at current pace");
+    expect(forecastLine(watch() as any)).toBe("Watch · exhausts in 2d 2h at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: Infinity }) as any)).toBe("Watch at forecast pace");
+    expect(forecastLine(watch({ daysToExhaust: null }) as any)).toBe("Watch at forecast pace");
+  });
+  it("never prints 0% waste: a tube finish lands near 100%, a spent 24h pace has no spare", () => {
+    const onTrack = (over: any = {}) => ({
+      exclusionReason: null,
+      quota: { weeklyPct: 80 },
+      advisory: {
+        remaining: 20,
+        paceSource: "recent",
+        burnRate: 3,
+        status: "on track",
+        urgency: "on track",
+        closeToReset: false,
+        daysToExhaust: 6.7,
+        wastePct: 0,
+        daysLeft: 6,
+        ...over,
+      },
+    });
+    expect(forecastLine(onTrack({ closeToReset: true }) as any)).toBe("Lands near 100% at reset");
+    expect(forecastLine(onTrack() as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 0.4 }) as any)).toBe("No spare quota at 24h pace");
+    expect(forecastLine(onTrack({ wastePct: 12 }) as any)).toBe("12% unused at reset");
+  });
+  it("shows no ideal pace once the quota is used up", () => {
+    const view = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const base = view.providers.find((p) => p.advisory && p.quota)!;
+    const capped = { ...base, quota: { ...base.quota!, weeklyPct: 100 }, advisory: { ...base.advisory!, remaining: 0, bindingRemaining: 0, idealRate: 0 } };
+    const html = renderToString(React.createElement(PaceStats, { provider: capped as any, asOf: view.asOf }));
+    expect(html).not.toContain("0.0%/day");
+    expect(paceLines(capped.advisory as any).map((l) => l.label)).not.toContain("Ideal");
   });
   it("explains red and amber badges, confessing the estimated reset", () => {
     const rendered = (advisory: any, quota: any = { weeklyPct: 90 }) =>
@@ -223,19 +253,19 @@ describe("pace figures", () => {
 
 describe("reset clock", () => {
   it("formats weekday and 24h time with a space, not a middot", () => {
-    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
-    expect(resetClock("2026-09-10T21:00:00+10:00", "en-US")).not.toContain("·");
-    expect(resetClock("not-a-date", "en-US")).toBeNull();
+    expect(resetClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetClock("2026-09-10T21:00:00+10:00")).not.toContain("·");
+    expect(resetClock("not-a-date")).toBeNull();
   });
 
   it("resetDateClock adds the calendar date a monthly reset needs", () => {
     // Shape, not the clock reading: the time renders in the machine zone.
-    expect(resetDateClock("2026-09-10T21:00:00+10:00", "en-US")).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}$/);
-    expect(resetDateClock("not-a-date", "en-US")).toBeNull();
+    expect(resetDateClock("2026-09-10T21:00:00+10:00")).toMatch(/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/);
+    expect(resetDateClock("not-a-date")).toBeNull();
   });
 
   it("resetDay pins weekday plus date in English", () => {
-    expect(resetDay("2026-09-15T12:00:00.000Z")).toBe("Tue Sep 15");
+    expect(resetDay("2026-09-15T12:00:00.000Z")).toBe("Tue 15 Sep");
   });
 });
 
@@ -342,13 +372,13 @@ describe("monthly headline", () => {
     expect(html).toContain("out-behind");
     expect(html).toContain("→ 5% of month left");
     expect(html).not.toContain("pace-hatch");
-    expect(html).not.toContain("expires unused");
+    expect(html).not.toContain("unused at reset");
   });
 
-  it("empty month: → unused until Tue Sep 15, cap colour, no hatch, red badge", () => {
+  it("empty month: → unused until Tue 15 Sep, cap colour, no hatch, red badge", () => {
     const html = bar(monthlyExhaustedStateSnapshotJson);
     expect(html).toContain("out-cap");
-    expect(html).toContain("→ unused until Tue Sep 15");
+    expect(html).toContain("→ unused until Tue 15 Sep");
     expect(html).not.toContain("pace-hatch");
     const badge = renderToString(React.createElement(Badge, { provider: go(monthlyExhaustedStateSnapshotJson) }));
     expect(badge).toContain("pace-cap");
@@ -377,7 +407,8 @@ describe("monthly headline", () => {
       React.createElement(ProviderRow, { provider, recommended: false, asOf: s.asOf, onSelect: () => {} }),
     ).replace(/<!-- -->/g, "");
     expect(rowHtml).toContain("in 8d 16h");
-    expect(rowHtml).not.toContain("in 3d 4h");
+    // The weekly countdown shows only on the Wk rate-limit chip (label and tag), never as the reset.
+    expect(rowHtml).toContain("Wk 44% in 3d 4h");
   });
 });
 

@@ -44,7 +44,9 @@ describe("settings", () => {
     expect(providerStatus(byId.get("kimi"))).toBe("Ready");
     expect(providerStatus(byId.get("agy:3p"))).toBe("Stale");
     expect(providerStatus(byId.get("grok"))).toBe("Invalid");
-    expect(providerStatus(byId.get("manual"))).toBe("Not reporting");
+    // Not enabled: Disabled, whatever its last attempt or exclusion says.
+    expect(providerStatus(byId.get("manual"))).toBe("Disabled");
+    expect(providerStatus({ ...byId.get("kimi"), enabled: false })).toBe("Disabled");
   });
   it("uses mock connection names and puts last-read on the status pill", () => {
     expect(connectionName("kimi")).toBe("Kimi Code");

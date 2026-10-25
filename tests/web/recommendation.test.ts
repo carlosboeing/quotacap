@@ -3,7 +3,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { exampleStateSnapshotJson, unknownPaceStateSnapshotJson, monthlyStateSnapshotJson, monthlyExhaustedStateSnapshotJson, boardMonthlyStateSnapshotJson } from "../fixtures/stable-state.js";
 import { laneOf, lanesFor } from "../../web/src/components/Recommendation.js";
-import { daysToDuration, forecastLine } from "../../web/src/components/PaceBar.js";
+import { forecastLine } from "../../web/src/components/PaceBar.js";
 import { toViewModel } from "../../web/src/state.js";
 import { Recommendation } from "../../web/src/components/Recommendation.js";
 import { sortProviders as webSort } from "../../web/src/components/SubscriptionList.js";
@@ -19,6 +19,10 @@ describe("recommendation lanes", () => {
       if (a.urgency === "slow down") expect(laneOf(a, null)).toBe("ease-off");
       if (a.urgency === "on track") expect(laneOf(a, null)).toBeNull();
     }
+  });
+  it("a used-up quota sits in no lane", () => {
+    expect(laneOf({ urgency: "slow down", remaining: 0 }, null)).toBeNull();
+    expect(laneOf({ urgency: "slow down", remaining: 4 }, null)).toBe("ease-off");
   });
   it("excluded providers never lane, unknown pace never forecasts", () => {
     expect(laneOf({ urgency: "burn now" }, "stale")).toBeNull();
@@ -38,7 +42,7 @@ describe("recommendation lanes", () => {
     const pick = s.providers.find((p: any) => p.id === s.recommendation.use);
     expect(pick.advisory.wastePct).toBe(s.recommendation.wastePct);
     expect(forecastLine(pick)).toContain(`${Math.round(pick.advisory.wastePct)}%`);
-    expect(forecastLine(pick)).toContain(daysToDuration(pick.advisory.daysLeft));
+    expect(forecastLine(pick)).toContain("unused at reset");
   });
 });
 
@@ -49,8 +53,8 @@ describe("monthly-bound pick", () => {
     const html = renderToString(React.createElement(Recommendation, {
       recommendation: s.recommendation, providers: s.providers, asOf: s.asOf,
     })).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota forecast");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset");
     expect(html).not.toContain("Measuring");
   });
 });

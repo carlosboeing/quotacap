@@ -12,7 +12,7 @@ describe("session_pct migration", () => {
       source: "cli", fetchedAt: NOW } as any);
     const got: any = getLatestByProvider(db, "claude");
     expect(got.sessionPct).toBe(22);
-    expect(got.resetsAt).toBe("2026-09-14T06:00:00+10:00");
+    expect(got.resetsAt).toBe("2026-09-13T20:00:00.000Z"); // stored as UTC ISO
   });
 
   it("upgrades a pre-session_pct database preserving rows", () => {

@@ -41,6 +41,20 @@ describe("reset rail", () => {
     expect(grouped.clusters[0].ids).toHaveLength(4);
     expect(grouped.overflow.map((o: any) => o.id)).toContain("far");
   });
+  it("groups by pill width, not percent, on a phone-width rail", () => {
+    // Three resets about a day apart: 14% of the rail each, clear on desktop,
+    // but under one pill (100px) apart on a 358px rail.
+    const rows = [
+      { id: "a", label: "Muse", resetsAt: "2026-09-09T10:00:00+10:00" },
+      { id: "b", label: "Antigravity", resetsAt: "2026-09-09T22:00:00+10:00" },
+      { id: "c", label: "Antigravity 3P", resetsAt: "2026-09-10T05:00:00+10:00" },
+    ];
+    const asOf = new Date("2026-09-07T06:00:00+10:00");
+    expect(placePins(rows, asOf, { grouped: true, railWidthPx: 1072 }).clusters).toHaveLength(0);
+    const phone = placePins(rows, asOf, { grouped: true, railWidthPx: 358 });
+    expect(phone.clusters).toHaveLength(1);
+    expect(phone.clusters[0].ids).toEqual(["a", "b", "c"]);
+  });
   it("keeps same-band pins centered when their pills fit side by side", () => {
     // Codex and OpenCode Go 17.5h apart: pills need ~95px, the rail gives ~112
     const pins = placePins(

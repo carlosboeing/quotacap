@@ -24,12 +24,12 @@ describe("window closes", () => {
     expect(closes).toHaveLength(1);
     expect(closes[0].usedPct).toBe(88);
     expect(closes[0].leftoverPct).toBe(12);
-    expect(closes[0].sampledAt).toBe("2026-09-10T02:20:00Z");
-    expect(closes[0].detectedAt).toBe("2026-09-10T02:40:00Z");
+    expect(closes[0].sampledAt).toBe("2026-09-10T02:20:00.000Z");
+    expect(closes[0].detectedAt).toBe("2026-09-10T02:40:00.000Z");
     expect(closes[0].reason).toBe("both");
     expect(closes[0].plan).toBe("Pro");
-    expect(closes[0].periodStart).toBe("2026-09-03T02:25:00Z");
-    expect(closes[0].resetsAt).toBe("2026-09-10T02:25:00Z");
+    expect(closes[0].periodStart).toBe("2026-09-03T02:25:00.000Z");
+    expect(closes[0].resetsAt).toBe("2026-09-10T02:25:00.000Z");
     expect(closes[0].resetsAtEstimated).toBe(false);
     const firstId = (db.prepare(`SELECT id FROM quotas ORDER BY id`).all() as any[])[0].id;
     expect(db.prepare(`SELECT sampled_quota_id, reason FROM window_closes`).all()).toEqual([
@@ -157,5 +157,13 @@ describe("window closes", () => {
     const current = { resetsAt: "2026-09-17T02:25:00Z" };
     expect(getWindowCloses(db, "agy").map((c) => c.usedPct)).toEqual([43, 88]);
     expect(getWindowCloses(db, "agy", 4, "weekly", current).map((c) => c.usedPct)).toEqual([88]);
+  });
+
+  it("reads one reset written with two offsets as one boundary", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // Stored before ingest normalized offsets, then read again as UTC after the reset passed.
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at) VALUES('agy','Pro',40,'2026-09-10T12:25:00+10:00','2026-09-03T12:25:00+10:00','cli','2026-09-10T02:20:00Z')`).run();
+    upsertQuota(db, row({ usedPct: 40, fetchedAt: "2026-09-10T02:40:00Z", resetsAt: "2026-09-10T02:25:00Z" }));
+    expect(getWindowCloses(db, "agy")).toEqual([]);
   });
 });

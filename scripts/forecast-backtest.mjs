@@ -12,7 +12,8 @@
 //     at the following midnight (the day boundary). Rows at or before that
 //     instant are visible; later rows and receipts are not.
 //   - recent rate mirrors getBurnRates (src/store/quotas.ts): 24h rolling delta
-//     within the current cycle, null under MIN_PACE_SPAN_DAYS or one row.
+//     within the current cycle, readings before a verified window opened
+//     dropped, null under MIN_PACE_SPAN_DAYS or one row.
 //   - baseline mirrors getHistoryBaseline (closes of the open window dropped,
 //     one close per window, verified-preferred newest-4 pool, mean of each
 //     close's used / days it ran), falling back to averagePace exactly like
@@ -161,7 +162,8 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
   const gate = elapsed !== null && !estimated && q.usedPct >= elapsed * (1 - T);
   const aheadOfElapsed = elapsed !== null && !estimated && q.usedPct > elapsed * (1 + T);
 
-  const wastePct = Math.max(0, remaining - burnRate * daysLeft);
+  // Mirrors computeAdvisory: waste at the faster of the 24h rate and the blend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate) * daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - M);
   const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;
@@ -255,7 +257,8 @@ export function currentVerdict(q, recent, windowAvg, now) {
     };
   }
 
-  const wastePct = Math.max(0, remaining - burnRate * daysLeft);
+  // Mirrors computeAdvisory: waste at the faster of the 24h rate and the blend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate) * daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const status = daysToExhaust < daysLeft ? "at risk" : "on track";
 
@@ -289,8 +292,9 @@ export function currentVerdict(q, recent, windowAvg, now) {
 function cycleBreakReason(prev, cur) {
   const dropped = cur.usedPct < prev.usedPct;
   const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  const curResets = cur.resetsAt ? new Date(cur.resetsAt).getTime() : NaN;
   const boundaryRolled =
-    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prevResets !== curResets;
   if (dropped && boundaryRolled) return "both";
   if (dropped) return "usage-drop";
   if (boundaryRolled) return "resets-at-rolled";
@@ -315,11 +319,13 @@ export function recentRateForCycle(rows, nowMs) {
   for (const r of rows) {
     const t = Date.parse(r.fetchedAt);
     if (Number.isNaN(t) || t > nowMs) continue;
-    pts.push({ usedPct: r.usedPct, t, resetsAt: r.resetsAt ?? null });
+    pts.push({ usedPct: r.usedPct, t, resetsAt: r.resetsAt ?? null, periodStart: r.periodStart ?? null, estimated: r.resetsAtEstimated === true });
   }
   if (!pts.length) return null;
-  const sorted = currentCycle(pts.sort((a, b) => a.t - b.t));
+  let sorted = currentCycle(pts.sort((a, b) => a.t - b.t));
   const latest = sorted[sorted.length - 1];
+  const opened = latest.estimated || !latest.periodStart ? NaN : Date.parse(latest.periodStart);
+  if (Number.isFinite(opened)) sorted = sorted.filter((p) => p.t >= opened || p === latest);
   const cutoff = latest.t - DAY_MS;
   const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
   const days = (latest.t - windowStart.t) / DAY_MS;

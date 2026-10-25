@@ -1,9 +1,21 @@
 import React, { useEffect, useRef } from "react";
-import type { ProviderView, RecommendationView } from "../state.js";
+import type { AdvisoryView, ProviderView, RecommendationView } from "../state.js";
 import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
+import { clockText } from "../../../src/format/time.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 import { lanesFor } from "./Recommendation.js";
 import { CopyButton } from "./CopyButton.js";
+
+/** Names the rate the forecast is priced at, matching the engine's blend inputs. */
+export function forecastBasisWords(advisory: AdvisoryView | null | undefined): string {
+  if (!advisory) return "forecast pace";
+  const recent = advisory.recentRate ?? null;
+  const baseline = advisory.baselineRate ?? null;
+  if (recent !== null && baseline !== null) return "24h pace blended with history";
+  if (recent !== null || advisory.paceSource === "recent") return "24h pace";
+  if (advisory.paceSource === "window-average") return "window-average pace";
+  return "forecast pace";
+}
 
 export function AdviceDrawer({
   open,
@@ -74,7 +86,8 @@ export function AdviceDrawer({
       : null;
   // A monthly-bound pick's leftover is unusable until the month resets, so
   // the weekly expiry sentence would restate issue 109; show the reason.
-  const monthlyBound = recommendation.bindingWindow === "monthly";
+  const monthlyBound =
+    recommendation.bindingWindow === "monthly" || pick?.advisory?.bindingWindow === "monthly";
   const waste = monthlyBound
     ? null
     : recommendation.wastePct !== null
@@ -84,8 +97,8 @@ export function AdviceDrawer({
         : null;
   const pickReset = pick ? quotaResetsAt(pick) : null;
   const left = pickReset ? timeLeft(pickReset, asOfMs) : null;
-  const basis =
-    pick?.advisory?.paceSource === "window-average" ? "window-average pace" : "current 24h pace";
+  const pickClock = clockText(pickReset, asOfMs);
+  const basis = forecastBasisWords(pick?.advisory);
   const othersMore = useMore.filter((a) => a.provider !== pickId);
   const titleId = "advice-drawer-title";
 
@@ -168,7 +181,7 @@ export function AdviceDrawer({
                 </div>
                 {waste !== null && left && (
                   <div className="advice-card-stats">
-                    <b>{waste}%</b> unused quota expires in <b>{left}</b>
+                    <b>{waste}%</b> unused at reset{pickClock ? <> (<b>{pickClock}</b>)</> : null}
                   </div>
                 )}
               </div>
@@ -209,7 +222,13 @@ export function AdviceDrawer({
                 ? othersMore.map((a) => {
                     const p = providers.find((x) => x.id === a.provider);
                     const name = p?.displayName ?? a.provider;
-                    const unused = a.wastePct !== null ? `${Math.round(a.wastePct)}% unused` : null;
+                    // A month-bound row reads the month, like its card.
+                    const unused =
+                      a.bindingWindow === "monthly"
+                        ? `${Math.round(a.bindingRemaining)}% of month left`
+                        : a.wastePct !== null
+                          ? `${Math.round(a.wastePct)}% unused at reset`
+                          : null;
                     const resetIso = p ? quotaResetsAt(p) : null;
                     const t = resetIso ? timeLeft(resetIso, asOfMs) : null;
                     const meta = [unused, t ? `resets in ${t}` : null].filter(Boolean).join(" · ");

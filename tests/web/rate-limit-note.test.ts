@@ -26,7 +26,7 @@ describe("rate limit note", () => {
   it("prints the finish date and time on the card and the table row when the 5h limit is full", () => {
     const resetsAt = new Date(asOfMs + 2 * 3_600_000).toISOString();
     const claude = withFiveHour("claude", 100, resetsAt);
-    const sentence = `5h limit until ${limitStamp(resetsAt)}`;
+    const sentence = `5h limit until ${limitStamp(resetsAt, asOfMs)}`;
     const card = html(React.createElement(ProviderCard, { provider: claude, recommended: false, asOf: board.asOf, onSelect: () => {} }));
     const row = html(React.createElement(ProviderRow, { provider: claude, recommended: false, asOf: board.asOf, onSelect: () => {} }));
     const open = html(React.createElement(ProviderCard, {

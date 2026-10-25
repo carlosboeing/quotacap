@@ -257,8 +257,8 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
     const chosenProvider = eligibleQuotas.find((q) => q.provider === rec.use);
     let reason = rec.reason;
     if (chosenProvider?.resetsAtEstimated) {
-      if (reason.includes("waste in")) {
-        reason = reason.replace("waste in", "estimated waste in");
+      if (reason.includes("unused at reset")) {
+        reason = reason.replace("unused at reset", "unused at estimated reset");
       } else if (reason.includes("until reset")) {
         reason = reason.replace("until reset", "until estimated reset");
       } else if (!reason.includes("estimated")) {

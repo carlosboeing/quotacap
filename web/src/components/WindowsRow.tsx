@@ -1,18 +1,10 @@
 import React from "react";
 import type { ProviderView } from "../state.js";
-import { resetDateClock, resetDay } from "./PaceBar.js";
+import { resetDateClock, resetDay, timeLeft } from "./PaceBar.js";
 
-const MIN_MS = 60_000;
-const HOUR_MS = 60 * MIN_MS;
-const DAY_MS = 24 * HOUR_MS;
-
-/** One-unit countdown for a window tag: "7d", "4h" or "40m". Null when passed or unparseable. */
+/** Window tag countdown in the shared form, e.g. "1d 20h". Null when passed or unparseable. */
 export function windowCountdown(resetsAt: string, asOfMs: number): string | null {
-  const diff = Date.parse(resetsAt) - asOfMs;
-  if (!Number.isFinite(diff) || diff <= 0) return null;
-  if (diff >= DAY_MS) return `${Math.floor(diff / DAY_MS)}d`;
-  if (diff >= HOUR_MS) return `${Math.floor(diff / HOUR_MS)}h`;
-  return `${Math.max(1, Math.floor(diff / MIN_MS))}m`;
+  return timeLeft(resetsAt, asOfMs);
 }
 
 export interface WindowUnit {
@@ -23,7 +15,7 @@ export interface WindowUnit {
   pct: number;
   /** Presentation-only heat: < 80 none, 80–99 hot, 100 or exhausted full. */
   heat: "" | "hot" | "full";
-  /** Tag time outside the pill: "in 7d", or the weekday plus date when the month is exhausted. */
+  /** Tag time outside the pill: "in 1d 20h", or the weekday plus date when the month is exhausted. */
   time: string | null;
   /** Expanded card track's reset line. */
   reset: string | null;
