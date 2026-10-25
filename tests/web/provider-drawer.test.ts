@@ -911,7 +911,8 @@ describe("drawer windows", () => {
     // The live reading behind the report: 26 days out, on a Thursday.
     s.providers[0].quota.monthlyResetsAt = "2026-10-22T13:05:10.000Z";
     const line = monthlyMeta(s.providers[0])!;
-    expect(line).toContain(new Date("2026-10-22T13:05:10.000Z").toLocaleDateString(undefined, { day: "numeric", month: "short" }));
+    // The shared clock pins en-US words in day-month order on every machine.
+    expect(line).toContain("Thu 22 Oct 23:05");
     expect(line).toMatch(/· 5% of month left$/);
   });
 
