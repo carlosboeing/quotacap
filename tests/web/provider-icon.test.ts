@@ -45,4 +45,20 @@ describe("provider mark", () => {
     }
     expect(providerTint("agy:3p").color).toBe("var(--p-agy-3p, var(--p-agy, var(--ink)))");
   });
+
+  it("renders authentic Lobe Icons brand paths for Grok, Codex, Antigravity, and Muse", () => {
+    const grokHtml = renderToString(React.createElement(ProviderIcon, { id: "grok", title: "Grok" }));
+    expect(grokHtml).toContain("M9.27 15.29l7.978-5.897");
+    // Ensure old xAI corporate mark is not present
+    expect(grokHtml).not.toContain("m3.005 8.858 8.783");
+
+    const codexHtml = renderToString(React.createElement(ProviderIcon, { id: "codex", title: "Codex" }));
+    expect(codexHtml).toContain("M9.205 8.658");
+
+    const agyHtml = renderToString(React.createElement(ProviderIcon, { id: "agy", title: "Antigravity" }));
+    expect(agyHtml).toContain("M21.751 22.607");
+
+    const museHtml = renderToString(React.createElement(ProviderIcon, { id: "muse", title: "Muse" }));
+    expect(museHtml).toContain("M6.897 4");
+  });
 });
