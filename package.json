@@ -1,6 +1,6 @@
 {
   "name": "quotacap",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "description": "Local quota tracker for AI coding plans with a dashboard, CLI, MCP server, and next-plan recommendations.",
   "license": "MIT",
   "keywords": [
@@ -58,8 +58,8 @@
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.0.0",
     "fastify": "^5.12.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.6.5"
   },
   "optionalDependencies": {
@@ -68,8 +68,8 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.5",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "tsx": "^4.0.0",
     "typescript": "^7.0.2",

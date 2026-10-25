@@ -9,6 +9,7 @@ import type {
 import { ageLabel, oldestReadingAt } from "../state.js";
 import { quotaResetsAt, quotaUsedPct, timeLeft } from "./PaceBar.js";
 import { clockText } from "../../../src/format/time.js";
+import { rateLimitWaits } from "../../../src/format/rate-limit-wait.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
 
 export type Lane = "use-more" | "ease-off";
@@ -99,6 +100,9 @@ function LaneSection({
           const left = resetIso ? timeLeft(resetIso, asOfMs) : null;
           const usedPct = memberProvider ? quotaUsedPct(memberProvider) : null;
           const name = memberProvider?.displayName ?? m.provider;
+          // A full short window blocks the provider until the last one clears.
+          const waits = memberProvider && Number.isFinite(asOfMs) ? rateLimitWaits(memberProvider, new Date(asOfMs)) : [];
+          const blocked = waits[waits.length - 1];
           return (
             <div key={m.provider} className="rsub">
               <span className="sq" style={providerTint(m.provider)} aria-hidden="true">
@@ -123,6 +127,18 @@ function LaneSection({
                         {" · "}
                         <b>{left}</b> left
                       </>
+                    ) : null}
+                    {blocked ? (
+                      <span className="rwait" data-testid={`lane-wait-${m.provider}`}>
+                        <span className="rwait-sep">{" · "}</span>
+                        {blocked.until ? (
+                          <>
+                            back <b>{blocked.until}</b>
+                          </>
+                        ) : (
+                          `${blocked.label} reached`
+                        )}
+                      </span>
                     ) : null}
                   </>
                 ) : null}

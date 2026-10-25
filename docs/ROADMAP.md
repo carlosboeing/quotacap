@@ -1,5 +1,9 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.60 — 2026-10-25 (provider marks, lane wait)
+
+* Provider marks and lane wait — monogram tiles in the provider colour, an OpenCode Go colour token, and "back <time>" on a lane chip whose short limit is full (#171)
+
 ## Recently shipped — 0.0.59 — 2026-10-25 (one forecast story, history accuracy)
 
 * History accuracy — finished windows only in `lastCloses` and the baseline, each close priced over the days it ran, early resets dated and named on the history bars, `advisories` limited to ranked providers, Muse plan name without escape codes (#168)
@@ -252,6 +256,7 @@
 
 ## Next
 
+* Provider logo marks — replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity/Gemini, OpenCode Go, and Muse across cards, lane chips, and drawers
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)
