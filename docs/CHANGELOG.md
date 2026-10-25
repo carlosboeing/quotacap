@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Provider marks and lane wait: each provider tile shows the first letter of its name in the provider colour, replacing the placeholder star, page and play glyphs. OpenCode Go gets its own colour, so its table dot is no longer blank. A provider in Use more or Ease off whose 5h limit is full, or whose week is full on a monthly plan, reads "back Sat 14:46" on its lane chip; on a phone the time takes its own line.
+
 ## 0.0.59
 
 - CLI and MCP (#169): MCP `get_recommendation` now returns about 1 KB by default instead of about 14 KB — `use`, `reason`, `wastePct`, `recommendationBasis`, `bindingWindow`, and the other enabled providers in recommended order as `{provider, state, available, resetsAt}` (plus `wait` when a short window is full). Pass `verbose: true` for the previous full payload; the `task` argument is still accepted but no longer advertised. `advise` and `status --compact` print display names, `status` and the MCP table leave out disabled providers like the dashboard, and Settings shows a disabled provider as Disabled. `--compact` uses one glyph per state (no mark on track, `<` behind, `>` ahead, `~` watch, `!` cap risk, `x` exhausted, `?` measuring, `-` not reporting), listed in `status --help`. `advise --help` no longer offers the ignored `--task`. `quotacap models` names its status column CATALOG. New readings store timestamps as UTC ISO, and a reset written with two offsets reads as one boundary. The dashboard header dates the oldest reading in the advice instead of the snapshot time.

@@ -167,7 +167,7 @@ export function AdviceDrawer({
               <div className="advice-card-main">
                 <div className="advice-card-lead">
                   <span className="sq" style={providerTint(pick.id)}>
-                    <ProviderIcon id={pick.id} title={pickName} size={16} />
+                    <ProviderIcon title={pickName} size={16} />
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span className="name">{pickName}</span>
