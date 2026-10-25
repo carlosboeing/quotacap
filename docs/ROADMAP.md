@@ -1,8 +1,12 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.62 — 2026-10-25 (provider marks refinement)
+
+* Provider marks refinement — Antigravity arch mark, Meta mark for Muse, and dedicated emerald tint for Antigravity 3P (#176)
+
 ## Recently shipped — 0.0.61 — 2026-10-25 (provider marks, dependency refresh)
 
-* Provider logo marks — replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity, OpenCode Go, and Muse across cards, lane chips, and drawers, with distinct tinting for Antigravity 3P (#173)
+* Provider logo marks — replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity/Gemini, OpenCode Go, and Muse across cards, lane chips, and drawers (#173)
 * Dependencies and security — Fastify 5.12.7 (fixes GHSA-389g-gv7q-r4x8, GHSA-4mh8-r7rc-xpvc, #142), Vite 8.3.5 (#141), React and React DOM 19.3.1 (#174), @types/node 26.6.5 (#138), tsx 4.23.15 (#139), actions/setup-node 7.1.0 (#150), actions/download-artifact 8.0.2 (#151), actions/upload-artifact 7.0.2 (#152)
 
 ## Recently shipped — 0.0.60 — 2026-10-25 (provider marks, lane wait)
