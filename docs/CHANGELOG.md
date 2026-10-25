@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.60
 
-- Provider marks and lane wait: each provider tile shows the first letter of its name in the provider colour, replacing the placeholder star, page and play glyphs. OpenCode Go gets its own colour, so its table dot is no longer blank. A provider in Use more or Ease off whose 5h limit is full, or whose week is full on a monthly plan, reads "back Sat 14:46" on its lane chip; on a phone the time takes its own line.
+- Provider marks and lane wait (#171): each provider tile shows the first letter of its name in the provider colour, replacing the placeholder star, page and play glyphs. OpenCode Go gets its own colour, so its table dot is no longer blank. A provider in Use more or Ease off whose 5h limit is full, or whose week is full on a monthly plan, reads "back Sat 14:46" on its lane chip; on a phone the time takes its own line.
 
 ## 0.0.59
 
