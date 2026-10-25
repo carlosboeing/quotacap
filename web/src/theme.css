@@ -91,6 +91,7 @@
   --p-grok: oklch(0.42 0.02 292);
   --p-agy: oklch(0.52 0.13 195);
   --p-muse: oklch(0.52 0.17 265);
+  --p-opencode-go: oklch(0.54 0.17 345);
 }
 
 html[data-theme="dark"] {
@@ -151,6 +152,7 @@ html[data-theme="dark"] {
   --p-grok: oklch(0.80 0.01 292);
   --p-agy: oklch(0.76 0.12 195);
   --p-muse: oklch(0.75 0.15 265);
+  --p-opencode-go: oklch(0.76 0.14 345);
 }
 
 *,
@@ -729,10 +731,6 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   font-weight: 700;
   font-size: 11px;
 }
-.rsub .sq svg {
-  width: 13px;
-  height: 13px;
-}
 .rnm-group {
   display: inline-flex;
   align-items: center;
@@ -1145,9 +1143,9 @@ main > .dashboard:first-child > section:first-of-type > .section-head {
   color: var(--ink);
   background: var(--surface-raised);
 }
-.picon svg {
-  width: 17px;
-  height: 17px;
+.pmono {
+  font-weight: 700;
+  line-height: 1;
 }
 .pcard-head .who {
   flex: 1;
@@ -2471,10 +2469,6 @@ footer.health .dot {
   place-items: center;
   flex: none;
 }
-.advice-card-lead .sq svg {
-  width: 16px;
-  height: 16px;
-}
 .advice-card-lead .name {
   font-size: var(--t-4);
   font-weight: 700;
@@ -2832,6 +2826,18 @@ footer.health .dot {
   }
   .pstats div:nth-child(n + 3) {
     border-top: 1px solid var(--line);
+  }
+  /* A lane chip's "back <time>" takes its own line instead of overlapping the name. */
+  .rsub:has(.rwait) {
+    height: auto;
+    padding: 2px 0;
+  }
+  .rsub .rwait {
+    display: block;
+    margin-top: 4px;
+  }
+  .rsub .rwait-sep {
+    display: none;
   }
 }
 

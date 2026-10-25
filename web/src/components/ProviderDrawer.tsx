@@ -790,7 +790,7 @@ export function ProviderDrawer({
       >
         <div className="drawer-head">
           <span className="picon" style={providerTint(provider.id)}>
-            <ProviderIcon id={provider.id} title={model.name} />
+            <ProviderIcon title={model.name} />
           </span>
           <div className="who" style={{ flex: 1, minWidth: 0 }}>
             <h2

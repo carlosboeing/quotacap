@@ -252,6 +252,7 @@
 
 ## Next
 
+* Provider marks and lane wait — monogram tiles in the provider colour, an OpenCode Go colour token, and "back <time>" on a lane chip whose short limit is full
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)

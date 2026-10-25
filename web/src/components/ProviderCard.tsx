@@ -58,7 +58,7 @@ export function ProviderCard({
     >
       <div className="pcard-head">
         <span className="picon" style={providerTint(provider.id)} aria-hidden="true">
-          <ProviderIcon id={provider.id} title={name} />
+          <ProviderIcon title={name} />
         </span>
         <div className="who">
           <b>
