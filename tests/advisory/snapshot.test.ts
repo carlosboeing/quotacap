@@ -41,6 +41,26 @@ describe("snapshot", () => {
     expect(s.providers.find(p => p.id === "kimi")!.quota!.usedPct).toBe(10); // visible
   });
 
+  it("leaves excluded providers out of the recommendation advisories", () => {
+    const db = openDb(":memory:"); migrate(db);
+    quota(db, { provider: "kimi", usedPct: 10, resetsAt: "2026-09-14T06:00:00+10:00", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: "2026-09-07T03:00:00+10:00" }); // stale
+    quota(db, { provider: "grok", usedPct: 20, resetsAt: "2026-09-12T06:00:00+10:00", periodStart: "2026-09-05T06:00:00+10:00", fetchedAt: NOW.toISOString() });
+    const s = buildSnapshot(db, { enabledProviders: ["kimi", "grok"], now: NOW, runtime: RT });
+    expect(s.providers.find(p => p.id === "kimi")!.advisory).not.toBeNull();
+    expect(s.recommendation.advisories.map(a => a.provider)).toEqual(["grok"]);
+  });
+
+  it("keeps a usage drop from the open window out of the provider history", () => {
+    const db = openDb(":memory:"); migrate(db);
+    const base = { provider: "agy", resetsAt: "2026-09-12T06:00:00+10:00", periodStart: "2026-09-05T06:00:00+10:00" };
+    quota(db, { ...base, usedPct: 43, fetchedAt: "2026-09-06T06:00:00+10:00" });
+    quota(db, { ...base, usedPct: 40, fetchedAt: "2026-09-06T06:15:00+10:00" });
+    quota(db, { ...base, usedPct: 44, fetchedAt: NOW.toISOString() });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM window_closes`).get()).toMatchObject({ n: 1 });
+    const s = buildSnapshot(db, { enabledProviders: ["agy"], now: NOW, runtime: RT });
+    expect(s.providers.find(p => p.id === "agy")!.lastCloses).toEqual([]);
+  });
+
   it("marks invalid dates and failed providers, labels estimated resets", () => {
     const db = openDb(":memory:"); migrate(db);
     quota(db, { provider: "grok", usedPct: 30, resetsAt: "not-a-date", periodStart: "2026-08-31T06:00:00+10:00", fetchedAt: NOW.toISOString() });
@@ -216,7 +236,7 @@ describe("snapshot", () => {
     const db = openDb(":memory:");
     // Do NOT call migrate(db). Create only the pre-catalog tables (no model_catalogs).
     db.exec(`
-      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT);
+      CREATE TABLE IF NOT EXISTS quotas(id INTEGER PRIMARY KEY, provider TEXT, plan TEXT, used_pct REAL, resets_at TEXT, period_start TEXT, source TEXT, fetched_at TEXT, credits_usd REAL, resets_at_estimated INTEGER, session_pct REAL, monthly_pct REAL, monthly_resets_at TEXT, monthly_status TEXT, monthly_kind TEXT, five_hour_resets_at TEXT);
       CREATE TABLE IF NOT EXISTS snapshots(day TEXT, provider TEXT, used_pct REAL, burn_rate REAL, ideal_rate REAL, PRIMARY KEY(day, provider));
       CREATE TABLE IF NOT EXISTS adapter_attempts(provider TEXT PRIMARY KEY, attempted_at TEXT NOT NULL, completed_at TEXT, succeeded_at TEXT, success INTEGER NOT NULL, failure_category TEXT, diagnostic_code TEXT, summary TEXT, action TEXT, error_detail TEXT);
       CREATE INDEX IF NOT EXISTS idx_quotas_provider ON quotas(provider);

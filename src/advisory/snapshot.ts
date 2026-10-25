@@ -1,5 +1,5 @@
 import type { Quota, QuotaWire } from "../adapters/types.js";
-import { getAllLatest, getBurnRates, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
+import { getAllLatest, getBurnRates, getExhaustedTimestamps, getHistoryBaseline, getWindowCloses } from "../store/quotas.js";
 import { getAttempts, type AttemptRecord } from "../store/attempts.js";
 import { getCatalogs } from "../store/catalogs.js";
 import { emptyCatalog } from "../catalog/types.js";
@@ -32,6 +32,7 @@ export interface SnapshotOptions {
       checkedAt: string | null;
     };
     detectedProviders?: string[];
+    opencodeLoginCommand?: string | null;
   };
 }
 
@@ -46,6 +47,7 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     recentRate: adv.recentRate != null && Number.isFinite(adv.recentRate) ? adv.recentRate : null,
     baselineRate: adv.baselineRate != null && Number.isFinite(adv.baselineRate) ? adv.baselineRate : null,
     aheadOfElapsed: typeof adv.aheadOfElapsed === "boolean" ? adv.aheadOfElapsed : null,
+    closeToReset: adv.closeToReset === true,
     avgPace: adv.avgPace !== null && Number.isFinite(adv.avgPace) ? adv.avgPace : null,
     daysToExhaust: adv.daysToExhaust !== null && Number.isFinite(adv.daysToExhaust) ? adv.daysToExhaust : null,
     wastePct: adv.wastePct !== null && Number.isFinite(adv.wastePct) ? adv.wastePct : null,
@@ -56,6 +58,7 @@ function normalizeAdvisory(adv: Advisory | null): Advisory | null {
     bindingDaysLeft: Number.isFinite(adv.bindingDaysLeft)
       ? adv.bindingDaysLeft
       : Number.isFinite(adv.daysLeft) ? adv.daysLeft : 0,
+    exhaustedAt: typeof adv.exhaustedAt === "string" ? adv.exhaustedAt : null,
   };
 }
 
@@ -85,13 +88,14 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
   );
 
   const burnRates = getBurnRates(db, asOfMs);
-  const history = getHistoryBaseline(db);
+  const exhaustedTimestamps = getExhaustedTimestamps(db, asOfMs);
+  const history = getHistoryBaseline(db, 4, quotaMap);
   const catalogMap = getCatalogs(db);
 
   const providerSnapshots: ProviderSnapshot[] = [];
   const eligibleQuotas: Quota[] = [];
   const paceByProvider = new Map<string, { recent: number | null; baseline: number | null }>();
-  const allValidAdvisories: Advisory[] = [];
+  const eligibleAdvisories: Advisory[] = [];
 
   for (const id of unionIds) {
     const quota = quotaMap.get(id) ?? null;
@@ -178,7 +182,11 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       const recent = burnRates.get(id) ?? null;
       const baseline = baselineFor(history.get(id) ?? null, quota, now);
       pace = { recent, baseline };
-      rawAdvisory = computeAdvisory(quota, recent, baseline, now);
+      const exhausted = {
+        weekly: exhaustedTimestamps.weekly.get(id) ?? null,
+        monthly: exhaustedTimestamps.monthly.get(id) ?? null,
+      };
+      rawAdvisory = computeAdvisory(quota, recent, baseline, now, exhausted);
     }
 
     const advisory = normalizeAdvisory(rawAdvisory);
@@ -194,16 +202,20 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence.push("estimated-reset");
     }
 
-    if (advisory) {
-      allValidAdvisories.push(advisory);
-    }
-
     if (enabled && quota !== null && exclusionReason === null) {
+      if (advisory) eligibleAdvisories.push(advisory);
       eligibleQuotas.push(quota);
       if (pace) paceByProvider.set(id, pace);
     }
 
     const catalog = catalogMap.get(id) ?? emptyCatalog();
+    const closeWindow =
+      advisory?.bindingWindow === "monthly" &&
+      quota?.monthlyKind === "included" &&
+      typeof quota?.monthlyPct === "number" &&
+      !!quota?.monthlyResetsAt
+        ? "monthly"
+        : "weekly";
 
     providerSnapshots.push({
       id,
@@ -219,12 +231,12 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       evidence,
       exclusionReason,
       advisory,
-      lastCloses: getWindowCloses(db, id, 4),
+      lastCloses: getWindowCloses(db, id, 4, closeWindow, quota),
       catalog,
     });
   }
 
-  // 2. Recommendation: ranked from eligible providers only; advisories cover all valid rows
+  // 2. Recommendation: ranked from eligible providers only; advisories cover the same rows
   let recommendation: Recommendation;
   if (!eligibleQuotas.length) {
     recommendation = {
@@ -238,15 +250,15 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       catalogStatus: "unfetched",
       catalogFetchedAt: null,
       alternatives: [],
-      advisories: allValidAdvisories,
+      advisories: eligibleAdvisories,
     };
   } else {
     const rec = recommend(eligibleQuotas, "any", paceByProvider, now);
     const chosenProvider = eligibleQuotas.find((q) => q.provider === rec.use);
     let reason = rec.reason;
     if (chosenProvider?.resetsAtEstimated) {
-      if (reason.includes("waste in")) {
-        reason = reason.replace("waste in", "estimated waste in");
+      if (reason.includes("unused at reset")) {
+        reason = reason.replace("unused at reset", "unused at estimated reset");
       } else if (reason.includes("until reset")) {
         reason = reason.replace("until reset", "until estimated reset");
       } else if (!reason.includes("estimated")) {
@@ -269,7 +281,7 @@ export function buildSnapshot(db: any, opts: SnapshotOptions): StateSnapshot {
       catalogStatus: rec.use === "none" ? "unfetched" : pickCatalog.status,
       catalogFetchedAt: pickCatalog.fetchedAt,
       alternatives: alternativesWithCatalog,
-      advisories: allValidAdvisories,
+      advisories: eligibleAdvisories,
     };
   }
 

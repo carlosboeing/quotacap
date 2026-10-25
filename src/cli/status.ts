@@ -6,7 +6,7 @@ import { projectQuotasResponse } from "../advisory/snapshot.js";
 import { ensureConfig, getDbPath } from "../config.js";
 import { renderCompact, renderNarrow, renderWide } from "../format/terminal.js";
 import { renderIssues } from "../format/issues.js";
-import { assertValidSortKey, type SortKey } from "../format/rows.js";
+import { COMPACT_LEGEND, assertValidSortKey, type SortKey } from "../format/rows.js";
 import { createServiceClient } from "../runtime/client.js";
 import { VERSION } from "../version.js";
 import { isServiceManaged, runServiceCommand } from "../service/index.js";
@@ -50,7 +50,7 @@ export function registerStatusCommand(program: Command, deps: ClientCommandDeps)
     .command("status")
     .description("show quota status (service when reachable, stored readings otherwise)")
     .option("--json", "machine-readable output")
-    .option("--compact", "one-line statusline")
+    .option("--compact", `one-line statusline (${COMPACT_LEGEND})`)
     .option("--ascii", "ASCII glyphs without color")
     .option("--sort <key>", "row order: recommended|reset-asc|reset-desc|used-desc|used-asc", "recommended")
     .option("--verbose", "show provider failure guidance and diagnostics")

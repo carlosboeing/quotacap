@@ -8,18 +8,18 @@ describe("mcp get_quotas", () => {
   it("renders the shared markdown table for quota status", async () => {
     const db = openDb(":memory:"); migrate(db);
     upsertQuota(db, {provider:"claude",plan:"max",usedPct:40,resetsAt:"2026-09-03T21:00:00+10:00",periodStart:"2026-08-26T00:00:00Z",source:"cli" as const,fetchedAt:new Date().toISOString()});
-    const app = buildApp(testCtx(db));
+    const app = buildApp(testCtx(db, { enabledProviders: ["claude"] }));
     const addr = await app.listen({ port: 0, host: "127.0.0.1" });
     process.env.QUOTACAP_URL = addr;
     try {
       const res: any = await handleTool("get_quotas", {});
       expect(res.isError).toBeUndefined();
       const lines = res.content[0].text.split("\n");
-      expect(lines[0]).toBe("| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |");
-      expect(lines[1]).toBe("|---|---|---|---|---|---|---|");
+      expect(lines[0]).toBe("| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast | Wait |");
+      expect(lines[1]).toBe("|---|---|---|---|---|---|---|---|");
       // Pace drifts with wall-clock now (fixed periodStart), so pin the shape, not the figure.
       expect(lines[2]).toMatch(
-        /^\| Claude \| 40% \| 100% \| (?:—|\d+\.\d+ avg) \| passed \| Not reporting \| reset passed — awaiting fresh window \|$/,
+        /^\| Claude \| 40% \| 100% \| (?:—|\d+\.\d+ avg) \| passed \| Not reporting \| reset passed — awaiting fresh window \| — \|$/,
       );
       const rows = JSON.parse(res.content[1].text);
       expect(rows).toHaveLength(1);

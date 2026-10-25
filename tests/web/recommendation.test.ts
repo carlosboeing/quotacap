@@ -20,6 +20,10 @@ describe("recommendation lanes", () => {
       if (a.urgency === "on track") expect(laneOf(a, null)).toBeNull();
     }
   });
+  it("a used-up quota sits in no lane", () => {
+    expect(laneOf({ urgency: "slow down", remaining: 0 }, null)).toBeNull();
+    expect(laneOf({ urgency: "slow down", remaining: 4 }, null)).toBe("ease-off");
+  });
   it("excluded providers never lane, unknown pace never forecasts", () => {
     expect(laneOf({ urgency: "burn now" }, "stale")).toBeNull();
     expect(laneOf({ urgency: "burn now" }, "reset-passed")).toBeNull();
@@ -38,7 +42,7 @@ describe("recommendation lanes", () => {
     const pick = s.providers.find((p: any) => p.id === s.recommendation.use);
     expect(pick.advisory.wastePct).toBe(s.recommendation.wastePct);
     expect(forecastLine(pick)).toContain(`${Math.round(pick.advisory.wastePct)}%`);
-    expect(forecastLine(pick)).toContain(`${pick.advisory.daysLeft.toFixed(1)}d`);
+    expect(forecastLine(pick)).toContain("unused at reset");
   });
 });
 
@@ -49,8 +53,8 @@ describe("monthly-bound pick", () => {
     const html = renderToString(React.createElement(Recommendation, {
       recommendation: s.recommendation, providers: s.providers, asOf: s.asOf,
     })).replace(/<!-- -->/g, "");
-    expect(html).toContain("5% of month left in 8.7d");
-    expect(html).not.toContain("unused quota forecast");
+    expect(html).toContain("5% of month left in 8d 16h");
+    expect(html).not.toContain("unused at reset");
     expect(html).not.toContain("Measuring");
   });
 });
@@ -88,5 +92,31 @@ describe("a blocked month never lanes", () => {
     const view = toViewModel(raw);
     const web = webSort(view.providers, "recommended", view.recommendation).map((p) => p.id);
     expect(web.indexOf("opencode-go")).toBeGreaterThan(lastOpen(web, new Set([...excluded, "opencode-go"])));
+  });
+});
+
+describe("lane chip on a full short window", () => {
+  function render(mutate?: (p: any, asOfMs: number) => void) {
+    const s = toViewModel(JSON.parse(exampleStateSnapshotJson));
+    const { useMore, easeOff } = lanesFor(s.recommendation.advisories, s.providers);
+    const member = [...useMore, ...easeOff][0];
+    const provider = s.providers.find((p) => p.id === member.provider)!;
+    mutate?.(provider, Date.parse(s.asOf));
+    const html = renderToString(React.createElement(Recommendation, {
+      recommendation: s.recommendation, providers: s.providers, asOf: s.asOf,
+    })).replace(/<!-- -->/g, "");
+    return { html, id: provider.id };
+  }
+
+  it("names when a laned provider blocked by its 5h limit is back", () => {
+    const { html, id } = render((p, asOfMs) => {
+      p.quota = { ...p.quota, fiveHourPct: 100, fiveHourResetsAt: new Date(asOfMs + 2 * 3_600_000).toISOString() };
+    });
+    expect(html).toMatch(new RegExp(`data-testid="lane-wait-${id}"><span class="rwait-sep"> · </span>back <b>[A-Z][a-z]{2} \\d{2}:\\d{2}</b>`));
+  });
+
+  it("stays quiet when no short window is full", () => {
+    const { html } = render();
+    expect(html).not.toContain("lane-wait-");
   });
 });

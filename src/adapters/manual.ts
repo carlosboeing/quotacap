@@ -21,11 +21,15 @@ export function parseManualUsage(provider: string, text: string, now = new Date(
     const v = parseInt(sm[1], 10);
     if (Number.isFinite(v) && v >= 0 && v <= 100) sessionPct = v;
   }
+  // The short window's own reset lives on its line, never the weekly one.
+  const fiveLine = text.match(/^.*(?:5h|5-hour).*$/gim)?.[0];
+  const fiveHourResetsAt = fiveLine ? parseResetText(fiveLine, now) ?? undefined : undefined;
   return {
     provider,
     plan: "unknown",
     weeklyPct: usedPct,
     fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt,
     periodStart,
     source: "manual",

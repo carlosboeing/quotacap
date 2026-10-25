@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { projectQuotasResponse, projectRecommendationResponse } from "../../src/advisory/snapshot.js";
 import type { StateSnapshot } from "../../src/advisory/types.js";
-import { compactSuffix, forecastText, stateWord } from "../../src/format/rows.js";
+import { compactSuffix, forecastText, shownProviders, stateWord } from "../../src/format/rows.js";
 import {
   provWidthFor,
   renderCompact,
@@ -130,15 +130,17 @@ for (const [name, snap, snapJson] of FIXTURES) {
       const s = surfaces();
       const { use, reason } = snap.recommendation;
       const useName = snap.providers.find((p) => p.id === use)?.displayName ?? use;
-      expect(s.compact).toContain(`(use: ${use})`);
+      expect(s.compact).toContain(`(use: ${useName})`);
       expect(s.wide).toContain(`★ ${useName}`);
       expect(s.narrow).toContain(`★ ${useName}`);
       expect(s.markdown).toContain(`| ★ ${useName} |`);
-      expect(renderRecommendationSummary(snap)).toBe(`${use}: ${reason}`);
+      expect(renderRecommendationSummary(snap)).toBe(`${useName}: ${reason}`);
       expect(projectRecommendationResponse(snap).reason).toBe(reason);
-      const mcpRec: any = await handleTool("get_recommendation", { task: "any" });
-      expect(mcpRec.content[0].text).toBe(`${use}: ${reason}`);
+      const mcpRec: any = await handleTool("get_recommendation", { verbose: true });
+      expect(mcpRec.content[0].text).toBe(`${useName}: ${reason}`);
       expect(JSON.parse(mcpRec.content[1].text)).toEqual(projectRecommendationResponse(snap, "any"));
+      const compactRec: any = await handleTool("get_recommendation", {});
+      expect(JSON.parse(compactRec.content[1].text)).toMatchObject({ use, reason });
       for (const text of [s.wide, s.narrow, s.markdown]) {
         expect(text).toContain(reason);
       }
@@ -148,15 +150,29 @@ for (const [name, snap, snapJson] of FIXTURES) {
 
     it("(b) shares STATE words and compact entries per provider", async () => {
       const s = surfaces();
-      const vocab = ["On track", "Behind pace", "Ahead of pace", "Cap risk", "Measuring", "Not reporting"];
-      for (const p of snap.providers) {
+      const vocab = [
+        "On track",
+        "Behind pace",
+        "Ahead of pace",
+        "Cap risk",
+        "Measuring",
+        "Not reporting",
+        "Monthly exhausted",
+        "Quota exhausted",
+      ];
+      for (const p of snap.providers.filter((x) => !x.enabled)) {
+        // A disabled provider stays out of every human surface, as on the dashboard.
+        expect(s.wideById.has(p.displayName)).toBe(false);
+        expect(s.compact).not.toContain(`[${p.displayName}:`);
+      }
+      for (const p of shownProviders(snap.providers)) {
         const state = stateWord(p);
         expect(vocab).toContain(state);
         expect(s.wideById.get(p.displayName)).toContain(state);
         expect(s.narrowById.get(p.displayName)![1]).toContain(state);
         expect(s.markdownById.get(p.displayName)![5]).toBe(state);
         if (p.quota) {
-          expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota.usedPct)}%${compactSuffix(p)}]`);
+          expect(s.compact).toContain(`[${p.displayName}:${Math.round(p.quota.usedPct)}%${compactSuffix(p)}]`);
           const f: any = await handleTool("forecast", { provider: p.id });
           expect(JSON.parse(f.content[0].text).state).toBe(state);
         } else {
@@ -169,7 +185,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
       const s = surfaces();
       expect([...s.wideById.keys()]).toEqual([...s.narrowById.keys()]);
       expect([...s.wideById.keys()]).toEqual([...s.markdownById.keys()]);
-      for (const p of snap.providers) {
+      for (const p of shownProviders(snap.providers)) {
         if (p.exclusionReason === null) continue;
         const label = forecastText(p, FIXED_NOW);
         expect(s.wideById.get(p.displayName)).toContain(label);
@@ -207,7 +223,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
           expect(text).not.toMatch(/%\/day/);
           expect(text).not.toMatch(/per day/i);
         }
-        expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota!.usedPct)}%?]`);
+        expect(s.compact).toContain(`[${p.displayName}:${Math.round(p.quota!.usedPct)}%?]`);
         const f: any = await handleTool("forecast", { provider: p.id });
         const body = JSON.parse(f.content[0].text);
         expect(body.advisory.burnRate).toBeNull();
@@ -224,7 +240,7 @@ for (const [name, snap, snapJson] of FIXTURES) {
         expect(s.narrowById.get(p.displayName)![1]).toContain("(est.)");
         expect(s.markdownById.get(p.displayName)![4]).toContain("(est.)");
         expect(s.markdownById.get(p.displayName)![6]).toMatch(/estimated/i);
-        expect(s.compact).toContain(`[${p.id}:${Math.round(p.quota!.usedPct)}%${compactSuffix(p)}]`);
+        expect(s.compact).toContain(`[${p.displayName}:${Math.round(p.quota!.usedPct)}%${compactSuffix(p)}]`);
         const f: any = await handleTool("forecast", { provider: p.id });
         const body = JSON.parse(f.content[0].text);
         expect(body.forecast).toMatch(/estimated/i);
@@ -300,20 +316,20 @@ describe("parity: watch tier", () => {
     const snap = watchSnapshot();
     const kimi = snap.providers.find((p) => p.id === "kimi")!;
     expect(stateWord(kimi)).toBe("Watch");
-    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2d 2h — watch");
     expect(compactSuffix(kimi)).toBe("~");
     const wide = strip(renderWide(snap, { now: FIXED_NOW }));
     expect(wide).toContain("Watch");
-    expect(wide).toContain("Exhausts in 2.1d — watch");
+    expect(wide).toContain("Exhausts in 2d 2h — watch");
     expect(strip(renderNarrow(snap, { now: FIXED_NOW }))).toContain("Watch");
     expect(renderMarkdownTable(snap, FIXED_NOW)).toContain("| Watch |");
-    expect(renderCompact(snap, FIXED_NOW)).toContain("[kimi:22%~]");
+    expect(renderCompact(snap, FIXED_NOW)).toContain("[Kimi:22%~]");
     expect(renderWide(snap, { now: FIXED_NOW, color: true })).toContain("\x1b[38;5;214mWatch");
 
     const f: any = await handleTool("forecast", { provider: "kimi" });
     const body = JSON.parse(f.content[0].text);
     expect(body.state).toBe("Watch");
-    expect(body.forecast).toBe("Exhausts in 2.1d — watch");
+    expect(body.forecast).toBe("Exhausts in 2d 2h — watch");
     expect(body.advisory.recentRate).toBe(6.2);
     expect(body.advisory.baselineRate).toBe(3.1);
     expect(body.advisory.aheadOfElapsed).toBe(false);
@@ -326,9 +342,9 @@ describe("parity: watch tier", () => {
     mode = "estimated";
     const snap = watchSnapshot(true);
     const kimi = snap.providers.find((p) => p.id === "kimi")!;
-    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2.1d — watch (estimated)");
+    expect(forecastText(kimi, FIXED_NOW)).toBe("Exhausts in 2d 2h — watch (estimated)");
     const f: any = await handleTool("forecast", { provider: "kimi" });
-    expect(JSON.parse(f.content[0].text).forecast).toBe("Exhausts in 2.1d — watch (estimated)");
+    expect(JSON.parse(f.content[0].text).forecast).toBe("Exhausts in 2d 2h — watch (estimated)");
   });
 });
 
@@ -459,25 +475,25 @@ describe("parity: monthly windows", () => {
     expect(JSON.parse(f.content[0].text).forecast).toBe("5% of month left");
   });
 
-  it("reads Monthly exhausted and unused until Tue Sep 15 on every surface when the month is empty", async () => {
+  it("reads Monthly exhausted and unused until Tue 15 Sep on every surface when the month is empty", async () => {
     current = monthlyExhaustedStateSnapshotJson;
     const go = cli(monthlyExhaustedStateSnapshot);
     expect(stateWord(go)).toBe("Monthly exhausted");
     expect(paceBadge(web(monthlyExhaustedStateSnapshotJson))).toBe("Monthly exhausted");
-    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue Sep 15");
-    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue Sep 15");
+    expect(forecastText(go, FIXED_NOW)).toBe("unused until Tue 15 Sep");
+    expect(forecastLine(web(monthlyExhaustedStateSnapshotJson))).toBe("unused until Tue 15 Sep");
     expect(renderMarkdownTable(monthlyExhaustedStateSnapshot, FIXED_NOW)).toContain("| Monthly exhausted |");
     expect(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW, color: true })).toContain("\x1b[31mMonthly exhausted");
     const f: any = await handleTool("forecast", { provider: "opencode-go" });
     const body = JSON.parse(f.content[0].text);
     expect(body.state).toBe("Monthly exhausted");
-    expect(body.forecast).toBe("unused until Tue Sep 15");
+    expect(body.forecast).toBe("unused until Tue 15 Sep");
   });
 
   it("keeps FORECAST column-aligned on a Monthly exhausted row", () => {
     const [header, ...lines] = strip(renderWide(monthlyExhaustedStateSnapshot, { now: FIXED_NOW })).split("\n");
     const row = lines.find((l) => l.includes("Monthly exhausted"))!;
-    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue Sep 15");
+    expect(row.slice(header.indexOf("FORECAST"))).toBe("unused until Tue 15 Sep");
   });
 
   it("the month sentence wins over unknown pace and over Watch", () => {
@@ -496,6 +512,21 @@ describe("parity: monthly windows", () => {
     p.advisory.status = "at risk";
     expect(stateWord(p)).toBe("Monthly exhausted");
     expect(paceBadge(p)).toBe("Monthly exhausted");
+    p.exclusionReason = "stale";
+    expect(stateWord(p)).toBe("Not reporting");
+    expect(paceBadge(p)).toBe("Not reporting");
+  });
+
+  it("Quota exhausted beats Cap risk and loses to Not reporting", () => {
+    const s = JSON.parse(exampleStateSnapshotJson);
+    const p = s.providers.find((x: any) => x.id === "claude");
+    p.quota.weeklyPct = 100;
+    p.quota.usedPct = 100;
+    p.advisory.status = "at risk";
+    p.advisory.remaining = 0;
+    p.advisory.bindingRemaining = 0;
+    expect(stateWord(p)).toBe("Quota exhausted");
+    expect(paceBadge(p)).toBe("Quota exhausted");
     p.exclusionReason = "stale";
     expect(stateWord(p)).toBe("Not reporting");
     expect(paceBadge(p)).toBe("Not reporting");

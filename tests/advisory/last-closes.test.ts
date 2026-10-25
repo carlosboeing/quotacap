@@ -72,4 +72,64 @@ describe("lastCloses on the snapshot", () => {
     expect(JSON.stringify(r)).not.toContain("leftover");
     expect((r as any).lastCloses).toBeUndefined();
   });
+
+  it("populates lastCloses from monthly quota resets for monthly-bound providers instead of weekly rate-limit rollovers", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // Poll 1: Sep 20 before weekly rollover (monthly at 92%)
+    upsertQuota(db, {
+      provider: "opencode-go",
+      plan: "Go",
+      source: "api",
+      weeklyPct: 44,
+      resetsAt: "2026-09-21T00:00:00.000Z",
+      periodStart: "2026-09-14T00:00:00.000Z",
+      fetchedAt: "2026-09-20T23:55:00.000Z",
+      monthlyKind: "included",
+      monthlyStatus: "ok",
+      monthlyPct: 92,
+      monthlyResetsAt: "2026-09-22T13:05:10.000Z",
+    });
+    // Poll 2: Sep 21 after weekly rollover, before monthly reset (monthly at 100%)
+    upsertQuota(db, {
+      provider: "opencode-go",
+      plan: "Go",
+      source: "api",
+      weeklyPct: 0,
+      resetsAt: "2026-09-28T00:00:00.000Z",
+      periodStart: "2026-09-21T00:00:00.000Z",
+      fetchedAt: "2026-09-22T12:55:00.000Z",
+      monthlyKind: "included",
+      monthlyStatus: "exhausted",
+      monthlyPct: 100,
+      monthlyResetsAt: "2026-09-22T13:05:10.000Z",
+    });
+    // Poll 3: Oct 20 in the new monthly window (monthly at 74% — monthly binds)
+    upsertQuota(db, {
+      provider: "opencode-go",
+      plan: "Go",
+      source: "api",
+      weeklyPct: 0,
+      resetsAt: "2026-10-26T00:00:00.000Z",
+      periodStart: "2026-10-19T00:00:00.000Z",
+      fetchedAt: "2026-10-20T00:30:00.000Z",
+      monthlyKind: "included",
+      monthlyStatus: "ok",
+      monthlyPct: 74,
+      monthlyResetsAt: "2026-10-22T13:05:10.000Z",
+    });
+    const s = buildSnapshot(db, {
+      enabledProviders: ["opencode-go"],
+      now: new Date("2026-10-20T00:35:00.000Z"),
+      runtime: RT,
+    });
+    const go = s.providers.find((p) => p.id === "opencode-go")!;
+    expect(go.advisory?.bindingWindow).toBe("monthly");
+    expect(go.lastCloses).toHaveLength(1);
+    expect(go.lastCloses[0]).toMatchObject({
+      usedPct: 100,
+      leftoverPct: 0,
+      resetsAt: "2026-09-22T13:05:10.000Z",
+      sampledAt: "2026-09-22T12:55:00.000Z",
+    });
+  });
 });

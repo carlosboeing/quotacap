@@ -65,6 +65,8 @@ export interface Verdict {
   recentRate: number | null;
   baselineRate: number | null;
   aheadOfElapsed: boolean | null;
+  /** Present on candidateVerdict. True when the finish is inside the on-track tube. */
+  closeToReset?: boolean;
   avgPace: number | null;
   burnMeasured: boolean;
   paceSource: string;

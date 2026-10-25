@@ -15,6 +15,8 @@ export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota 
   // and whole-text farthest-wins would pick it instead (muse precedent:
   // scope to the weekly section, then degrade to +7d when it won't parse).
   const weeklyLine = result.match(/^.*current week.*$/gim)?.[0];
+  const sessionLine = result.match(/^.*current session.*$/gim)?.[0];
+  const fiveHourResetsAt = sessionLine ? parseResetText(sessionLine, now) ?? undefined : undefined;
   let resetsAt = parseResetText(weeklyLine ?? result, now);
   const parsedReset = !!resetsAt;
   if (!resetsAt) resetsAt = new Date(now.getTime()+7*86400000).toISOString();
@@ -22,6 +24,7 @@ export function parseClaudeUsage(result: string, now = new Date()): ParsedQuota 
   const periodStart = (parsedReset ? new Date(resets - 7*86400000) : new Date(now.getTime() - 7*86400000)).toISOString();
   return {
     provider: "claude", plan: "unknown", weeklyPct: usedPct, fiveHourPct: sessionPct,
+    ...(fiveHourResetsAt ? { fiveHourResetsAt } : {}),
     resetsAt, periodStart, source: "cli", fetchedAt: now.toISOString(), raw: result,
   };
 }

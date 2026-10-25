@@ -1,5 +1,50 @@
 # QuotaCap Roadmap
 
+## Recently shipped — 0.0.60 — 2026-10-25 (provider marks, lane wait)
+
+* Provider marks and lane wait — monogram tiles in the provider colour, an OpenCode Go colour token, and "back <time>" on a lane chip whose short limit is full (#171)
+
+## Recently shipped — 0.0.59 — 2026-10-25 (one forecast story, history accuracy)
+
+* History accuracy — finished windows only in `lastCloses` and the baseline, each close priced over the days it ran, early resets dated and named on the history bars, `advisories` limited to ranked providers, Muse plan name without escape codes (#168)
+* One forecast story — waste at the faster of the 24h rate and the forecast, "forecast pace" copy with the rate shown, one near-reset sentence on every surface, capped quotas out of the lanes, 24h rate limited to the open window (#169)
+* One vocabulary — one duration, clock and waste sentence across dashboard, CLI, MCP and the engine reason, one state-word table, legend copy (#169)
+* Phone layout — 2×2 pace cells and grouped reset pins under 480 px, Ahead of pace off the Watch hue (#169)
+* CLI and MCP — compact `get_recommendation` with `verbose`, display names, disabled providers hidden, one compact glyph per state, CATALOG column, UTC timestamps at ingest, header dated by the oldest reading (#169)
+
+## Recently shipped — 0.0.58 — 2026-10-24 (short-window wait)
+
+* Short-window wait — a full 5-hour limit, or a full week on a monthly plan, names the date and time it clears on the card, the table, the CLI row, and the advice line. Pace, forecast, and use-next stay on the reset window (#166)
+
+## Recently shipped — 0.0.57 — 2026-10-23 (on-track finish while days remain)
+
+* On-track pace horizon — a forecast that finishes near the reset reads On track while several days remain. The band grows from 5% of the time left at the reset to the existing 15% once about 4.7 days remain, and a small miss near the reset stays Watch (#164)
+
+## Recently shipped — 0.0.56 — 2026-10-22 (daemon settings & consent cadence copy)
+
+* Polling cadence copy — updates `Polling Cadence` in Settings > Daemon and the OpenCode Go consent disclosure notice to reflect the new 10-minute default cadence (#162)
+
+## Recently shipped — 0.0.55 — 2026-10-22 (pace chart exhaustion lock & 10m polling default)
+
+* Pace chart quota exhaustion locking — 100% exhausted quota locks burn-down slope and dot to exhaustion time, draws a plateau line to now, projects a flat dashed line to reset, and locks average pace calculation to days to exhaust (#160)
+* 10m default polling — daemon default polling interval lowered from 15 to 10 minutes while remaining configurable (#160)
+
+## Recently shipped — 0.0.54 — 2026-10-22 (quota exhausted badge)
+
+* Quota exhausted badge — 100% used quota displays the badge `Quota exhausted` across all cards, table rows, and terminal views instead of `Cap risk` (#158)
+
+## Recently shipped — 0.0.53 — 2026-10-21 (muse quota exhaustion recovery, cap bar & expired 5h zeroing)
+
+* Muse quota exhaustion recovery — 100% weekly exhaustion error from CLI warm recovery is parsed into a 100% quota reading with its reset timestamp, bypassing doomed warm turn retries (#156)
+* Exhausted window rendering — 100% exhausted quota displays with a red cap bar across cards, tables, terminal rows, and provider drawers even when temporarily not reporting before reset (#156)
+* Passed 5h rate limit zeroing — expired secondary 5h limits clamp to 0% used and clear heat styling across cards, table rows, and the provider drawer (#156)
+
+## Recently shipped — 0.0.52 — 2026-10-20 (drawer revamp, quota-window alignment, opencode.db & error boundaries)
+
+* Drawer revamp & quota-window alignment — provider, advice, and settings drawers reorganized with verdict bands, `Pace` burn-down charts, and dynamic `Weekly`/`Monthly` history bars; cards, rows, `Quota resets` rail, CLI, and MCP align to each provider's binding quota reset window while keeping `5h` and `7d` rate limits distinct (#154)
+* OpenCode v2 `opencode.db` bearer — OpenCode Go reads the active `opencode-go` or `opencode` credential from `opencode.db` before falling back to `auth.json`, without reading the refresh token (#153)
+* Dashboard error boundaries — each card, row, and drawer isolates render throws to fallback UI with automatic retry on fresh data or selection (#149)
+
 ## Recently shipped — 0.0.51 — 2026-10-03 (drawer forecast pace)
 
 * Drawer forecast pace — Inspect on a fresh window with a history baseline no longer blanks the dashboard; the ranking rationale names the forecast pace when both pace figures are unknown (#147)
@@ -211,6 +256,7 @@
 
 ## Next
 
+* Provider logo marks — replace monogram letters with official vector brand logos for Claude, Codex, Kimi, Grok, Antigravity/Gemini, OpenCode Go, and Muse across cards, lane chips, and drawers
 * Drop the deprecated `usedPct`/`sessionPct` wire aliases (one release after nested monthly windows ships)
 * Kimi included monthly — fill the same monthly fields from the membership total (parser also needs to stop requiring the legacy weekly line)
 * Windows binary target (`bun-windows-x64`)

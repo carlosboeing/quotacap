@@ -14,24 +14,25 @@ const html = (el: React.ReactElement) => renderToString(el).replace(/<!-- -->/g,
 
 describe("windowCountdown", () => {
   it("returns one coarse unit", () => {
-    expect(windowCountdown(new Date(asOfMs + 7.5 * 86400000).toISOString(), asOfMs)).toBe("7d");
-    expect(windowCountdown(new Date(asOfMs + 4.2 * 3600000).toISOString(), asOfMs)).toBe("4h");
+    expect(windowCountdown(new Date(asOfMs + 7.5 * 86400000).toISOString(), asOfMs)).toBe("7d 12h");
+    expect(windowCountdown(new Date(asOfMs + 4.2 * 3600000).toISOString(), asOfMs)).toBe("4h 12m");
     expect(windowCountdown(new Date(asOfMs + 40 * 60000).toISOString(), asOfMs)).toBe("40m");
     expect(windowCountdown(new Date(asOfMs - 1000).toISOString(), asOfMs)).toBeNull();
   });
 });
 
 describe("windows row", () => {
-  it("OpenCode Go renders one collapsed line with a 5h and a Mth unit", () => {
+  it("monthly-bound OpenCode Go renders the rate-limit windows only: Wk and 5h", () => {
     const out = html(React.createElement(WindowsRow, { provider: byId("opencode-go"), asOf: board.asOf, variant: "card" }));
     expect(out.match(/class="wline"/g)).toHaveLength(1);
     expect(out).toContain('aria-expanded="false"');
+    // The monthly quota owns the main bar, so it never repeats here.
+    expect(out).toContain('data-win="week"');
     expect(out).toContain('data-win="five"');
-    expect(out).toContain('data-win="month"');
+    expect(out).not.toContain('data-win="month"');
+    expect(out).toMatch(/<span class="k">Wk<\/span><span class="n">44%<\/span>/);
     expect(out).toMatch(/<span class="k">5h<\/span><span class="n">12%<\/span>/);
-    expect(out).toMatch(/<span class="k">Mth<\/span><span class="n">95%<\/span>/);
-    expect(out).toContain('<span class="seg hot">');
-    expect(out).toContain('<span class="t">in 8d</span>');
+    expect(out).toContain('<span class="t">in 3d 4h</span>');
     expect(out).not.toContain('class="windows"'); // first paint collapsed
     expect(out).not.toContain("Mo<");
   });
@@ -41,11 +42,13 @@ describe("windows row", () => {
     expect(five.time).toBeNull();
   });
 
-  it("an exhausted month shows the weekday plus date and the full class", () => {
+  it("an exhausted month still shows only the rate-limit windows", () => {
     const s = toViewModel(JSON.parse(monthlyExhaustedStateSnapshotJson));
     const out = html(React.createElement(WindowsRow, { provider: s.providers[0], asOf: s.asOf, variant: "card" }));
-    expect(out).toContain('<span class="seg full">');
-    expect(out).toContain('<span class="t">Tue Sep 15</span>');
+    // The exhausted quota lives on the main bar and card foot, not repeated here.
+    expect(out).not.toContain('data-win="month"');
+    expect(out).toContain('data-win="week"');
+    expect(out).not.toContain("Tue 15 Sep");
   });
 
   it("Claude renders the 5h unit only; Grok renders no line at all", () => {
@@ -61,6 +64,21 @@ describe("windows row", () => {
     expect(card.indexOf('class="wline"')).toBeLessThan(card.indexOf('class="pstats"'));
     const row = html(React.createElement(ProviderRow, { provider: byId("claude"), recommended: false, asOf: board.asOf, onSelect: () => {} }));
     expect(row).toContain('class="wline"');
-    expect(row).not.toContain("5h Limit ·"); // the old provider-cell line is gone
+    expect(row).not.toContain("5h limit ·"); // the old provider-cell line is gone
+  });
+
+  it("expires 5h window when fiveHourResetsAt has passed", () => {
+    const p = {
+      ...byId("claude"),
+      quota: {
+        ...byId("claude").quota!,
+        fiveHourPct: 82,
+        fiveHourResetsAt: new Date(asOfMs - 3600000).toISOString(),
+      },
+    };
+    const units = windowUnits(p, asOfMs);
+    const five = units.find((u) => u.win === "five")!;
+    expect(five.pct).toBe(0);
+    expect(five.heat).toBe("");
   });
 });

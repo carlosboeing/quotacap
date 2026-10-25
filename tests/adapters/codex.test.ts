@@ -21,6 +21,7 @@ describe("parseCodexTui", () => {
     expect(q.provider).toBe("codex");
     expect(q.weeklyPct).toBe(27);
     expect(q.fiveHourPct).toBe(91);
+    expect(q.fiveHourResetsAt).toBe(new Date(2026, 8, 1, 14, 12).toISOString());
     expect(q.source).toBe("tui");
     expect(new Date(q.resetsAt).getTime()).toBeGreaterThan(now.getTime());
     expect(new Date(q.periodStart).getTime()).toBe(new Date(q.resetsAt).getTime() - 7 * 86400000);
@@ -64,10 +65,8 @@ describe("parseCodexTui", () => {
     const now = new Date("2026-09-01T15:00:00");
     const txt = codexFixture({ fiveReset: "14:12" });
     const q = parseCodexTui(txt, now);
-    // weeklyIso is still 7 Sep, but 5h session reset should be tomorrow 14:12
-    // we check session reset via parsing indirectly: weeklyPct still correct, and resetsAt is weekly
-    // For 5h we can't directly check via Quota (only weekly is stored), but parse should not throw
     expect(q.fiveHourPct).toBeDefined();
+    expect(q.fiveHourResetsAt).toBe(new Date(2026, 8, 2, 14, 12).toISOString());
   });
 
   it("parses the v0.154.0 /status panel with progress bars, ignoring the startup footer", () => {

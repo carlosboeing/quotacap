@@ -63,6 +63,19 @@ describe("current-cycle pace", () => {
     expect(getBurnRates(db, NOW.getTime()).get("grok")).toBeCloseTo(40, 5);
   });
 
+  it("drops readings taken before a verified window opened", () => {
+    const db = openDb(":memory:"); migrate(db);
+    // A rolling window that opens on first use: idle 0% readings, each with
+    // its own moving periodStart, then the window opens at 03:00.
+    row(db, 0, "2026-09-06T08:00:00+10:00", "2026-09-06T08:00:00+10:00", "2026-09-13T08:00:00+10:00");
+    row(db, 0, "2026-09-07T02:30:00+10:00", "2026-09-07T02:30:00+10:00", "2026-09-14T02:30:00+10:00");
+    row(db, 6, "2026-09-07T06:00:00+10:00", "2026-09-07T03:00:00+10:00", "2026-09-14T03:00:00+10:00");
+    expect(getBurnRates(db, NOW.getTime()).has("kimi")).toBe(false);
+    row(db, 2, "2026-09-07T03:30:00+10:00", "2026-09-07T03:00:00+10:00", "2026-09-14T03:00:00+10:00");
+    row(db, 9, "2026-09-07T09:30:00+10:00", "2026-09-07T03:00:00+10:00", "2026-09-14T03:00:00+10:00");
+    expect(getBurnRates(db, new Date("2026-09-07T09:30:00+10:00").getTime()).get("kimi")).toBeCloseTo(7 / 0.25, 5);
+  });
+
   it("skips rows with invalid fetchedAt", () => {
     const db = openDb(":memory:"); migrate(db);
     row(db, 20, "not-a-date"); row(db, 44, "2026-09-07T06:00:00+10:00");

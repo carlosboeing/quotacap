@@ -45,7 +45,7 @@ describe("strict service config", () => {
     const cfg = await readServiceConfig();
     expect(cfg).toEqual({
       port: 8787,
-      pollMinutes: 15,
+      pollMinutes: 10,
       catalogTtlHours: 6,
       enabledProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
       knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
@@ -59,7 +59,7 @@ describe("strict service config", () => {
     writeConfig({ port: 9999 });
     const cfg = await readServiceConfig();
     expect(cfg.port).toBe(9999);
-    expect(cfg.pollMinutes).toBe(15);
+    expect(cfg.pollMinutes).toBe(10);
     expect(cfg.catalogTtlHours).toBe(6);
     expect(cfg.enabledProviders).toEqual([
       "claude",

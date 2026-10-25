@@ -160,6 +160,22 @@ describe("fault repair", () => {
     expect(html).toContain(">Check Codex<");
     expect(html).not.toContain(">Retry<");
   });
+  it("uses the detected OpenCode CLI version for the Go login command", () => {
+    const go = {
+      id: "opencode-go",
+      displayName: "OpenCode Go",
+      exclusionReason: "provider-failed",
+      lastAttempt: { failureCategory: "auth" },
+    } as any;
+    expect(repairFor(go, "opencode auth login opencode").text)
+      .toContain("Run `opencode auth login opencode`, then re-poll.");
+    expect(repairFor(go, "opencode console login").text)
+      .toContain("Run `opencode console login`, then re-poll.");
+    const fallback = repairFor(go, null).text;
+    expect(fallback).toContain("opencode auth login opencode");
+    expect(fallback).toContain("opencode console login");
+    expect(fallback).not.toContain("opencode auth login -p opencode-go");
+  });
   it("keeps the legacy wording for attempts without a diagnosis", () => {
     const legacy = repairFor({
       id: "codex",

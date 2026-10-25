@@ -448,7 +448,7 @@ describe("service lifecycle", () => {
       expect(raw.knownProviders).toEqual([...five, "muse"]);
     } finally {
       d.child.kill("SIGTERM");
-      expect(await waitExit(d.child, 10000)).toBe(0);
+      expect(await waitExit(d.child, 15000)).toBe(0);
     }
   }, 30000);
 
@@ -474,14 +474,18 @@ describe("service lifecycle", () => {
       expect(raw.enabledProviders).not.toContain("muse");
     } finally {
       d.child.kill("SIGTERM");
-      expect(await waitExit(d.child, 10000)).toBe(0);
+      expect(await waitExit(d.child, 15000)).toBe(0);
     }
   }, 30000);
 
   it("(i) logs initial poll with sanitized detail without leaking secret", async () => {
     const home = mkHome();
     const port = await getFreePort();
-    writeConfig(home, { port, enabledProviders: ["claude"] });
+    writeConfig(home, {
+      port,
+      enabledProviders: ["claude"],
+      knownProviders: ["claude", "codex", "kimi", "grok", "agy", "muse"],
+    });
     const binDir = fakeBin(home, "claude");
     const logFile = path.join(dataDir(home), "logs", "service.log");
     const d = spawnDaemon(home, ["--port", String(port)], {

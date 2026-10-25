@@ -12,7 +12,7 @@ describe("session_pct migration", () => {
       source: "cli", fetchedAt: NOW } as any);
     const got: any = getLatestByProvider(db, "claude");
     expect(got.sessionPct).toBe(22);
-    expect(got.resetsAt).toBe("2026-09-14T06:00:00+10:00");
+    expect(got.resetsAt).toBe("2026-09-13T20:00:00.000Z"); // stored as UTC ISO
   });
 
   it("upgrades a pre-session_pct database preserving rows", () => {
@@ -113,6 +113,16 @@ describe("monthly columns", () => {
     const got: any = getLatestByProvider(db, "opencode-go");
     expect(got).toMatchObject({ monthlyKind: "included", monthlyStatus: "exhausted", monthlyPct: 100, monthlyResetsAt: "2026-09-22T13:05:15.904Z" });
     for (const k of MONTHLY_COLS) expect(k in got).toBe(false);
+  });
+
+  it("round-trips the reported 5h reset and reads NULL as absent", () => {
+    const db = openDb(":memory:"); migrate(db);
+    expect(colsOf(db)).toContain("five_hour_resets_at");
+    upsertQuota(db, { ...GO, fiveHourResetsAt: "2026-09-21T13:00:00.000Z" });
+    expect((getLatestByProvider(db, "opencode-go") as any).fiveHourResetsAt)
+      .toBe("2026-09-21T13:00:00.000Z");
+    upsertQuota(db, { ...GO, fetchedAt: "2026-09-21T09:00:00.000Z" });
+    expect("fiveHourResetsAt" in (getLatestByProvider(db, "opencode-go") as any)).toBe(false);
   });
 
   it("a NULL monthly reads as absent, never 0", () => {

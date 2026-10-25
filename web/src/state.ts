@@ -30,6 +30,11 @@ export interface AdvisoryView {
   baselineRate?: number | null;
   /** Cumulative position versus elapsed time; null on excluded/unknown branches. */
   aheadOfElapsed?: boolean | null;
+  /**
+   * Forecast finish sits inside the horizon tube and the verdict is on track.
+   * Absent on advisories from a daemon older than the tube.
+   */
+  closeToReset?: boolean;
   /** Window-average pace (used % ÷ days elapsed); null before the window start is known. */
   avgPace: number | null;
   burnMeasured: boolean;
@@ -41,6 +46,7 @@ export interface AdvisoryView {
   bindingWindow: "weekly" | "monthly";
   bindingRemaining: number;
   bindingDaysLeft: number;
+  exhaustedAt?: string | null;
 }
 
 export interface RecommendationView {
@@ -72,6 +78,7 @@ export interface QuotaView {
   plan: string;
   weeklyPct: number;
   fiveHourPct?: number;
+  fiveHourResetsAt?: string;
   monthlyPct?: number;
   monthlyResetsAt?: string;
   monthlyStatus?: "ok" | "exhausted";
@@ -139,6 +146,7 @@ export interface RuntimeView {
   lastCompletedPollAt: string | null;
   version: string;
   detectedProviders?: string[];
+  opencodeLoginCommand?: string | null;
   update?: UpdateView;
 }
 
@@ -182,6 +190,10 @@ export function toViewModel(s: StateSnapshot): ViewModel {
       detectedProviders: Array.isArray((s.runtime as RuntimeView | undefined)?.detectedProviders)
         ? [...(s.runtime.detectedProviders as string[])]
         : [],
+      opencodeLoginCommand:
+        typeof (s.runtime as RuntimeView | undefined)?.opencodeLoginCommand === "string"
+          ? (s.runtime.opencodeLoginCommand as string)
+          : null,
     },
     providers,
     recommendation: { ...s.recommendation, advisories },
@@ -226,10 +238,28 @@ export function shortWindowLabel(id: string): string | null {
     case "claude":
     case "muse":
     case "opencode-go":
-      return "5h Limit";
+      return "5h limit";
     default:
       return null;
   }
+}
+
+/**
+ * Fetch time of the oldest reading the advice uses, so the header never
+ * claims fresher data than a card's "Updated" line. Falls back to `asOf`.
+ */
+export function oldestReadingAt(providers: ProviderView[], asOf: string): string {
+  let iso = asOf;
+  let oldest = Date.parse(asOf);
+  for (const p of providers) {
+    if (!p.enabled || p.exclusionReason !== null || !p.quota?.fetchedAt) continue;
+    const ms = Date.parse(p.quota.fetchedAt);
+    if (Number.isFinite(ms) && (!Number.isFinite(oldest) || ms < oldest)) {
+      oldest = ms;
+      iso = p.quota.fetchedAt;
+    }
+  }
+  return iso;
 }
 
 /** "read Xm ago" from the last good snapshot's server timestamp. */
@@ -246,7 +276,7 @@ export function ageLabel(asOf: string, nowMs: number = Date.now()): string {
 }
 
 /** Default poll interval; matches `pollMinutes` in `src/config.ts`. */
-export const DEFAULT_POLL_INTERVAL_MS = 15 * 60 * 1000;
+export const DEFAULT_POLL_INTERVAL_MS = 10 * 60 * 1000;
 
 /** Health-strip copy for the next scheduled poll. */
 export function nextRefreshLabel(
@@ -270,13 +300,20 @@ export function nextRefreshLabel(
     : `Next automatic refresh in ${hours}h ${rest}m`;
 }
 
-/** "1h 30m" style duration for a last-read age in milliseconds. */
+/**
+ * Duration for a last-read age in milliseconds, capped at the shared rule:
+ * under 1h `Xm` (1m floor), under 48h `Xh Ym`, at 48h+ `Xd Xh`.
+ */
 export function ageDuration(ageMs: number | null): string | null {
   if (ageMs === null || !Number.isFinite(ageMs) || ageMs < 0) return null;
-  if (ageMs < 60_000) return `${Math.floor(ageMs / 1000)}s`;
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+  const totalMinutes = Math.floor(ageMs / 60_000);
+  if (totalMinutes < 60) return `${Math.max(1, totalMinutes)}m`;
+  if (totalMinutes < 48 * 60) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  return `${days}d ${hours}h`;
 }

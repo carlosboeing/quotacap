@@ -10,18 +10,35 @@ import type {
 import { ageDuration, displayPlan, providerSubtitle, shortWindowLabel } from "../state.js";
 import {
   Badge,
-  PaceBar,
-  barGeometry,
+  PACE_TIPS,
+  daysToDuration,
+  edgeToken,
+  exclusionDetail,
+  fillToken,
+  forecastLine,
   isEstimated,
+  isMonthlyBound,
+  isQuotaExhaustedBeforeReset,
+  monthlyWindowStartIso,
   paceBadge,
+  paceHeadline,
   paceFigures,
+  quotaResetsAt,
+  quotaWindowName,
+  quotaWindowStartIso,
   resetClock,
   resetDateClock,
   timeLeft,
+  unusedLine,
   type PaceBadge,
+  type PaceHeadline,
 } from "./PaceBar.js";
 import { ProviderIcon, providerTint } from "./ProviderIcon.js";
+import { BurnDown } from "./BurnDown.js";
 import { ClosedWeeks } from "./ClosedWeeks.js";
+import { trackFillForPct } from "./WindowsRow.js";
+import { RateLimitNote } from "./RateLimitNote.js";
+import { laneOf } from "./Recommendation.js";
 import { renameProvider } from "../api.js";
 
 export interface DrawerModel {
@@ -48,12 +65,12 @@ export interface DrawerModel {
   exclusionReason: ExclusionReason;
   exclusionWords: string | null;
   fiveHourPct?: number;
+  /** Reported 5h reset only; never synthesized from the window length. */
+  fiveHourResetsAt?: string;
   monthlyPct?: number;
   monthlyResetsAt?: string;
   monthlyStatus?: "ok" | "exhausted";
   monthlyKind?: "included";
-  /** Type-level guard: a session reset is never synthesized, so this stays absent. */
-  sessionReset?: undefined;
 }
 
 export function exclusionWords(reason: ExclusionReason): string | null {
@@ -118,13 +135,17 @@ export function drawerModel(provider: ProviderView): DrawerModel {
     lastSuccessAt: provider.lastSuccessAt,
     ageMs: provider.ageMs,
     failureCategory: provider.lastAttempt?.failureCategory ?? null,
-    failureWords: failureWords(provider.lastAttempt?.failureCategory ?? null),
+    failureWords:
+      provider.lastAttempt?.summary ?? failureWords(provider.lastAttempt?.failureCategory ?? null),
     evidence: [...provider.evidence],
     exclusionReason: provider.exclusionReason,
     exclusionWords: exclusionWords(provider.exclusionReason),
   };
   if (provider.quota?.fiveHourPct !== undefined && provider.quota.fiveHourPct !== null) {
     model.fiveHourPct = provider.quota.fiveHourPct;
+  }
+  if (provider.quota?.fiveHourResetsAt) {
+    model.fiveHourResetsAt = provider.quota.fiveHourResetsAt;
   }
   const q = provider.quota;
   if (q?.monthlyKind === "included") {
@@ -155,17 +176,44 @@ export function sourceLabel(source: string | undefined | null): string {
 
 export function paceBasis(provider: ProviderView, asOfMs?: number): string {
   const advisory = provider.advisory;
-  if (!advisory || advisory.paceSource === "unknown") return "No current reading";
-  const start = provider.quota ? Date.parse(provider.quota.periodStart) : NaN;
-  if (Number.isFinite(start) && Number.isFinite(asOfMs) && (asOfMs as number) > start) {
-    const days = ((asOfMs as number) - start) / 86_400_000;
-    if (days >= 0.1) return `averaged over ${days.toFixed(1)} days of this window`;
+  if (!advisory) return "No current reading";
+  // A monthly-bound Pace section still has a quota average even when the
+  // weekly pace is unknown, so only weekly-bound rows gate on paceSource.
+  if (!isMonthlyBound(provider) && advisory.paceSource === "unknown") return "No current reading";
+  const startIso = quotaWindowStartIso(provider);
+  const start = startIso ? Date.parse(startIso) : NaN;
+  const isExhausted =
+    (provider.quota && provider.quota.weeklyPct >= 100) ||
+    (advisory.bindingRemaining <= 0);
+  const endMs =
+    isExhausted && advisory.exhaustedAt ? Date.parse(advisory.exhaustedAt) : asOfMs;
+  if (Number.isFinite(start) && Number.isFinite(endMs) && (endMs as number) > start) {
+    const days = ((endMs as number) - start) / 86_400_000;
+    if (days >= 0.1) {
+      if (isExhausted && advisory.exhaustedAt) {
+        return `averaged over ${days.toFixed(1)} days to reach 100%`;
+      }
+      return `averaged over ${days.toFixed(1)} days of this window`;
+    }
   }
   if (provider.evidence.includes("measured") || advisory.burnMeasured) return "Measured";
   if (advisory.paceSource === "window-average" || provider.evidence.includes("window-average")) {
     return "Window avg";
   }
   return "No current reading";
+}
+
+/**
+ * The rate the verdict and waste are priced at, named once so "forecast
+ * pace" in the copy points at a visible figure. Null unless both inputs of
+ * the blend exist: with one input the forecast equals a figure already
+ * shown in the grid.
+ */
+export function forecastBasis(provider: ProviderView): string | null {
+  const a = provider.advisory;
+  if (!a || isMonthlyBound(provider) || a.burnRate === null) return null;
+  if (a.recentRate == null || a.baselineRate == null) return null;
+  return `forecast ${a.burnRate.toFixed(1)}%/day (24h blended with history)`;
 }
 
 export function credentialLabel(provider: ProviderView): string {
@@ -175,27 +223,6 @@ export function credentialLabel(provider: ProviderView): string {
   }
   if (source === "cli" || source === "tui") return `handled by ${provider.displayName}`;
   return "not stored by QuotaCap";
-}
-
-export function pacingStatusToken(provider: ProviderView): string {
-  switch (paceBadge(provider)) {
-    case "Behind pace":
-      return "behind";
-    case "On track":
-      return "ontrack";
-    case "Ahead of pace":
-      return "ahead";
-    case "Watch":
-      return "watch";
-    case "Monthly exhausted":
-      return "monthly-exhausted";
-    case "Cap risk":
-      return "cap";
-    case "Measuring":
-      return "measuring";
-    case "Not reporting":
-      return "out";
-  }
 }
 
 export function resetStamp(provider: ProviderView): string | null {
@@ -212,98 +239,178 @@ export function resetUnderline(provider: ProviderView, asOfMs: number): string |
   return left ? `Resets ${stamp} · in ${left}` : `Resets ${stamp}`;
 }
 
-/** Monthly section meta line. Null when the provider has no included monthly window. */
-export function monthlyMeta(provider: ProviderView): string | null {
-  const q = provider.quota;
-  if (q?.monthlyKind !== "included" || !q.monthlyResetsAt) return null;
-  const clock = resetDateClock(q.monthlyResetsAt);
-  const base = clock ? `Resets ${clock}` : "Reset unknown";
-  const adv = provider.advisory;
-  if (q.monthlyStatus === "exhausted" || (adv?.bindingWindow === "monthly" && adv.bindingRemaining === 0)) {
-    return `${base} · weekly leftover unused until then`;
-  }
-  if (adv?.bindingWindow === "monthly") {
-    return `${base} · ${Math.round(adv.bindingRemaining)}% of month left`;
+/** Weekly reset split for the emphasized drawer line. */
+export function resetUnderlineParts(
+  provider: ProviderView,
+  asOfMs: number,
+): { stamp: string; left: string | null } | null {
+  const stamp = resetStamp(provider);
+  if (!stamp || !provider.quota) return null;
+  return { stamp, left: timeLeft(provider.quota.resetsAt, asOfMs) };
+}
+
+/**
+ * Reported 5h reset as a quiet sub-line, or null when the provider did not
+ * report one. A passed stamp reads as past, never as the next reset.
+ */
+export function fiveHourResetLine(provider: ProviderView, asOfMs: number): string | null {
+  const iso = provider.quota?.fiveHourResetsAt;
+  if (!iso) return null;
+  const clock = resetClock(iso);
+  if (!clock) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= asOfMs) return `Reset ${clock}`;
+  const left = timeLeft(iso, asOfMs);
+  return left ? `Resets ${clock} · in ${left}` : `Resets ${clock}`;
+}
+
+/**
+ * Fill for a rolling (rate-limit) row: neutral below the cap threshold so
+ * colour never implies a pace judgement, cap red at 80%+ or exhausted.
+ */
+export function limitFill(pct: number, exhausted = false): React.CSSProperties {
+  const base = trackFillForPct(pct, exhausted);
+  if (!exhausted && pct < 80) {
+    return { ...base, background: "var(--fill-out)", ["--fill-edge" as string]: "var(--edge-out)" };
   }
   return base;
 }
 
-export function rankingCopy(
+/** Elapsed share of a window from its start and reset stamps. Null when either stamp is unusable. */
+export function windowElapsedPct(
+  startIso: string | null | undefined,
+  resetIso: string | null | undefined,
+  asOfMs: number,
+): number | null {
+  if (!startIso || !resetIso) return null;
+  const startMs = Date.parse(startIso);
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(startMs) || !Number.isFinite(resetMs) || resetMs <= startMs) return null;
+  if (!Number.isFinite(asOfMs)) return null;
+  return Math.min(100, Math.max(0, ((asOfMs - startMs) / (resetMs - startMs)) * 100));
+}
+
+/**
+ * Elapsed share of the monthly window. Providers report only the monthly
+ * reset, so the window start is one calendar month before it.
+ */
+export function monthlyElapsedPct(provider: ProviderView, asOfMs: number): number | null {
+  const resetIso = provider.quota?.monthlyResetsAt;
+  if (!resetIso) return null;
+  const startIso = monthlyWindowStartIso(resetIso);
+  if (!startIso) return null;
+  return windowElapsedPct(startIso, resetIso, asOfMs);
+}
+
+/** Elapsed share of the 5h window, from its reported reset. Null when no reset was reported. */
+export function fiveHourElapsedPct(provider: ProviderView, asOfMs: number): number | null {
+  const resetIso = provider.quota?.fiveHourResetsAt;
+  if (!resetIso) return null;
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(resetMs) || resetMs <= asOfMs) return null;
+  const start = new Date(resetMs - 5 * 3_600_000);
+  return windowElapsedPct(start.toISOString(), resetIso, asOfMs);
+}
+
+/** Monthly reset split (date clock plus countdown) for the limit row. */
+export function monthlyResetParts(
   provider: ProviderView,
-  recommendation: RecommendationView | null
-): { known: string; pace: string; decision: string } {
-  const name = provider.displayName;
-  const quota = provider.quota;
+  asOfMs: number,
+): { stamp: string; left: string | null } | null {
+  const resetIso = provider.quota?.monthlyResetsAt;
+  if (!resetIso) return null;
+  const stamp = resetDateClock(resetIso);
+  if (!stamp) return null;
+  return { stamp, left: timeLeft(resetIso, asOfMs) };
+}
+
+/** Monthly reset split for the emphasized drawer line. */
+export function monthlyMetaParts(
+  provider: ProviderView,
+): { stamp: string; detail: string | null } | null {
+  const q = provider.quota;
+  if (q?.monthlyKind !== "included" || !q.monthlyResetsAt) return null;
+  const clock = resetDateClock(q.monthlyResetsAt);
+  const stamp = clock ? `Resets ${clock}` : "Reset unknown";
+  const adv = provider.advisory;
+  if (q.monthlyStatus === "exhausted" || (adv?.bindingWindow === "monthly" && adv.bindingRemaining === 0)) {
+    return { stamp, detail: "weekly leftover unused until then" };
+  }
+  if (adv?.bindingWindow === "monthly") {
+    return { stamp, detail: `${Math.round(adv.bindingRemaining)}% of month left` };
+  }
+  return { stamp, detail: null };
+}
+
+/** Monthly section meta line. Null when the provider has no included monthly window. */
+export function monthlyMeta(provider: ProviderView): string | null {
+  const parts = monthlyMetaParts(provider);
+  if (!parts) return null;
+  return parts.detail ? `${parts.stamp} · ${parts.detail}` : parts.stamp;
+}
+
+export type VerdictTone = "use-more" | "ease-off" | "neutral";
+
+export interface Verdict {
+  tone: VerdictTone;
+  label: string;
+  detail: string | null;
+}
+
+/**
+ * Drawer verdict band from lane, binding window, and forecast fields.
+ * Precedence: excluded or monthly-exhausted, capped, monthly-bound, use-more lane,
+ * ease-off lane or at-risk/watch status, otherwise on track.
+ */
+export function verdictFor(provider: ProviderView, asOfMs?: number): Verdict {
   const advisory = provider.advisory;
-  const stamp = resetStamp(provider);
-  const known = quota
-    ? `${name} reports ${quota.weeklyPct}% of quota used.${stamp ? ` Resets ${stamp}.` : ""}`
-    : "No reading yet.";
-  let pace: string;
-  if (!advisory || advisory.paceSource === "unknown" || advisory.burnRate === null) {
-    pace = modelFailure(provider) ?? "No current pace.";
-  } else if (advisory.remaining <= 0) {
-    pace = `Exhausted at ${quota?.weeklyPct ?? 100}% used.${stamp ? ` Resets ${stamp}.` : ""}`;
-  } else {
-    const { avg, recent } = paceFigures(advisory);
-    // Both figures are null on a fresh window with a history baseline:
-    // avgPace needs 6h elapsed and recentRate needs a 24h span, while
-    // burnRate (non-null past the guard above) carries the forecast.
-    const figures =
-      avg !== null && recent !== null && avg.toFixed(1) !== recent.toFixed(1)
-        ? `${avg.toFixed(1)}%/day window average and ${recent.toFixed(1)}%/day over the last 24h`
-        : avg !== null
-          ? `${avg.toFixed(1)}%/day window average`
-          : recent !== null
-            ? `${recent.toFixed(1)}%/day over the last 24h`
-            : `${advisory.burnRate.toFixed(1)}%/day forecast pace`;
-    const ideal = `${advisory.idealRate.toFixed(1)}%/day`;
-    pace =
-      advisory.status === "at risk"
-        ? `${figures}, against an ideal pace of ${ideal}.`
-        : `${figures}. The ideal pace to finish is ${ideal}.`;
+  const age = ageDuration(provider.ageMs);
+  const monthlyExhausted =
+    !!advisory && advisory.bindingWindow === "monthly" && advisory.bindingRemaining === 0;
+  if (provider.exclusionReason !== null) {
+    const detailWord = exclusionDetail(provider.exclusionReason);
+    let detail: string | null;
+    if (detailWord && age) detail = `${detailWord} · last read ${age} ago`;
+    else if (detailWord) detail = detailWord;
+    else if (age) detail = `last read ${age} ago`;
+    else detail = forecastLine(provider);
+    return { tone: "neutral", label: "• Not ranked", detail };
   }
-  let decision: string;
-  if (provider.exclusionReason) {
-    decision = "Excluded before ranking.";
-  } else if (recommendation && recommendation.use === provider.id && recommendation.reason) {
-    decision = recommendation.reason;
-  } else if (advisory?.status === "at risk") {
-    decision = "Forecast to hit the cap before reset; flagged to ease off.";
-  } else if (advisory?.status === "watch") {
-    decision = "Near the cap — position or reset clock uncertain.";
-  } else if (advisory?.urgency === "slow down") {
-    decision = "Burning faster than the window; ease off.";
-  } else if (advisory?.urgency === "on track") {
-    decision = "Pace matches the window.";
-  } else {
-    decision = "Unused quota in this reset window.";
+  if (monthlyExhausted) {
+    return { tone: "neutral", label: "• Not ranked", detail: forecastLine(provider) };
   }
-  return { known, pace, decision };
-}
-
-function modelFailure(provider: ProviderView): string | null {
-  const words = failureWords(provider.lastAttempt?.failureCategory ?? null);
-  return words ? `No current pace. ${words}.` : null;
-}
-
-export function compactSnapshot(provider: ProviderView, asOfMs: number): Record<string, unknown> {
-  const quota = provider.quota;
-  const { elapsedPct } = barGeometry(provider, asOfMs);
-  return {
-    provider: provider.id,
-    plan: quota?.plan ? quota.plan.split(" · ")[0] : null,
-    usedPct: quota?.weeklyPct ?? null,
-    elapsedPct: elapsedPct !== null ? Math.round(elapsedPct) : null,
-    resetsAt: quota?.resetsAt ?? null,
-    monthlyPct: quota?.monthlyPct ?? null,
-    monthlyResetsAt: quota?.monthlyResetsAt ?? null,
-    monthlyStatus: quota?.monthlyStatus ?? null,
-    bindingWindow: provider.advisory?.bindingWindow ?? null,
-    source: quota?.source ?? null,
-    pacingStatus: pacingStatusToken(provider),
-    reporting: provider.reporting,
-  };
+  if (!advisory) {
+    return { tone: "neutral", label: "• On track", detail: forecastLine(provider) };
+  }
+  if (advisory.remaining <= 0 || paceBadge(provider) === "Quota exhausted") {
+    const reset = quotaResetsAt(provider);
+    const clock = reset ? resetClock(reset) : null;
+    return { tone: "neutral", label: "• Capped", detail: clock ? `until ${clock}` : "quota fully used" };
+  }
+  if (advisory.bindingWindow === "monthly" && advisory.bindingRemaining > 0) {
+    return {
+      tone: "use-more",
+      label: "↑ Use more",
+      detail: `${Math.round(advisory.bindingRemaining)}% of month left`,
+    };
+  }
+  const lane = laneOf(advisory, provider.exclusionReason);
+  if (lane === "use-more") {
+    const detail =
+      advisory.wastePct !== null && Number.isFinite(advisory.wastePct)
+        ? unusedLine(provider, advisory.wastePct)
+        : forecastLine(provider);
+    return { tone: "use-more", label: "↑ Use more", detail };
+  }
+  if (lane === "ease-off" || advisory.status === "at risk" || advisory.status === "watch") {
+    const detail =
+      advisory.daysToExhaust !== null && Number.isFinite(advisory.daysToExhaust)
+        ? `exhausts in ${daysToDuration(advisory.daysToExhaust)} at forecast pace`
+        : paceBadge(provider);
+    return { tone: "ease-off", label: "↓ Ease off", detail };
+  }
+  return { tone: "neutral", label: "• On track", detail: forecastLine(provider) };
 }
 
 export interface RenameSubmitResult {
@@ -324,6 +431,91 @@ export async function submitProviderRename(
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to update display name" };
   }
+}
+
+/**
+ * Compact forecast for a drawer limit line. The verdict band and Pace
+ * section carry the full pace story, so the row keeps only the outcome:
+ * status words and "at forecast pace" are dropped, and a status-only
+ * headline with no figure is left to the verdict.
+ */
+export function compactLimitForecast(provider: ProviderView): PaceHeadline | null {
+  if (provider.exclusionReason !== null) return null;
+  const headline = paceHeadline(provider);
+  if (!headline || headline.kind === "ontrack") return null;
+  const text = headline.text
+    .replace(/^(Cap risk|Watch) · /, "")
+    .replace(/^Measuring pace · /, "")
+    .replace(/^Exhausted · /, "")
+    .replace(/ at forecast pace$/, "");
+  if (!/\d/.test(text) && text !== "quota fully used") return null;
+  return { ...headline, text };
+}
+
+/**
+ * One limit row, identical for every window: title line (with the
+ * Quota reset tag on the quota window only), the reset line
+ * left-aligned under the title, then the bar. The vertical mark is the
+ * elapsed share of the window, so usage can be read against time.
+ */
+function LimitRow({
+  name,
+  pct,
+  quota,
+  resetLine,
+  forecast,
+  hatchPct,
+  fillStyle,
+  elapsedPct,
+  testId,
+}: {
+  name: string;
+  pct: number;
+  quota?: boolean;
+  resetLine: React.ReactNode;
+  forecast?: { text: string; kind: string } | null;
+  /** Projected-unused share of the quota bar, hatched like the card bar. */
+  hatchPct?: number | null;
+  fillStyle: React.CSSProperties;
+  elapsedPct: number | null;
+  testId?: string;
+}) {
+  const label =
+    elapsedPct !== null
+      ? `${pct} percent of ${name.toLowerCase()} used, ${Math.round(elapsedPct)} percent of the window elapsed`
+      : `${pct} percent of ${name.toLowerCase()} used`;
+  return (
+    <div className="limit-row" data-testid={testId}>
+      <div className="limit-head">
+        <span className="limit-name">{name}</span>
+        {quota && <span className="quota-tag">Quota reset</span>}
+        <span className="limit-pct">{pct}% used</span>
+      </div>
+      <div className="limit-sub">
+        {resetLine}
+        {forecast && <span className={`out out-${forecast.kind}`}>→ {forecast.text}</span>}
+      </div>
+      <div className="track" role="img" aria-label={label}>
+        <div className="fill" style={fillStyle} />
+        {hatchPct !== null && hatchPct !== undefined && Number.isFinite(hatchPct) && (
+          <div
+            aria-hidden="true"
+            data-testid="limit-hatch"
+            className="band band-waste"
+            style={{ left: `${100 - hatchPct}%`, width: `${hatchPct}%` }}
+          />
+        )}
+        {elapsedPct !== null && (
+          <div
+            aria-hidden="true"
+            className="mark"
+            title={`Time elapsed: ${Math.round(elapsedPct)}%`}
+            style={{ left: `${elapsedPct}%` }}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function ProviderDrawer({
@@ -414,22 +606,169 @@ export function ProviderDrawer({
   };
 
 
-  const [copied, setCopied] = useState(false);
-
   if (!provider) return null;
   const model = drawerModel(provider);
   const titleId = "provider-drawer-title";
   const asOfMs = Date.parse(asOf);
   const updated = ageDuration(model.ageMs);
-  const underline = resetUnderline(provider, asOfMs);
-  const why = rankingCopy(provider, recommendation);
-  const record = compactSnapshot(provider, asOfMs);
-  const recordJson = JSON.stringify(record, null, 2);
+  const underlineParts = resetUnderlineParts(provider, asOfMs);
   const planBits = [displayPlan(provider.quota?.plan), sourceLabel(provider.quota?.source)].filter(
     (b) => b && b !== "unknown"
   );
   const sub = planBits.join(" · ");
-  const monthlyLine = monthlyMeta(provider);
+  const monthlyReset = monthlyResetParts(provider, asOfMs);
+  // Per-window elapsed for the Limits rows; the Pace bar's quota geometry
+  // would hand the weekly row the monthly share on a monthly-bound provider.
+  const weeklyElapsed = provider.quota
+    ? windowElapsedPct(provider.quota.periodStart, provider.quota.resetsAt, asOfMs)
+    : null;
+  const monthlyElapsed = monthlyElapsedPct(provider, asOfMs);
+  const fiveElapsed = fiveHourElapsedPct(provider, asOfMs);
+  // The quota (binding) window leads the Limits
+  // section; rolling windows (5h, and weekly for monthly-bound providers)
+  // are rate limits and follow as secondary rows.
+  const monthlyPrimary =
+    provider.advisory?.bindingWindow === "monthly" &&
+    model.monthlyKind === "included" &&
+    model.monthlyPct !== undefined &&
+    Number.isFinite(model.monthlyPct);
+  const verdict = verdictFor(provider, asOfMs);
+  const notes: { key: string; dot: "warn" | "bad"; text: string }[] = [];
+  if (model.exclusionWords) notes.push({ key: "exclusion", dot: "warn", text: model.exclusionWords });
+  if (model.failureWords) notes.push({ key: "failure", dot: "bad", text: model.failureWords });
+  if (model.estimatedReset) notes.push({ key: "estimated", dot: "warn", text: "Reset time is estimated." });
+  const footBits = [
+    provider.quota ? sourceLabel(provider.quota?.source) : null,
+    displayPlan(provider.quota?.plan),
+    updated ? `Updated ${updated} ago` : "Updated unknown",
+  ].filter(Boolean) as string[];
+  let footText = footBits.join(" · ");
+  if ((provider.stale || provider.exclusionReason === "stale") && model.failureWords) {
+    footText += ` · ${model.failureWords}`;
+  }
+  const showCredential = provider.id === "opencode-go" && provider.quota?.source === "api";
+  const paceFigs = paceFigures(provider.advisory);
+  const forecastNote = forecastBasis(provider);
+  const paceBasisLine = [
+    provider.advisory && paceFigs.avg === null && paceFigs.recent !== null
+      ? PACE_TIPS.recent
+      : paceBasis(provider, asOfMs),
+    forecastNote,
+  ].filter(Boolean).join(" · ");
+
+  const weeklyResetLine = underlineParts ? (
+    <div className="winrow-sub reset-line">
+      Resets <strong>{underlineParts.stamp}</strong>
+      {underlineParts.left && (
+        <>
+          {" "}· in <strong>{underlineParts.left}</strong>
+        </>
+      )}
+    </div>
+  ) : (
+    <div className="winrow-sub">Reset not reported</div>
+  );
+  const monthlyResetLine = monthlyReset ? (
+    <div className="winrow-sub reset-line">
+      Resets <strong>{monthlyReset.stamp}</strong>
+      {monthlyReset.left && (
+        <>
+          {" "}· in <strong>{monthlyReset.left}</strong>
+        </>
+      )}
+    </div>
+  ) : (
+    <div className="winrow-sub">Reset not reported</div>
+  );
+  const fiveClock = model.fiveHourResetsAt ? resetClock(model.fiveHourResetsAt) : null;
+  const fiveLeft =
+    model.fiveHourResetsAt && fiveClock ? timeLeft(model.fiveHourResetsAt, asOfMs) : null;
+  const fiveResetLineNode = !fiveClock ? (
+    <div className="winrow-sub">Reset not reported</div>
+  ) : fiveLeft ? (
+    <div className="winrow-sub reset-line">
+      Resets <strong>{fiveClock}</strong> · in <strong>{fiveLeft}</strong>
+    </div>
+  ) : (
+    <div className="winrow-sub reset-line">
+      Reset <strong>{fiveClock}</strong>
+    </div>
+  );
+
+  const headline = provider.exclusionReason === null ? paceHeadline(provider) : null;
+  const limitForecast = compactLimitForecast(provider);
+  const wastePct = provider.advisory?.wastePct ?? null;
+  const weeklyHatchPct = !monthlyPrimary && headline?.hatch ? wastePct : null;
+
+  const isWeekly100 =
+    provider.quota &&
+    !provider.resetPassed &&
+    provider.quota.weeklyPct >= 100 &&
+    (!provider.quota.resetsAt || Date.parse(provider.quota.resetsAt) > asOfMs);
+
+  const weeklyRow = provider.quota ? (
+    <LimitRow
+      name="Weekly limit"
+      pct={provider.quota.weeklyPct}
+      quota={!monthlyPrimary}
+      resetLine={weeklyResetLine}
+      forecast={monthlyPrimary ? null : limitForecast}
+      hatchPct={weeklyHatchPct}
+      fillStyle={
+        monthlyPrimary
+          ? limitFill(provider.quota.weeklyPct)
+          : isWeekly100
+            ? {
+                width: `${Math.min(100, Math.max(0, provider.quota.weeklyPct))}%`,
+                background: "var(--fill-cap)",
+                ["--fill-edge" as string]: "var(--edge-cap)",
+              }
+            : {
+                width: `${Math.min(100, Math.max(0, provider.quota.weeklyPct))}%`,
+                background: fillToken(model.badge),
+                ["--fill-edge" as string]: edgeToken(model.badge),
+              }
+      }
+      elapsedPct={weeklyElapsed}
+    />
+  ) : null;
+  const monthlyRow =
+    model.monthlyKind === "included" &&
+    model.monthlyPct !== undefined &&
+    Number.isFinite(model.monthlyPct) ? (
+      <LimitRow
+        name="Monthly limit"
+        pct={model.monthlyPct}
+        quota={monthlyPrimary}
+        resetLine={monthlyResetLine}
+        forecast={monthlyPrimary ? limitForecast : null}
+        fillStyle={
+          monthlyPrimary
+            ? trackFillForPct(model.monthlyPct, model.monthlyStatus === "exhausted")
+            : limitFill(model.monthlyPct, model.monthlyStatus === "exhausted")
+        }
+        elapsedPct={monthlyElapsed}
+        testId="drawer-monthly"
+      />
+    ) : null;
+  const fiveResetPassed =
+    model.fiveHourResetsAt !== undefined &&
+    Number.isFinite(Date.parse(model.fiveHourResetsAt)) &&
+    Date.parse(model.fiveHourResetsAt) <= asOfMs;
+  const effectiveFivePct = fiveResetPassed ? 0 : model.fiveHourPct;
+  const fiveRow =
+    model.fiveHourPct !== undefined &&
+    model.fiveHourPct !== null &&
+    Number.isFinite(model.fiveHourPct) ? (
+      <LimitRow
+        name={shortWindowLabel(provider.id) ?? "5h limit"}
+        pct={effectiveFivePct ?? 0}
+        resetLine={fiveResetLineNode}
+        fillStyle={limitFill(effectiveFivePct ?? 0)}
+        elapsedPct={fiveResetPassed ? null : fiveElapsed}
+      />
+    ) : null;
+  const anyElapsed = [weeklyElapsed, monthlyElapsed, fiveElapsed].some((v) => v !== null);
 
   return (
     <>
@@ -453,11 +792,9 @@ export function ProviderDrawer({
           <span className="picon" style={providerTint(provider.id)}>
             <ProviderIcon id={provider.id} title={model.name} />
           </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="who" style={{ flex: 1, minWidth: 0 }}>
             <h2
               id={titleId}
-              onClick={!isEditing ? () => setIsEditing(true) : undefined}
-              title={!isEditing ? "Click to rename" : undefined}
               style={
                 isEditing
                   ? {
@@ -471,7 +808,6 @@ export function ProviderDrawer({
                       border: 0,
                     }
                   : {
-                      cursor: "pointer",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "var(--s1)",
@@ -482,20 +818,11 @@ export function ProviderDrawer({
               {!isEditing && (
                 <button
                   type="button"
-                  className="btn-icon"
+                  className="rename-btn"
                   aria-label={`Rename ${model.name}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsEditing(true);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: "2px",
-                    cursor: "pointer",
-                    color: "var(--ink-soft)",
-                    display: "inline-flex",
-                    verticalAlign: "middle",
                   }}
                 >
                   <svg
@@ -560,7 +887,7 @@ export function ProviderDrawer({
                     className="btn btn-sm"
                     style={{ flex: "none" }}
                   >
-                    {saving ? "Saving..." : "Save"}
+                    {saving ? "Saving…" : "Save"}
                   </button>
                   <button
                     type="button"
@@ -595,7 +922,7 @@ export function ProviderDrawer({
             <span className="sub">{providerSubtitle(provider) ?? sub}</span>
           </div>
 
-          <Badge provider={provider} />
+          <Badge provider={provider} compact />
 
           <button
             className="drawer-close"
@@ -618,130 +945,77 @@ export function ProviderDrawer({
           </button>
         </div>
 
-        {provider.description && (
-          <p
-            style={{
-              margin: "0 var(--s4) var(--s3)",
-              fontSize: "var(--t-2)",
-              color: "var(--ink-soft)",
-            }}
-          >
-            {provider.description}
-          </p>
+        <div className={`verdict ${verdict.tone}`} data-testid="drawer-verdict">
+          <b>{verdict.label}</b>
+          {verdict.detail && <span>{verdict.detail}</span>}
+        </div>
+
+        <RateLimitNote provider={provider} asOf={asOf} />
+
+        {provider.description && <p className="drawer-desc">{provider.description}</p>}
+
+        {notes.length > 0 && (
+          <section className="dsec" aria-label="Notes">
+            <h3>Notes</h3>
+            <div className="notes-list">
+              {notes.map((n) => (
+                <div key={n.key} className="note">
+                  <span className={`dot ${n.dot}`} aria-hidden="true" />
+                  <span>{n.text}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
-        <section className="dsec" aria-label="Weekly limit">
-          <h3>Weekly limit</h3>
+        <section className="dsec" aria-label="Limits">
+          <h3>Limits</h3>
           {provider.quota ? (
             <>
-              <PaceBar provider={provider} asOf={asOf} />
-              {underline && <div className="pcard-underline">{underline}</div>}
+              {monthlyPrimary ? (
+                <>
+                  {monthlyRow}
+                  {weeklyRow}
+                  {fiveRow}
+                </>
+              ) : (
+                <>
+                  {weeklyRow}
+                  {fiveRow}
+                  {monthlyRow}
+                </>
+              )}
+              {(anyElapsed || weeklyHatchPct !== null) && (
+                <p className="limit-legend">
+                  <span className="legend-label">Legend</span>
+                  {anyElapsed && (
+                    <span className="legend-item">
+                      <span className="legend-mark" aria-hidden="true" />
+                      Time elapsed
+                    </span>
+                  )}
+                  {weeklyHatchPct !== null && (
+                    <span className="legend-item">
+                      <span className="legend-hatch" aria-hidden="true" />
+                      Projected waste
+                    </span>
+                  )}
+                </p>
+              )}
             </>
           ) : (
             <p className="cell-s">No readings yet.</p>
           )}
         </section>
 
-        {model.fiveHourPct !== undefined && model.fiveHourPct !== null && Number.isFinite(model.fiveHourPct) && (
-          <section className="dsec" aria-label={shortWindowLabel(provider.id) ?? "5h Limit"}>
-            <h3>{shortWindowLabel(provider.id) ?? "5h Limit"}</h3>
-            <div className="pcard-topline">
-              <span className="used">{model.fiveHourPct}% used</span>
-            </div>
-            <div className="track" role="img" aria-label={`${model.fiveHourPct} percent of ${(shortWindowLabel(provider.id) ?? "5h limit").toLowerCase()} used`}>
-              <div
-                className="fill"
-                style={{
-                  width: `${Math.min(100, Math.max(0, model.fiveHourPct))}%`,
-                  background: "var(--fill-ontrack)",
-                  ["--fill-edge" as string]: "var(--edge-ontrack)",
-                }}
-              />
-            </div>
-          </section>
-        )}
+        <BurnDown provider={provider} asOf={asOf} basis={paceBasisLine} />
 
-        {model.monthlyKind === "included" && model.monthlyPct !== undefined && Number.isFinite(model.monthlyPct) && (
-          <section className="dsec" aria-label="Monthly limit" data-testid="drawer-monthly">
-            <h3>Monthly limit</h3>
-            <div className="pcard-topline">
-              <span className="used">{model.monthlyPct}% used</span>
-            </div>
-            <div className="track" role="img" aria-label={`${model.monthlyPct} percent of monthly limit used`}>
-              <div
-                className="fill"
-                style={{
-                  width: `${Math.min(100, Math.max(0, model.monthlyPct))}%`,
-                  background: model.monthlyPct >= 80 ? "var(--fill-cap)" : "var(--fill-ontrack)",
-                  ["--fill-edge" as string]: model.monthlyPct >= 80 ? "var(--edge-cap)" : "var(--edge-ontrack)",
-                }}
-              />
-            </div>
-            {monthlyLine && <div className="pcard-underline">{monthlyLine}</div>}
-          </section>
-        )}
+        <ClosedWeeks closes={provider.lastCloses} windowName={quotaWindowName(provider)} />
 
-        <ClosedWeeks closes={provider.lastCloses} />
-
-        <section className="dsec" aria-label="Adapter and provenance">
-          <h3>Adapter and provenance</h3>
-          <dl className="dkv">
-            <dt>Read by</dt>
-            <dd>{sourceLabel(provider.quota?.source)}</dd>
-            <dt>Credential</dt>
-            <dd>{credentialLabel(provider)}</dd>
-            <dt>Window</dt>
-            <dd>
-              {[
-                provider.quota?.plan && provider.quota.plan !== "unknown" ? provider.quota.plan : null,
-                resetStamp(provider) ? `resets ${resetStamp(provider)}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "—"}
-            </dd>
-            <dt>Pace basis</dt>
-            <dd>{paceBasis(provider, asOfMs)}</dd>
-            <dt>Last read</dt>
-            <dd>
-              {updated ? `${updated} ago` : "unknown"}
-              {model.failureWords ? ` · ${model.failureWords}` : ""}
-            </dd>
-          </dl>
-          <div className="draw-code-head">
-            <span className="cell-s">Raw JSON snapshot:</span>
-            <button
-              className="btn btn-quiet btn-sm"
-              type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(recordJson)
-                  .then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  })
-                  .catch(() => {});
-              }}
-            >
-              {copied ? "Copied!" : "Copy JSON"}
-            </button>
-          </div>
-          <pre className="draw-code">{recordJson}</pre>
-        </section>
-
-        <section className="dsec" aria-label="Ranking rationale">
-          <h3>Ranking rationale</h3>
-          <div className="why-block">
-            <b>Known</b>
-            <span>{why.known}</span>
-          </div>
-          <div className="why-block">
-            <b>Pace</b>
-            <span>{why.pace}</span>
-          </div>
-          <div className="why-block">
-            <b>Decision</b>
-            <span>{why.decision}</span>
-          </div>
-        </section>
+        <div className="prov-foot">
+          {footText}
+          {showCredential && <span className="cred">{credentialLabel(provider)}</span>}
+        </div>
       </aside>
     </>
   );

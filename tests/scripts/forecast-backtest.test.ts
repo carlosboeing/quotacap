@@ -19,7 +19,7 @@ import {
 } from "../../scripts/forecast-backtest.mjs";
 import { computeAdvisory } from "../../src/advisory/engine.js";
 import { getBurnRates, getHistoryBaseline } from "../../src/store/quotas.js";
-import { BLEND_K, RISK_MARGIN, GATE_TOL } from "../../src/advisory/types.js";
+import { BLEND_K, RISK_MARGIN, GATE_TOL, PACE_WINDOW_DAYS, TUBE_FLOOR } from "../../src/advisory/types.js";
 import { openDb, migrate } from "../../src/store/db.js";
 import type { Quota } from "../../src/adapters/types.js";
 
@@ -58,6 +58,7 @@ function expectMirror(mirror: any, real: any) {
   expect(mirror.paceSource).toBe(real.paceSource);
   expect(mirror.burnMeasured).toBe(real.burnMeasured);
   expect(mirror.aheadOfElapsed).toBe(real.aheadOfElapsed);
+  expect(mirror.closeToReset).toBe(real.closeToReset);
   expect(mirror.daysToExhaust).toBe(real.daysToExhaust);
   expect(mirror.wastePct).toBe(real.wastePct);
   expect(mirror.burnRate).toBe(real.burnRate);
@@ -127,7 +128,13 @@ function emptyDb(): string {
 
 describe("forecast backtest — shipped constants", () => {
   it("mirrors src/advisory/types.ts", () => {
-    expect(DEFAULT_CONSTANTS).toEqual({ K: BLEND_K, M: RISK_MARGIN, T: GATE_TOL });
+    expect(DEFAULT_CONSTANTS).toEqual({
+      K: BLEND_K,
+      M: RISK_MARGIN,
+      T: GATE_TOL,
+      windowDays: PACE_WINDOW_DAYS,
+      tubeFloor: TUBE_FLOOR,
+    });
   });
 });
 
@@ -159,8 +166,9 @@ describe("forecast backtest — verdict mirrors", () => {
     const q = quota({ weeklyPct: 65 });
     const shipped = candidateVerdict(q, 40, 20, NOW, DEFAULT_CONSTANTS);
     expect(shipped.status).toBe("at risk");
-    // A larger margin loosens `over` until the same inputs read watch.
-    const loose = candidateVerdict(q, 20, 20, NOW, { K: 0.5, M: 0.9, T: 0.1 });
+    // A larger margin loosens `over`. These inputs sit in the shell between
+    // the tube and M, so the verdict is watch rather than on track or red.
+    const loose = candidateVerdict(q, 30, 30, NOW, { K: 0.5, M: 0.9, T: 0.1 });
     expect(loose.status).toBe("watch");
   });
 
@@ -223,12 +231,18 @@ describe("forecast-weeks fixture — recorded receipts", () => {
     expect(steady.label).toBe("clearly-not-capped");
   });
 
-  it("halves the spike into watch where the current formula reds", () => {
+  it("keeps the blended spike on track where the current formula reds", () => {
     const spike = dayOf("bravo", "2026-08-12");
     expect(spike.label).toBe("clearly-not-capped");
-    expect(spike.candidate.burnRate).toBeCloseTo(13, 9); // 6 + 0.5 * (20 - 6)
-    expect(spike.candidate.status).toBe("watch");
-    expect(spike.candidate.daysToExhaust).toBeCloseTo(55 / 13, 6);
+    // Baseline 42% over the 6.75 days the close was sampled across.
+    const baseline = 42 / 6.75;
+    const blended = baseline + 0.5 * (20 - baseline);
+    expect(spike.candidate.burnRate).toBeCloseTo(blended, 9);
+    // The blend finishes inside the tube with days still left, so the amber
+    // band no longer catches it. The raw 24h rate still exhausts early.
+    expect(spike.candidate.status).toBe("on track");
+    expect(spike.candidate.closeToReset).toBe(true);
+    expect(spike.candidate.daysToExhaust).toBeCloseTo(55 / blended, 6);
     expect(spike.current.status).toBe("at risk");
     expect(spike.current.daysToExhaust).toBeCloseTo(55 / 20, 6);
   });

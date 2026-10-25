@@ -28,7 +28,7 @@ QuotaCap helps you get more from the AI coding subscriptions you already pay for
 
 Exec adapters run via `execFile` with an argv list. PTY adapters run via `node-pty` (`src/adapters/pty.ts`). They are TUI-fragile: a vendor text change breaks the parser and the row degrades fail-closed until the regex is fixed. Poll latency is 2–10 s per PTY provider (settle plus completion); `muse` can reach about 75 s when it has to warm an unavailable subscription. It dominates `POST /api/refresh` and the first poll, not the steady-state 15 m timer.
 
-Live adapters invoke the CLIs you already logged into — no API keys, no token files read. The one opt-in exception is OpenCode Go: after you run `quotacap providers enable opencode-go`, each poll reads the OpenCode auth key in-memory (`~/.local/share/opencode/auth.json`, `opencode-go` → `opencode` fallback, or `OPENCODE_API_KEY`) and sends it only to `opencode.ai/zen/go/v1/usage`. It is never stored, logged, or returned by the API or MCP. Disable any time with `quotacap providers disable opencode-go`.
+Live adapters invoke the CLIs you already logged into — no API keys, no token files read. The one opt-in exception is OpenCode Go: after you run `quotacap providers enable opencode-go`, each poll reads the bearer OpenCode already stored (v2 `~/.local/share/opencode/opencode.db` active credential, else legacy `auth.json`; `opencode-go` then `opencode`, or `OPENCODE_API_KEY`) and sends it only to `opencode.ai/zen/go/v1/usage`. It is never stored, logged, or returned by the API or MCP. Disable any time with `quotacap providers disable opencode-go`.
 
 ## Install
 
@@ -70,7 +70,7 @@ No setup ceremony: config is provisioned on first use, and bare `quotacap` is th
 
 Use `"command": "npx", "args": ["quotacap", "mcp"]` when installed via npm only.
 
-Tools: `get_quotas`, `get_recommendation`, `forecast`.
+Tools: `get_quotas`, `get_recommendation`, `forecast`, `get_models`. `get_recommendation` returns the pick, its reason, and each other provider's state, availability and reset; pass `verbose: true` for every quota, advisory and model list.
 
 ## HTTP API
 
@@ -121,7 +121,7 @@ curl -X PATCH http://localhost:8787/api/providers/claude \
 
 QuotaCap is a local daemon. It binds to `127.0.0.1` only (`src/runtime/service.ts` `app.listen`). It does not listen on `0.0.0.0`. There is no LAN surface.
 
-It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. It never reads `~/.config/muse/auth.json`, `~/.local/share/muse/sessions/`, or `~/.config/muse/tui-history.jsonl`. Each CLI owns its own session. The one opt-in exception is OpenCode Go: when you enable it, QuotaCap reads `~/.local/share/opencode/auth.json` in-memory, read-only, once per poll, and sends the key only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage`. The read is consent-gated (`opencodeGoConsentAt` in config), asserted read-only by `tests/adapters/credential-free.test.ts`, and revoked by `quotacap providers disable opencode-go`. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`, `muse`).
+It owns no tokens. It never reads `~/.codex/auth.json`, `~/.kimi-code/credentials/kimi-code.json`, `~/.kimi/credentials/kimi-code.json`, `~/.grok/auth.json`, or `~/.gemini/oauth_creds.json`. It never uses `refresh_token` or `grant_type=refresh_token`. It has no hardcoded client ids. Those OAuth paths and the `.qc-bak` and `.qc-lock` helpers were removed in #14. This is asserted by `tests/adapters/credential-free.test.ts`. Each CLI owns its own session. It never reads `~/.config/muse/auth.json`, `~/.local/share/muse/sessions/`, or `~/.config/muse/tui-history.jsonl`. Each CLI owns its own session. The one opt-in exception is OpenCode Go: when you enable it, QuotaCap reads the bearer OpenCode stored — the active credential in `~/.local/share/opencode/opencode.db`, or the legacy `auth.json` key — in-memory, read-only, once per poll, and sends it only as `Authorization: Bearer` to `https://opencode.ai/zen/go/v1/usage`. The read is consent-gated (`opencodeGoConsentAt` in config), asserted read-only by `tests/adapters/credential-free.test.ts`, and revoked by `quotacap providers disable opencode-go`. QuotaCap only spawns the CLI and reads its stdout via `exec` (`claude`, `agy`) or PTY (`codex`, `kimi`, `grok`, `muse`).
 
 It stores no `raw` provider payload. The `raw` column was dropped and migrated in `src/store/db.ts` `migrate`. `GET /api/quotas` and MCP `get_quotas` never return `raw` (`tests/http/api.test.ts`). History and the token live under `~/.quotacap/` with `0700` on the directory and `0600` on files.
 

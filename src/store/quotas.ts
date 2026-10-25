@@ -29,6 +29,9 @@ function mapRow(row:any){
     delete out.fiveHourPct;
     delete out.sessionPct;
   }
+  out.fiveHourResetsAt = row.five_hour_resets_at ?? row.fiveHourResetsAt ?? undefined;
+  delete out.five_hour_resets_at;
+  if (out.fiveHourResetsAt == null) delete out.fiveHourResetsAt;
   // A junk monthly percent means no usable monthly reading. It never
   // invalidates the provider; only a bad weekly percent does (snapshot.ts).
   const m = row.monthly_pct;
@@ -55,8 +58,10 @@ function cycleBreakReason(
 ): CycleBreakReason | null {
   const dropped = cur.usedPct < prev.usedPct;
   const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  // Instants, not strings: one reset written as "+10:00" and as "Z" is one boundary.
+  const curResets = cur.resetsAt ? new Date(cur.resetsAt).getTime() : NaN;
   const boundaryRolled =
-    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prevResets !== curResets;
   if (dropped && boundaryRolled) return "both";
   if (dropped) return "usage-drop";
   if (boundaryRolled) return "resets-at-rolled";
@@ -70,11 +75,27 @@ export function isWeeklyCycleBreak(
   return cycleBreakReason(prev, cur) !== null;
 }
 
+// One timestamp format on the wire: adapters report offsets as their
+// source prints them ("+10:00", "Z"), so ingest stores UTC ISO.
+function utcIso(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const ms = Date.parse(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : v;
+}
+
 export function upsertQuota(db:any, q:any){
   if (Array.isArray(q)) {
     for (const item of q) upsertQuota(db, item);
     return;
   }
+  q = {
+    ...q,
+    resetsAt: utcIso(q.resetsAt),
+    periodStart: utcIso(q.periodStart),
+    fetchedAt: utcIso(q.fetchedAt),
+    monthlyResetsAt: utcIso(q.monthlyResetsAt),
+    fiveHourResetsAt: utcIso(q.fiveHourResetsAt),
+  };
   const credits = q.creditsUsd ?? q.credits_usd ?? null;
   const estimated = q.resetsAtEstimated ? 1 : null;
   // Either spelling binds; an explicit null stays null (SQLite binds it),
@@ -94,7 +115,7 @@ export function upsertQuota(db:any, q:any){
           .run(prev.provider, prev.plan ?? null, prev.weeklyPct, Math.max(0, 100 - prev.weeklyPct), prev.fetchedAt, prev.id, prev.periodStart ?? null, prev.resetsAt ?? null, prev.resetsAtEstimated ? 1 : null, q.fetchedAt, reason);
       }
     }
-    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null);
+    db.prepare(`INSERT INTO quotas(provider, plan, used_pct, resets_at, period_start, source, fetched_at, credits_usd, resets_at_estimated, session_pct, monthly_pct, monthly_resets_at, monthly_status, monthly_kind, five_hour_resets_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(q.provider, q.plan, weeklyPct, q.resetsAt, q.periodStart, q.source, q.fetchedAt, credits, estimated, fiveHourPct, q.monthlyPct ?? null, q.monthlyResetsAt ?? null, q.monthlyStatus ?? null, q.monthlyKind ?? null, q.fiveHourResetsAt ?? null);
     const day = new Date().toISOString().slice(0,10);
     db.prepare(`INSERT INTO snapshots(day, provider, used_pct) VALUES(?,?,?) ON CONFLICT(day, provider) DO UPDATE SET used_pct=excluded.used_pct`).run(day, q.provider, weeklyPct);
     db.exec("COMMIT");
@@ -104,7 +125,70 @@ export function upsertQuota(db:any, q:any){
   }
 }
 
-export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
+const DAY_MS = 86_400_000;
+// Verified resets this close together name one window: claude reports the
+// same reset as 20:59 and 21:00.
+const SAME_WINDOW_MS = 60 * 60 * 1000;
+// A close that ran under a day says too little about a week's pace.
+const MIN_CLOSE_SPAN_DAYS = 1;
+
+interface CloseWindow { resetsAt: string | null; resetsAtEstimated?: boolean }
+
+function sameVerifiedWindow(a: CloseWindow, b: CloseWindow): boolean {
+  if (a.resetsAtEstimated || b.resetsAtEstimated || !a.resetsAt || !b.resetsAt) return false;
+  const aMs = Date.parse(a.resetsAt);
+  const bMs = Date.parse(b.resetsAt);
+  return Number.isFinite(aMs) && Number.isFinite(bMs) && Math.abs(aMs - bMs) <= SAME_WINDOW_MS;
+}
+
+/**
+ * Finished windows only, one row each. A usage drop inside the window still
+ * open is not a close, and a window that dropped more than once keeps its
+ * newest row. Estimated resets pass through: their boundaries move per poll.
+ */
+function settleCloses<T extends CloseWindow>(newestFirst: T[], current?: CloseWindow | null): T[] {
+  const out: T[] = [];
+  for (const c of newestFirst) {
+    if (current && sameVerifiedWindow(c, current)) continue;
+    if (out.some((kept) => sameVerifiedWindow(kept, c))) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Daily pace over the days a close actually ran: a window the provider reset
+ * early, or one last sampled days before its reset, covers fewer than seven.
+ * Null under MIN_CLOSE_SPAN_DAYS. Estimated or undated closes keep used / 7.
+ */
+function closeDailyRate(c: CloseWindow & { usedPct: number; sampledAt: string; periodStart: string | null }): number | null {
+  const start = c.periodStart ? Date.parse(c.periodStart) : NaN;
+  const end = c.resetsAt ? Date.parse(c.resetsAt) : NaN;
+  const sampled = Date.parse(c.sampledAt);
+  if (c.resetsAtEstimated || !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(sampled)) {
+    return c.usedPct / 7;
+  }
+  const ranUntil = end - sampled <= SAME_WINDOW_MS ? end : Math.min(sampled, end);
+  const days = (ranUntil - start) / DAY_MS;
+  return days >= MIN_CLOSE_SPAN_DAYS ? c.usedPct / days : null;
+}
+
+function monthlyPeriodStart(resetIso: string | null | undefined): string | null {
+  if (!resetIso) return null;
+  const resetMs = Date.parse(resetIso);
+  if (!Number.isFinite(resetMs)) return null;
+  const start = new Date(resetMs);
+  start.setMonth(start.getMonth() - 1);
+  return start.toISOString();
+}
+
+export function getWindowCloses(
+  db: any,
+  provider: string,
+  limit = 4,
+  window: "weekly" | "monthly" = "weekly",
+  current?: CloseWindow | null,
+): Array<{
   provider: string;
   plan: string | null;
   usedPct: number;
@@ -116,15 +200,81 @@ export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
   detectedAt: string;
   reason: "usage-drop" | "resets-at-rolled" | "both";
 }> {
+  if (window === "monthly") {
+    let qRows: any[] = [];
+    try {
+      qRows = db
+        .prepare(
+          `SELECT id, provider, plan, monthly_pct, monthly_resets_at, monthly_kind, fetched_at FROM quotas WHERE provider=? ORDER BY fetched_at ASC, id ASC`,
+        )
+        .all(provider) as any[];
+    } catch (e: any) {
+      if (!/no such table|no such column/i.test(String(e?.message ?? ""))) throw e;
+    }
+    const valid = qRows.filter(
+      (r) =>
+        r.monthly_kind === "included" &&
+        typeof r.monthly_pct === "number" &&
+        Number.isFinite(r.monthly_pct) &&
+        r.monthly_pct >= 0 &&
+        r.monthly_pct <= 100 &&
+        typeof r.monthly_resets_at === "string" &&
+        Number.isFinite(Date.parse(r.monthly_resets_at)) &&
+        Number.isFinite(Date.parse(r.fetched_at)),
+    );
+    const closes: Array<{
+      provider: string;
+      plan: string | null;
+      usedPct: number;
+      leftoverPct: number;
+      sampledAt: string;
+      periodStart: string | null;
+      resetsAt: string | null;
+      resetsAtEstimated: boolean;
+      detectedAt: string;
+      reason: CycleBreakReason;
+    }> = [];
+    for (let i = 1; i < valid.length; i++) {
+      const prev = valid[i - 1];
+      const cur = valid[i];
+      const reason = cycleBreakReason(
+        {
+          usedPct: prev.monthly_pct,
+          t: Date.parse(prev.fetched_at),
+          resetsAt: prev.monthly_resets_at ?? null,
+        },
+        {
+          usedPct: cur.monthly_pct,
+          t: Date.parse(cur.fetched_at),
+          resetsAt: cur.monthly_resets_at ?? null,
+        },
+      );
+      if (reason) {
+        closes.push({
+          provider: prev.provider,
+          plan: prev.plan ?? null,
+          usedPct: prev.monthly_pct,
+          leftoverPct: Math.max(0, 100 - prev.monthly_pct),
+          sampledAt: prev.fetched_at,
+          periodStart: monthlyPeriodStart(prev.monthly_resets_at),
+          resetsAt: prev.monthly_resets_at ?? null,
+          resetsAtEstimated: false,
+          detectedAt: cur.fetched_at,
+          reason,
+        });
+      }
+    }
+    return closes.reverse().slice(0, limit);
+  }
   let rows: any[] = [];
   try {
-    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC LIMIT ?`).all(provider, limit) as any[];
+    rows = db.prepare(`SELECT provider, plan, used_pct, leftover_pct, sampled_at, period_start, resets_at, resets_at_estimated, detected_at, reason FROM window_closes WHERE provider=? ORDER BY detected_at DESC, id DESC`).all(provider) as any[];
   } catch (e: any) {
     // A pre-observability database read offline is never migrated, so the
     // table can be absent. No table means no recorded closes.
     if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
   }
-  return rows.map((r) => ({
+  const mapped = rows.map((r) => ({
     provider: r.provider,
     plan: r.plan ?? null,
     usedPct: r.used_pct,
@@ -136,6 +286,7 @@ export function getWindowCloses(db:any, provider:string, limit = 4): Array<{
     detectedAt: r.detected_at,
     reason: r.reason,
   }));
+  return settleCloses(mapped, current).slice(0, limit);
 }
 export function getLatestByProvider(db:any, provider:string){
   const row = db.prepare(`SELECT * FROM quotas WHERE provider=? ORDER BY fetched_at DESC LIMIT 1`).get(provider);
@@ -149,6 +300,7 @@ export function getAllLatest(db:any){
 export const getQuotas = getAllLatest;
 export function getSnapshots(db:any){ return db.prepare(`SELECT * FROM snapshots ORDER BY day DESC`).all(); }
 interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
+interface RatePoint extends BurnPoint { periodStart: string | null; estimated: boolean }
 
 // Readings since the last reset. A reset happened between two consecutive
 // readings when usage fell, or when the earlier reading's own resetsAt had both
@@ -157,7 +309,7 @@ interface BurnPoint { usedPct: number; t: number; resetsAt: string | null }
 // (grok with no "Resets:" line, claude with an unparsed reset) derive
 // periodStart from the poll time, so it moves on every poll and exact equality
 // would discard every earlier reading in the same cycle.
-function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
+function currentCycle<T extends BurnPoint>(sorted: T[]): T[] {
   let start = 0;
   for (let i = 1; i < sorted.length; i++) {
     if (isWeeklyCycleBreak(sorted[i - 1], sorted[i])) start = i;
@@ -167,27 +319,35 @@ function currentCycle(sorted: BurnPoint[]): BurnPoint[] {
 
 export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   // Burn is the used-pct delta over a real rolling window of poll history
-  // (up to 24h) within the current cycle.
-  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`).all() as {
+  // (up to 24h) within the current cycle. Readings taken before the latest
+  // window opened are dropped: a rolling window that opens on first use
+  // (Codex) would otherwise price its first hours over idle time from before
+  // it existed. An estimated reset derives periodStart from the poll time,
+  // so the drop applies to verified clocks only.
+  const rows = db.prepare(`SELECT provider, used_pct, fetched_at, resets_at, period_start, resets_at_estimated FROM quotas`).all() as {
     provider: string;
     used_pct: number;
     fetched_at: string;
     resets_at: string | null;
+    period_start: string | null;
+    resets_at_estimated: number | null;
   }[];
 
-  const byProvider = new Map<string, BurnPoint[]>();
+  const byProvider = new Map<string, RatePoint[]>();
   for (const r of rows) {
     const t = new Date(r.fetched_at).getTime();
     if (Number.isNaN(t) || t > now) continue;
     const pts = byProvider.get(r.provider) ?? [];
-    pts.push({ usedPct: r.used_pct, t, resetsAt: r.resets_at });
+    pts.push({ usedPct: r.used_pct, t, resetsAt: r.resets_at, periodStart: r.period_start, estimated: !!r.resets_at_estimated });
     byProvider.set(r.provider, pts);
   }
 
   const out = new Map<string, number>();
   for (const [provider, all] of byProvider) {
-    const sorted = currentCycle(all.sort((a, b) => a.t - b.t));
+    let sorted = currentCycle(all.sort((a, b) => a.t - b.t));
     const latest = sorted[sorted.length - 1];
+    const opened = latest.estimated || !latest.periodStart ? NaN : Date.parse(latest.periodStart);
+    if (Number.isFinite(opened)) sorted = sorted.filter((p) => p.t >= opened || p === latest);
     const cutoff = latest.t - 86400000;
     const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
     const days = (latest.t - windowStart.t) / 86400000;
@@ -198,31 +358,127 @@ export function getBurnRates(db:any, now = Date.now()): Map<string, number> {
   return out;
 }
 
-export function getHistoryBaseline(db:any, limit = 4): Map<string, number> {
-  let rows: { provider: string; used_pct: number; resets_at_estimated: number | null }[] = [];
+interface ReadingPoint {
+  usedPct: number;
+  t: number;
+  resetsAt: string | null;
+  monthlyPct?: number | null;
+  monthlyStatus?: string | null;
+}
+
+export function getExhaustedTimestamps(
+  db: any,
+  now = Date.now(),
+): { weekly: Map<string, string>; monthly: Map<string, string> } {
+  let rows: {
+    provider: string;
+    used_pct: number;
+    fetched_at: string;
+    resets_at: string | null;
+    monthly_pct?: number | null;
+    monthly_status?: string | null;
+  }[] = [];
   try {
-    rows = db.prepare(`SELECT provider, used_pct, resets_at_estimated FROM window_closes ORDER BY detected_at DESC, id DESC`).all() as any[];
+    rows = db
+      .prepare(
+        `SELECT provider, used_pct, fetched_at, resets_at, monthly_pct, monthly_status FROM quotas`,
+      )
+      .all() as any[];
+  } catch (e: any) {
+    if (!/no such column/i.test(String(e?.message ?? ""))) throw e;
+    rows = db
+      .prepare(`SELECT provider, used_pct, fetched_at, resets_at FROM quotas`)
+      .all() as any[];
+  }
+
+  const byProvider = new Map<string, ReadingPoint[]>();
+  for (const r of rows) {
+    const t = new Date(r.fetched_at).getTime();
+    if (Number.isNaN(t) || t > now) continue;
+    const pts = byProvider.get(r.provider) ?? [];
+    pts.push({
+      usedPct: r.used_pct,
+      t,
+      resetsAt: r.resets_at,
+      monthlyPct: r.monthly_pct,
+      monthlyStatus: r.monthly_status,
+    });
+    byProvider.set(r.provider, pts);
+  }
+
+  const weekly = new Map<string, string>();
+  const monthly = new Map<string, string>();
+
+  for (const [provider, all] of byProvider) {
+    const sorted = currentCycle(all.sort((a, b) => a.t - b.t));
+    if (sorted.length === 0) continue;
+    const latest = sorted[sorted.length - 1];
+
+    if (latest.usedPct >= 100) {
+      const first = sorted.find((p) => p.usedPct >= 100);
+      if (first) weekly.set(provider, new Date(first.t).toISOString());
+    }
+
+    const latestMonthlyExhausted =
+      latest.monthlyStatus === "exhausted" ||
+      (typeof latest.monthlyPct === "number" && latest.monthlyPct >= 100);
+    if (latestMonthlyExhausted) {
+      const firstMonthly = sorted.find(
+        (p) =>
+          p.monthlyStatus === "exhausted" ||
+          (typeof p.monthlyPct === "number" && p.monthlyPct >= 100),
+      );
+      if (firstMonthly) monthly.set(provider, new Date(firstMonthly.t).toISOString());
+    }
+  }
+
+  return { weekly, monthly };
+}
+
+export function getHistoryBaseline(
+  db: any,
+  limit = 4,
+  current?: Map<string, CloseWindow>,
+): Map<string, number> {
+  let rows: {
+    provider: string;
+    used_pct: number;
+    sampled_at: string;
+    period_start: string | null;
+    resets_at: string | null;
+    resets_at_estimated: number | null;
+  }[] = [];
+  try {
+    rows = db.prepare(`SELECT provider, used_pct, sampled_at, period_start, resets_at, resets_at_estimated FROM window_closes ORDER BY detected_at DESC, id DESC`).all() as any[];
   } catch (e: any) {
     // A pre-observability database read offline is never migrated, so the
     // table can be absent. No table means no recorded closes.
     if (!/no such table/i.test(String(e?.message ?? ""))) throw e;
   }
 
-  const byProvider = new Map<string, { usedPct: number; verified: boolean }[]>();
+  type Close = CloseWindow & { usedPct: number; sampledAt: string; periodStart: string | null };
+  const byProvider = new Map<string, Close[]>();
   for (const r of rows) {
     const closes = byProvider.get(r.provider) ?? [];
-    closes.push({ usedPct: r.used_pct, verified: !r.resets_at_estimated });
+    closes.push({
+      usedPct: r.used_pct,
+      sampledAt: r.sampled_at,
+      periodStart: r.period_start ?? null,
+      resetsAt: r.resets_at ?? null,
+      resetsAtEstimated: !!r.resets_at_estimated,
+    });
     byProvider.set(r.provider, closes);
   }
 
   const out = new Map<string, number>();
   for (const [provider, newestFirst] of byProvider) {
-    const pool = newestFirst.slice(0, limit);
+    const pool = settleCloses(newestFirst, current?.get(provider)).slice(0, limit);
     if (!pool.length) continue;
-    const verified = pool.filter((c) => c.verified);
+    const verified = pool.filter((c) => !c.resetsAtEstimated);
     const chosen = verified.length ? verified : pool;
-    const mean = chosen.reduce((sum, c) => sum + c.usedPct, 0) / chosen.length;
-    const rate = mean / 7;
+    const rates = chosen.map(closeDailyRate).filter((r): r is number => r !== null);
+    if (!rates.length) continue;
+    const rate = rates.reduce((sum, r) => sum + r, 0) / rates.length;
     if (Number.isFinite(rate)) out.set(provider, rate);
   }
   return out;

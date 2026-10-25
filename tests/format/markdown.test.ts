@@ -13,16 +13,15 @@ describe("markdown table", () => {
   it("pins the example fixture exactly in recommended order", () => {
     expect(renderMarkdownTable(exampleStateSnapshot, FIXED_NOW)).toBe(
       [
-        "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast |",
-        "|---|---|---|---|---|---|---|",
-        "| ★ my-plan | 12% | 50% | 1.7 avg | 7d | Behind pace | 76% waste in 7.0d |",
-        "| Kimi | 22% | 50% | 3.1 avg | 7d | Behind pace | 56% waste in 7.0d |",
-        "| Claude | 40% | 50% | 5.7 avg | 7d | Behind pace | 20% waste in 7.0d |",
-        "| Codex | 40% | 50% | 5.7 avg | 7d (est.) | Behind pace | 20% estimated waste in 7.0d |",
-        "| Antigravity | 50% | 0% | — | 7d | Measuring | Measuring pace; 50% remains with 7.0d until reset |",
-        "| Antigravity 3P | 60% | 0% | — | 7d | Not reporting | stale 3h ago |",
-        "| Grok | 30% | — | — | — | Not reporting | invalid reading |",
-        "| Manual | — | — | — | — | Not reporting | no readings yet |",
+        "| Provider | Used | Elapsed | Pace (%/day avg · 24h) | Resets | State | Forecast | Wait |",
+        "|---|---|---|---|---|---|---|---|",
+        "| ★ my-plan | 12% | 50% | 1.7 avg | 7d 0h | Behind pace | 76% unused at reset (Mon 14 Sep 06:00) | — |",
+        "| Kimi | 22% | 50% | 3.1 avg | 7d 0h | Behind pace | 56% unused at reset (Mon 14 Sep 06:00) | — |",
+        "| Claude | 40% | 50% | 5.7 avg | 7d 0h | Behind pace | 20% unused at reset (Mon 14 Sep 06:00) | — |",
+        "| Codex | 40% | 50% | 5.7 avg | 7d 0h (est.) | Behind pace | 20% unused at estimated reset (Mon 14 Sep 06:00) | — |",
+        "| Antigravity | 50% | 0% | — | 7d 0h | Measuring | Measuring pace; 50% remains with 7d 0h until reset | — |",
+        "| Antigravity 3P | 60% | 0% | — | 7d 0h | Not reporting | stale 3h 0m ago | — |",
+        "| Grok | 30% | — | — | — | Not reporting | invalid reading | — |",
       ].join("\n"),
     );
   });
@@ -55,7 +54,7 @@ describe("markdown table", () => {
 
 describe("recommendation summary", () => {
   it("names use and reason like advise", () => {
-    expect(renderRecommendationSummary(exampleStateSnapshot)).toBe("my-plan: 76% waste in 7.0d");
+    expect(renderRecommendationSummary(exampleStateSnapshot)).toBe("my-plan: 76% unused at reset (Mon 14 Sep 06:00)");
     expect(renderRecommendationSummary(emptySnapshot(FIXED_NOW))).toBe("none: no quotas yet");
   });
 });

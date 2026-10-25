@@ -12,9 +12,12 @@
 //     at the following midnight (the day boundary). Rows at or before that
 //     instant are visible; later rows and receipts are not.
 //   - recent rate mirrors getBurnRates (src/store/quotas.ts): 24h rolling delta
-//     within the current cycle, null under MIN_PACE_SPAN_DAYS or one row.
-//   - baseline mirrors getHistoryBaseline (verified-preferred newest-4 pool,
-//     mean usedPct / 7), falling back to averagePace exactly like baselineFor.
+//     within the current cycle, readings before a verified window opened
+//     dropped, null under MIN_PACE_SPAN_DAYS or one row.
+//   - baseline mirrors getHistoryBaseline (closes of the open window dropped,
+//     one close per window, verified-preferred newest-4 pool, mean of each
+//     close's used / days it ran), falling back to averagePace exactly like
+//     baselineFor.
 //   - Week labels come from recorded receipts only: leftover < 5 is "capped",
 //     leftover > 15 is "clearly-not-capped", the middle is "neutral" and is
 //     excluded from error counts; days with no receipt are "unlabeled".
@@ -45,7 +48,15 @@ const require = createRequire(import.meta.url);
 const DAY_MS = 86400000;
 
 // Mirrors src/advisory/types.ts; locked by tests/scripts/forecast-backtest.test.ts.
-export const DEFAULT_CONSTANTS = { K: 0.5, M: 0.15, T: 0.1 };
+export const DEFAULT_CONSTANTS = { K: 0.5, M: 0.15, T: 0.1, windowDays: 7, tubeFloor: 0.05 };
+
+// Mirrors paceTube in src/advisory/types.ts.
+function paceTube(daysLeft, margin, constants) {
+  const floor = constants.tubeFloor ?? DEFAULT_CONSTANTS.tubeFloor;
+  const windowDays = constants.windowDays ?? DEFAULT_CONSTANTS.windowDays;
+  if (!(daysLeft > 0) || !(margin > 0)) return floor;
+  return Math.min(margin, floor + margin * (daysLeft / windowDays));
+}
 
 // minimum data span before a pace annualizes — mirrors MIN_PACE_SPAN_DAYS.
 const MIN_PACE_SPAN_DAYS = 6 / 24;
@@ -115,6 +126,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured: false,
       paceSource: "unknown",
@@ -134,6 +146,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
       recentRate: null,
       baselineRate: null,
       aheadOfElapsed: null,
+      closeToReset: false,
       avgPace,
       burnMeasured,
       paceSource,
@@ -149,14 +162,18 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
   const gate = elapsed !== null && !estimated && q.usedPct >= elapsed * (1 - T);
   const aheadOfElapsed = elapsed !== null && !estimated && q.usedPct > elapsed * (1 + T);
 
-  const wastePct = Math.max(0, remaining - burnRate * daysLeft);
+  // Mirrors computeAdvisory: waste at the faster of the 24h rate and the blend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate) * daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const over = daysToExhaust < daysLeft * (1 - M);
-  const marginal = !over && daysToExhaust < daysLeft * (1 + M);
+  const missFrac = Number.isFinite(daysToExhaust) ? Math.abs(daysToExhaust - daysLeft) / daysLeft : Infinity;
+  const insideTube = missFrac <= paceTube(daysLeft, M, constants);
+  const inShell = !over && !insideTube && daysToExhaust < daysLeft * (1 + M);
   let status;
   if (over && gate) status = "at risk";
-  else if (over || marginal) status = "watch";
+  else if (over || inShell || (insideTube && estimated)) status = "watch";
   else status = "on track";
+  const closeToReset = status === "on track" && insideTube;
 
   let urgency = "on track";
   if (wastePct > 30 && daysLeft < 3) urgency = "burn now";
@@ -174,6 +191,7 @@ export function candidateVerdict(q, recent, baseline, now, constants = DEFAULT_C
     recentRate: recent,
     baselineRate: baseline,
     aheadOfElapsed,
+    closeToReset,
     avgPace,
     burnMeasured,
     paceSource,
@@ -239,7 +257,8 @@ export function currentVerdict(q, recent, windowAvg, now) {
     };
   }
 
-  const wastePct = Math.max(0, remaining - burnRate * daysLeft);
+  // Mirrors computeAdvisory: waste at the faster of the 24h rate and the blend.
+  const wastePct = Math.max(0, remaining - Math.max(recent ?? 0, burnRate) * daysLeft);
   const daysToExhaust = burnRate > 0 ? remaining / burnRate : Infinity;
   const status = daysToExhaust < daysLeft ? "at risk" : "on track";
 
@@ -273,8 +292,9 @@ export function currentVerdict(q, recent, windowAvg, now) {
 function cycleBreakReason(prev, cur) {
   const dropped = cur.usedPct < prev.usedPct;
   const prevResets = prev.resetsAt ? new Date(prev.resetsAt).getTime() : NaN;
+  const curResets = cur.resetsAt ? new Date(cur.resetsAt).getTime() : NaN;
   const boundaryRolled =
-    !Number.isNaN(prevResets) && prevResets <= cur.t && prev.resetsAt !== cur.resetsAt;
+    !Number.isNaN(prevResets) && prevResets <= cur.t && prevResets !== curResets;
   if (dropped && boundaryRolled) return "both";
   if (dropped) return "usage-drop";
   if (boundaryRolled) return "resets-at-rolled";
@@ -299,11 +319,13 @@ export function recentRateForCycle(rows, nowMs) {
   for (const r of rows) {
     const t = Date.parse(r.fetchedAt);
     if (Number.isNaN(t) || t > nowMs) continue;
-    pts.push({ usedPct: r.usedPct, t, resetsAt: r.resetsAt ?? null });
+    pts.push({ usedPct: r.usedPct, t, resetsAt: r.resetsAt ?? null, periodStart: r.periodStart ?? null, estimated: r.resetsAtEstimated === true });
   }
   if (!pts.length) return null;
-  const sorted = currentCycle(pts.sort((a, b) => a.t - b.t));
+  let sorted = currentCycle(pts.sort((a, b) => a.t - b.t));
   const latest = sorted[sorted.length - 1];
+  const opened = latest.estimated || !latest.periodStart ? NaN : Date.parse(latest.periodStart);
+  if (Number.isFinite(opened)) sorted = sorted.filter((p) => p.t >= opened || p === latest);
   const cutoff = latest.t - DAY_MS;
   const windowStart = sorted.find((p) => p.t >= cutoff) ?? sorted[0];
   const days = (latest.t - windowStart.t) / DAY_MS;
@@ -312,16 +334,51 @@ export function recentRateForCycle(rows, nowMs) {
   return burn >= 0 && Number.isFinite(burn) ? burn : null;
 }
 
-// getHistoryBaseline for one provider over the visible closes.
-export function historyBaselineFor(closes, limit = 4) {
-  const newestFirst = [...closes]
-    .sort((a, b) => Date.parse(b.detectedAt) - Date.parse(a.detectedAt) || (b.id ?? 0) - (a.id ?? 0))
-    .slice(0, limit);
-  if (!newestFirst.length) return null;
-  const verified = newestFirst.filter((c) => !c.resetsAtEstimated);
-  const chosen = verified.length ? verified : newestFirst;
-  const mean = chosen.reduce((sum, c) => sum + c.usedPct, 0) / chosen.length;
-  const rate = mean / 7;
+// settleCloses, closeDailyRate and getHistoryBaseline (src/store/quotas.ts)
+// for one provider over the visible closes.
+const SAME_WINDOW_MS = 60 * 60 * 1000;
+const MIN_CLOSE_SPAN_DAYS = 1;
+
+function sameVerifiedWindow(a, b) {
+  if (a.resetsAtEstimated || b.resetsAtEstimated || !a.resetsAt || !b.resetsAt) return false;
+  const aMs = Date.parse(a.resetsAt);
+  const bMs = Date.parse(b.resetsAt);
+  return Number.isFinite(aMs) && Number.isFinite(bMs) && Math.abs(aMs - bMs) <= SAME_WINDOW_MS;
+}
+
+function settleCloses(newestFirst, current) {
+  const out = [];
+  for (const c of newestFirst) {
+    if (current && sameVerifiedWindow(c, current)) continue;
+    if (out.some((kept) => sameVerifiedWindow(kept, c))) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+function closeDailyRate(c) {
+  const start = c.periodStart ? Date.parse(c.periodStart) : NaN;
+  const end = c.resetsAt ? Date.parse(c.resetsAt) : NaN;
+  const sampled = Date.parse(c.sampledAt);
+  if (c.resetsAtEstimated || !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(sampled)) {
+    return c.usedPct / 7;
+  }
+  const ranUntil = end - sampled <= SAME_WINDOW_MS ? end : Math.min(sampled, end);
+  const days = (ranUntil - start) / DAY_MS;
+  return days >= MIN_CLOSE_SPAN_DAYS ? c.usedPct / days : null;
+}
+
+export function historyBaselineFor(closes, limit = 4, current = null) {
+  const newestFirst = [...closes].sort(
+    (a, b) => Date.parse(b.detectedAt) - Date.parse(a.detectedAt) || (b.id ?? 0) - (a.id ?? 0),
+  );
+  const pool = settleCloses(newestFirst, current).slice(0, limit);
+  if (!pool.length) return null;
+  const verified = pool.filter((c) => !c.resetsAtEstimated);
+  const chosen = verified.length ? verified : pool;
+  const rates = chosen.map(closeDailyRate).filter((r) => r !== null);
+  if (!rates.length) return null;
+  const rate = rates.reduce((sum, r) => sum + r, 0) / rates.length;
   return Number.isFinite(rate) ? rate : null;
 }
 
@@ -479,6 +536,8 @@ export function replay(dataset, constants = DEFAULT_CONSTANTS) {
       const recent = recentRateForCycle(visible, asOfMs);
       const history = historyBaselineFor(
         dataset.closes.filter((c) => c.provider === provider && Date.parse(c.detectedAt) <= asOfMs),
+        4,
+        q,
       );
       const baseline = baselineFor(history, q, asOf);
       const candidate = candidateVerdict(q, recent, baseline, asOf, constants);

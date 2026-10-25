@@ -4,11 +4,13 @@ import {
   Badge,
   PaceBar,
   forecastLine,
+  isMonthlyBound,
   paceLines,
   resetCellLines,
 } from "./PaceBar.js";
 import { lastClose } from "./ClosedWeeks.js";
 import { WindowsRow } from "./WindowsRow.js";
+import { RateLimitNote } from "./RateLimitNote.js";
 
 export function ProviderRow({
   provider,
@@ -24,7 +26,7 @@ export function ProviderRow({
   const quota = provider.quota;
   const advisory = provider.advisory;
   const asOfMs = Date.parse(asOf);
-  const lines = paceLines(advisory);
+  const lines = paceLines(advisory, provider, asOfMs);
   const name = provider.displayName;
   const reset = resetCellLines(provider, asOfMs);
   const last = lastClose(provider);
@@ -57,6 +59,7 @@ export function ProviderRow({
         {quota ? (
           <>
             <PaceBar provider={provider} asOf={asOf} />
+            <RateLimitNote provider={provider} asOf={asOf} />
             <WindowsRow provider={provider} asOf={asOf} variant="row" />
           </>
         ) : "—"}
@@ -66,7 +69,7 @@ export function ProviderRow({
         {reset.bottom && <span className="cell-s">{reset.bottom}</span>}
         {last && (
           <span className="cell-s">
-            last week {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
+            last {isMonthlyBound(provider) ? "month" : "week"} {last.leftoverPct}% leftover{last.resetsAtEstimated ? " (est.)" : ""}
           </span>
         )}
       </div>
