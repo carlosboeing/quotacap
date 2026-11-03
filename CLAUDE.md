@@ -24,7 +24,7 @@ QuotaCap is a local quota tracker for AI coding subscriptions. It records one cu
 └── .workbench/    — PRIVATE sidecar (carlosboeing/quotacap-workbench), gitignored
 ```
 
-Private workbench layout mirrors crossrev/copydesk: `0-brainstorms/`, `1-discovery/`, `2-design/`, `3-plans/`, `4-reviews/`, `notes/`, `guides/`.
+Private engineering lifecycle folders are `0-brainstorms/`, `1-research/`, `2-requirements/`, `3-design/`, `4-plans/`, `5-reviews/`, and `6-retros/`; scratch notes and evergreen guides stay in `notes/` and `guides/`.
 
 ## Routing — where to write
 
